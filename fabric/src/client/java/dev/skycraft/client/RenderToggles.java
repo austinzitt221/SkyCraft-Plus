@@ -19,10 +19,10 @@ import net.minecraft.client.gui.screens.PauseScreen;
 import net.minecraft.network.chat.Component;
 
 /**
- * The two experimental rendering switches: the pause menu's top right corner (under "Hands") and
- * {@code fabricQuads=} / {@code itemModels=} in config/skycraft.properties. Both are off by default:
- * each draws what the plain path left out, so it costs CPU (and, for items, GPU) whenever many are
- * on screen.
+ * The two experimental rendering switches. Both live in config/skycraft.properties and in Mod
+ * Menu's screen; only "Item models" also has a pause menu button (the bottom right corner), because
+ * it is the one that costs per frame. Fabric quads are on by default (a block that needs them is
+ * invisible without them, and they cost almost nothing for ordinary blocks).
  */
 public final class RenderToggles {
 	private static final String QUADS_KEY = "fabricQuads";
@@ -33,7 +33,7 @@ public final class RenderToggles {
 	static final String ITEMS_TIP = "(experimental) Dropped and thrown items get Minecraft's own model "
 		+ "(every face, any shape) instead of a spinning cube or a flat icon. Raises CPU and GPU use: more vertices and more textures, and many items on the ground can cause lags.";
 	private static final String QUADS_COMMENT = "# (experimental) Block models written for Fabric's renderer API "
-		+ "(Traveler's Backpack and the like); off and they stay invisible. On by default (the pause menu's button, or Mod Menu).";
+		+ "(Traveler's Backpack and the like); off and they stay invisible. On by default (Mod Menu's screen).";
 	private static final String ITEMS_COMMENT = "# (experimental) Dropped and thrown items drawn with Minecraft's own model "
 		+ "instead of a cube or a flat icon; raises CPU and GPU use. Off by default (the pause menu's button, or Mod Menu).";
 
@@ -53,32 +53,18 @@ public final class RenderToggles {
 		load();
 		ScreenEvents.AFTER_INIT.register((minecraft, screen, width, height) -> {
 			if (screen instanceof PauseScreen pause && pause.showsPauseMenu() && minecraft.player != null) {
-				Screens.getWidgets(screen).add(quadsButton(width));
-				Screens.getWidgets(screen).add(itemsButton(width));
+				Screens.getWidgets(screen).add(itemsButton(width, height));
 			}
 		});
 	}
 
-	private static Button quadsButton(int width) {
-		return Button.builder(quadsLabel(), b -> {
-			fabricQuads = !fabricQuads;
-			b.setMessage(quadsLabel());
-			save(QUADS_KEY, fabricQuads, QUADS_COMMENT);
-			SkyCraft.LOG.info("SkyCraft: Fabric quads {}", fabricQuads ? "on" : "off");
-		}).bounds(width - 154, 28, 150, 20).tooltip(Tooltip.create(Component.literal(QUADS_TIP))).build();
-	}
-
-	private static Button itemsButton(int width) {
+	private static Button itemsButton(int width, int height) {
 		return Button.builder(itemsLabel(), b -> {
 			itemModels = !itemModels;
 			b.setMessage(itemsLabel());
 			save(ITEMS_KEY, itemModels, ITEMS_COMMENT);
 			SkyCraft.LOG.info("SkyCraft: item models {}", itemModels ? "on" : "off");
-		}).bounds(width - 154, 52, 150, 20).tooltip(Tooltip.create(Component.literal(ITEMS_TIP))).build();
-	}
-
-	private static Component quadsLabel() {
-		return Component.literal("Fabric quads: " + (fabricQuads ? "On" : "Off") + " (exp)");
+		}).bounds(width - 154, height - 24, 150, 20).tooltip(Tooltip.create(Component.literal(ITEMS_TIP))).build();
 	}
 
 	private static Component itemsLabel() {

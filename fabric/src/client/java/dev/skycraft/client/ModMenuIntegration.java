@@ -3,6 +3,7 @@ package dev.skycraft.client;
 
 import com.terraformersmc.modmenu.api.ConfigScreenFactory;
 import com.terraformersmc.modmenu.api.ModMenuApi;
+import dev.skycraft.world.SkyDig;
 import me.shedaniel.clothconfig2.api.ConfigBuilder;
 import me.shedaniel.clothconfig2.api.ConfigEntryBuilder;
 import net.fabricmc.loader.api.FabricLoader;
@@ -10,9 +11,9 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
 /**
- * Mod Menu's "Config" button, for the two experimental rendering switches (see RenderToggles, which
- * the pause menu's buttons and config/skycraft.properties write to as well). Only Mod Menu calls
- * this class; the screen itself needs Cloth Config, so without it the button does nothing.
+ * Mod Menu's "Config" button: every SkyCraft setting, the same values the pause menu's buttons and
+ * config/skycraft.properties hold (RenderToggles, DestructionToggle, HandMixToggle). Only Mod Menu
+ * calls this class; the screen itself needs Cloth Config, so without it the button does nothing.
  */
 public final class ModMenuIntegration implements ModMenuApi {
 	@Override
@@ -29,7 +30,11 @@ public final class ModMenuIntegration implements ModMenuApi {
 		ConfigBuilder builder = ConfigBuilder.create()
 			.setParentScreen(parent)
 			.setTitle(Component.literal("SkyCraft"))
-			.setSavingRunnable(RenderToggles::save);
+			.setSavingRunnable(() -> {
+				RenderToggles.save();
+				DestructionToggle.save();
+				HandMixToggle.save();
+			});
 		ConfigEntryBuilder entries = builder.entryBuilder();
 		builder.getOrCreateCategory(Component.literal("Rendering"))
 			.addEntry(entries.startBooleanToggle(Component.literal("Fabric quads (experimental)"), RenderToggles.fabricQuads)
@@ -41,6 +46,18 @@ public final class ModMenuIntegration implements ModMenuApi {
 				.setDefaultValue(false)
 				.setTooltip(Component.literal(RenderToggles.ITEMS_TIP))
 				.setSaveConsumer(on -> RenderToggles.itemModels = on)
+				.build());
+		String[] hands = HandMixToggle.MODE_NAMES;
+		builder.getOrCreateCategory(Component.literal("Gameplay"))
+			.addEntry(entries.startBooleanToggle(Component.literal("Skyrim destruction"), SkyDig.destruction)
+				.setDefaultValue(true)
+				.setTooltip(Component.literal(DestructionToggle.TIP))
+				.setSaveConsumer(on -> SkyDig.destruction = on)
+				.build())
+			.addEntry(entries.startSelector(Component.literal("Hands"), hands, hands[Math.clamp(HandMixToggle.mode, 0, hands.length - 1)])
+				.setDefaultValue(hands[0])
+				.setTooltip(Component.literal(HandMixToggle.TIP))
+				.setSaveConsumer(name -> HandMixToggle.mode = java.util.Arrays.asList(hands).indexOf(name))
 				.build());
 		return builder.build();
 	}
