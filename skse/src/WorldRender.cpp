@@ -977,7 +977,9 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			}
 		}
 
-		bool atlasMipsStale = false;  // an animated sprite changed: rebuild the atlas mipmaps once
+		bool          atlasMipsStale = false;  // an animated sprite or a fresh atlas: rebuild the mipmaps once
+		bool          atlasPending = false;    // a kRenAtlas began and its bands are still arriving
+		std::uint32_t atlasRowsDone = 0;       // rows of the pending atlas filled so far
 
 		// An animated sprite's current frame (water, lava, fire, ...) into the atlas.
 		void OnAtlasRegion(ID3D11DeviceContext* a_context, const std::uint8_t* a_data, std::uint32_t a_bytes)
@@ -997,13 +999,16 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			atlasMipsStale = true;
 		}
 
-		void OnAtlas(ID3D11DeviceContext* a_context, const std::uint8_t* a_data, std::uint32_t a_bytes)
+		// Begins an atlas: allocate the texture. Its pixels follow as kRenAtlasChunk bands, because an
+		// atlas can be far larger than one render message (a resource pack with big textures easily
+		// is), and a message that large never fit the ring.
+		void OnAtlas(ID3D11DeviceContext*, const std::uint8_t* a_data, std::uint32_t a_bytes)
 		{
 			if (a_bytes < sizeof(proto::RenAtlas)) {
 				return;
 			}
 			const auto* hdr = reinterpret_cast<const proto::RenAtlas*>(a_data);
-			if (a_bytes < sizeof(proto::RenAtlas) + std::uint64_t(hdr->width) * hdr->height * 4 || !hdr->width || !hdr->height) {
+			if (!hdr->width || !hdr->height) {
 				return;
 			}
 			Release(atlasSrv);
@@ -1023,9 +1028,32 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 				Release(atlasTex);
 				return;
 			}
-			a_context->UpdateSubresource(atlasTex, 0, nullptr, a_data + sizeof(proto::RenAtlas), hdr->width * 4, 0);
-			a_context->GenerateMips(atlasSrv);
-			logger::info("received Minecraft texture atlas {}x{}", hdr->width, hdr->height);
+			atlasRowsDone = 0;
+			atlasPending = true;
+		}
+
+		// One band of the atlas begun by kRenAtlas. Bands are ordered, so anything out of step is dropped.
+		void OnAtlasChunk(ID3D11DeviceContext* a_context, const std::uint8_t* a_data, std::uint32_t a_bytes)
+		{
+			if (!atlasTex || !atlasPending || a_bytes < sizeof(proto::RenAtlasChunk)) {
+				return;
+			}
+			const auto* hdr = reinterpret_cast<const proto::RenAtlasChunk*>(a_data);
+			D3D11_TEXTURE2D_DESC td{};
+			atlasTex->GetDesc(&td);
+			const std::uint64_t need = sizeof(proto::RenAtlasChunk) + std::uint64_t(hdr->width) * hdr->rows * 4;
+			if (hdr->width != td.Width || hdr->height != td.Height || !hdr->rows ||
+				hdr->y != atlasRowsDone || hdr->y + hdr->rows > td.Height || a_bytes < need) {
+				return;
+			}
+			const D3D11_BOX box{ 0, hdr->y, 0, hdr->width, hdr->y + hdr->rows, 1 };
+			a_context->UpdateSubresource(atlasTex, 0, &box, a_data + sizeof(proto::RenAtlasChunk), hdr->width * 4, 0);
+			atlasRowsDone += hdr->rows;
+			if (atlasRowsDone >= td.Height) {
+				atlasPending = false;
+				atlasMipsStale = true;
+				logger::info("received Minecraft texture atlas {}x{}", td.Width, td.Height);
+			}
 		}
 
 		void OnSection(const std::uint8_t* a_data, std::uint32_t a_bytes)
@@ -1080,6 +1108,9 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 					switch (a_type) {
 					case proto::kRenAtlas:
 						OnAtlas(a_context, a_data, a_bytes);
+						break;
+					case proto::kRenAtlasChunk:
+						OnAtlasChunk(a_context, a_data, a_bytes);
 						break;
 					case proto::kRenSection:
 						OnSection(a_data, a_bytes);

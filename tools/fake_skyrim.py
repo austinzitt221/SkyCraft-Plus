@@ -14,7 +14,7 @@ import time
 import zlib
 
 MAGIC = 0x43594B53
-VERSION = 30
+VERSION = 35
 NAME = os.environ.get("SKYCRAFT_LINK", "Local\\SkyCraft_v1")  # fake_guest.py runs one beside a real Skyrim
 OFF_SKY = 0x100
 OFF_MC = 0x200
@@ -67,6 +67,7 @@ class Link:
         self.events = []
         self.sections = 0
         self.atlas = None
+        self.atlas_pending = None
 
     def heartbeat(self):
         struct.pack_into("<Q", self.m, 0x10, tick())
@@ -94,9 +95,20 @@ class Link:
                 continue
             if typ == 1:
                 w, h = struct.unpack_from("<II", self.m, base + 0x88 + pos)
-                print(f"  render: atlas {w}x{h}")
-                start = base + 0x90 + pos
-                self.atlas = (w, h, bytes(self.m[start:start + w * h * 4]))
+                self.atlas_pending = (w, h, bytearray(w * h * 4))
+                print(f"  render: atlas {w}x{h} (begin)")
+            elif typ == 13:
+                w, h, y, rows = struct.unpack_from("<IIII", self.m, base + 0x88 + pos)
+                pend = self.atlas_pending
+                if pend is not None and pend[0] == w and pend[1] == h:
+                    aw, ah, buf = pend
+                    src = base + 0x98 + pos
+                    off = y * aw * 4
+                    buf[off:off + w * rows * 4] = self.m[src:src + w * rows * 4]
+                    if y + rows >= h:
+                        self.atlas = (aw, ah, bytes(buf))
+                        self.atlas_pending = None
+                        print(f"  render: atlas {w}x{h} done ({w * h * 4} bytes)")
             elif typ == 2:
                 sx, sy, sz, verts = struct.unpack_from("<iiiI", self.m, base + 0x88 + pos)
                 self.sections += 1
