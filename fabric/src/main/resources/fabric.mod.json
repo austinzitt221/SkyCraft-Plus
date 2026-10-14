@@ -12,7 +12,8 @@
   "environment": "client",
   "entrypoints": {
     "main": ["dev.skycraft.SkyCraft"],
-    "client": ["dev.skycraft.client.SkyCraftClient"]
+    "client": ["dev.skycraft.client.SkyCraftClient"],
+    "modmenu": ["dev.skycraft.client.ModMenuIntegration"]
   },
   "mixins": [
     "skycraft.mixins.json",
@@ -23,5 +24,9 @@
     "minecraft": "~26.3",
     "java": ">=25",
     "fabric-api": "*"
+  },
+  "recommends": {
+    "modmenu": ">=21",
+    "cloth-config": ">=26.3"
   }
 }
