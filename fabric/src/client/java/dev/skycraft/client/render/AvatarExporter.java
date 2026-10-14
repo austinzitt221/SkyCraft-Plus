@@ -1055,8 +1055,20 @@ final class AvatarExporter implements SubmitNodeCollector {
 	public void submitShapeOutline(PoseStack poseStack, VoxelShape shape, RenderType renderType, int color, float width, boolean afterTerrain) {
 	}
 
+	/**
+	 * Custom geometry (CC:Tweaked's turtles, monitors and printouts, and anything else that draws
+	 * through Fabric's renderer API): the renderer writes its own posed vertices, so they go into
+	 * the batch of the render type's texture exactly like a model.
+	 */
 	@Override
-	public void submitCustomGeometry(PoseStack poseStack, RenderType renderType, SubmitNodeCollector.CustomGeometryRenderer customGeometryRenderer) {
+	public void submitCustomGeometry(PoseStack poseStack, RenderType renderType, SubmitNodeCollector.CustomGeometryRenderer renderer) {
+		Batch batch = this.batchFor(renderType);
+		if (batch == null) {
+			return;
+		}
+		this.capture.begin(batch);
+		renderer.render(poseStack.last(), this.capture);
+		this.capture.flush();
 	}
 
 	@Override

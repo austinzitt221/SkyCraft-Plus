@@ -3,6 +3,7 @@ package dev.skycraft.client.render;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.skycraft.SkyCraft;
+import dev.skycraft.client.RenderToggles;
 import dev.skycraft.link.Proto;
 import dev.skycraft.link.SkyLink;
 import dev.skycraft.world.SkyClip;
@@ -457,7 +458,14 @@ public final class WorldExporter {
 						}
 						if (state.getRenderShape() == RenderShape.MODEL) {
 							var model = Minecraft.getInstance().getModelManager().getBlockStateModelSet().get(state);
-							blockRenderer.tesselateBlock(MESH, x, y, z, level, pos.immutable(), state, model, state.getSeed(pos));
+							// FabricBlockModels handles a model written for Fabric's renderer API (Traveler's
+							// Backpack, ...): it leaves collectParts empty and draws through emitQuads, which
+							// vanilla's renderer below would see as nothing. Delete these lines and the file
+							// and it is gone again (RenderToggles.fabricQuads switches it off).
+							if (!RenderToggles.fabricQuads
+								|| !FabricBlockModels.tesselate(atlas, x, y, z, level, pos.immutable(), state, model, state.getSeed(pos), MESH::vertex)) {
+								blockRenderer.tesselateBlock(MESH, x, y, z, level, pos.immutable(), state, model, state.getSeed(pos));
+							}
 						}
 						// SkyCraft+ : the End. End portals and gateways are drawn by a shader of Minecraft's
 						// own that never reaches Skyrim: a glowing obsidian surface stands in for them.
