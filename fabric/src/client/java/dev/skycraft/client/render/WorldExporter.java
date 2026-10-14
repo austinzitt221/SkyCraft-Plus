@@ -7,6 +7,8 @@ import dev.skycraft.client.RenderToggles;
 import dev.skycraft.link.Proto;
 import dev.skycraft.link.SkyLink;
 import dev.skycraft.world.SkyClip;
+import it.unimi.dsi.fastutil.longs.Long2LongMap;
+import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.nio.ByteBuffer;
@@ -80,6 +82,15 @@ public final class WorldExporter {
 	private static ByteBuffer shapeBoxes = ByteBuffer.allocate(64 * 1024).order(ByteOrder.LITTLE_ENDIAN);
 	private static final LongOpenHashSet DUG = new LongOpenHashSet(); // sections Skyrim holds dug cells for
 	private static final ByteBuffer LIGHTS = ByteBuffer.allocate(16 * 16 * 16 * 8).order(ByteOrder.LITTLE_ENDIAN);
+	// SkyCraft+ : performance. The last content sent for a section's lights, collision bits, shapes
+	// and dug cells. Re-meshing a section for one block change used to send all of them again
+	// unchanged (the lights alone are a record per torch); only what differs goes over now. Keyed
+	// with the section, and kept in step with LIT/SOLID/SHAPED/DUG below (removed with them, cleared
+	// with them, so a section Skyrim no longer holds anything for is sent whole again).
+	private static final Long2LongMap LIGHT_SENT = new Long2LongOpenHashMap();
+	private static final Long2LongMap SOLID_SENT = new Long2LongOpenHashMap();
+	private static final Long2LongMap SHAPE_SENT = new Long2LongOpenHashMap();
+	private static final Long2LongMap DUG_SENT = new Long2LongOpenHashMap();
 	private static int sentGeneration = Integer.MIN_VALUE;
 	private static int meshesSent;
 	private static ClientLevel sentLevel;
@@ -191,7 +202,9 @@ public final class WorldExporter {
 	/** Empties one section in Skyrim: no mesh, lights, solids or shapes. False if the ring is full. */
 	private static boolean forget(long key) {
 		int sx = SectionPos.x(key), sy = SectionPos.y(key), sz = SectionPos.z(key);
-		Object[][] kinds = { { Proto.REN_SECTION, SENT }, { Proto.REN_LIGHTS, LIT }, { Proto.REN_SOLIDS, SOLID }, { Proto.REN_SHAPES, SHAPED } };
+		Object[][] kinds = {
+			{ Proto.REN_SECTION, SENT, null }, { Proto.REN_LIGHTS, LIT, LIGHT_SENT }, { Proto.REN_SOLIDS, SOLID, SOLID_SENT }, { Proto.REN_SHAPES, SHAPED, SHAPE_SENT }
+		};
 		for (Object[] kind : kinds) {
 			LongOpenHashSet set = (LongOpenHashSet) kind[1];
 			if (!set.contains(key)) {
@@ -202,6 +215,9 @@ public final class WorldExporter {
 				return false;
 			}
 			set.remove(key);
+			if (kind[2] != null) {
+				((Long2LongMap) kind[2]).remove(key); // what Skyrim holds is gone: the next mesh sends it whole
+			}
 		}
 		return true;
 	}
@@ -225,6 +241,10 @@ public final class WorldExporter {
 		SOLID.clear();
 		SHAPED.clear();
 		DUG.clear();
+		LIGHT_SENT.clear();
+		SOLID_SENT.clear();
+		SHAPE_SENT.clear();
+		DUG_SENT.clear();
 		dev.skycraft.client.SkyDigClient.resendAll();
 		// Everything already loaded needs meshing again; later chunk loads mark themselves dirty.
 		int radius = minecraft.options.getEffectiveRenderDistance() + 1;
@@ -327,6 +347,26 @@ public final class WorldExporter {
 
 	private static byte sixteenths(double v) {
 		return (byte) Mth.clamp((int) v, 0, 255);
+	}
+
+	/** FNV-1a over a buffer's first {@code length} bytes: a section's lights or its shape boxes. */
+	private static long hash(ByteBuffer buf, int length) {
+		long h = 0xcbf29ce484222325L;
+		for (int i = 0; i < length; i++) {
+			h = (h ^ (buf.get(i) & 0xFF)) * 0x100000001b3L;
+		}
+		return h;
+	}
+
+	/** FNV-1a over some 64-bit words: a section's collision bits (a null array is all zero). */
+	private static long hash(long[] words, int world) {
+		long h = 0xcbf29ce484222325L ^ world;
+		if (words != null) {
+			for (long w : words) {
+				h = (h ^ w) * 0x100000001b3L;
+			}
+		}
+		return h;
 	}
 
 	private static LevelChunkSection sectionAt(ClientLevel level, LevelChunk chunk, int sy) {
@@ -459,57 +499,82 @@ public final class WorldExporter {
 				SENT.remove(key);
 			}
 			if (lightCount > 0 || LIT.contains(key)) {
-				ByteBuffer lightHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(lightCount).flip();
-				if (!SkyLink.writeRender(Proto.REN_LIGHTS, lightHeader, LIGHTS.flip())) {
-					markDirty(sx, sy, sz); // ring full; send both again later
-				} else if (lightCount > 0) {
-					LIT.add(key);
-				} else {
-					LIT.remove(key);
+				long hash = hash(LIGHTS, lightCount * 8);
+				// Skyrim already has exactly this: the section was re-meshed for a block that isn't a light.
+				if (!LIT.contains(key) || !LIGHT_SENT.containsKey(key) || LIGHT_SENT.get(key) != hash) {
+					ByteBuffer lightHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(lightCount).flip();
+					if (!SkyLink.writeRender(Proto.REN_LIGHTS, lightHeader, LIGHTS.flip())) {
+						markDirty(sx, sy, sz); // ring full; send both again later
+					} else {
+						LIGHT_SENT.put(key, hash);
+						if (lightCount > 0) {
+							LIT.add(key);
+						} else {
+							LIT.remove(key);
+						}
+					}
 				}
 			}
 			if (solidCount > 0 || SOLID.contains(key)) {
-				ByteBuffer solidHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(solidCount).flip();
-				ByteBuffer bits = ByteBuffer.allocate(solidCount > 0 ? 512 : 0).order(ByteOrder.LITTLE_ENDIAN);
-				if (solidCount > 0) {
-					for (long word : SOLID_BITS) {
-						bits.putLong(word);
+				long hash = hash(SOLID_BITS, 0);
+				if (!SOLID.contains(key) || !SOLID_SENT.containsKey(key) || SOLID_SENT.get(key) != hash) {
+					ByteBuffer solidHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(solidCount).flip();
+					ByteBuffer bits = ByteBuffer.allocate(solidCount > 0 ? 512 : 0).order(ByteOrder.LITTLE_ENDIAN);
+					if (solidCount > 0) {
+						for (long word : SOLID_BITS) {
+							bits.putLong(word);
+						}
 					}
-				}
-				if (!SkyLink.writeRender(Proto.REN_SOLIDS, solidHeader, bits.flip())) {
-					markDirty(sx, sy, sz);
-				} else if (solidCount > 0) {
-					SOLID.add(key);
-				} else {
-					SOLID.remove(key);
+					if (!SkyLink.writeRender(Proto.REN_SOLIDS, solidHeader, bits.flip())) {
+						markDirty(sx, sy, sz);
+					} else {
+						SOLID_SENT.put(key, hash);
+						if (solidCount > 0) {
+							SOLID.add(key);
+						} else {
+							SOLID.remove(key);
+						}
+					}
 				}
 			}
 			if (shapeCount > 0 || SHAPED.contains(key)) {
-				ByteBuffer shapeHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(shapeCount).flip();
-				if (!SkyLink.writeRender(Proto.REN_SHAPES, shapeHeader, shapeBoxes.flip())) {
-					markDirty(sx, sy, sz);
-				} else if (shapeCount > 0) {
-					SHAPED.add(key);
-				} else {
-					SHAPED.remove(key);
+				long hash = hash(shapeBoxes, shapeCount * 8);
+				if (!SHAPED.contains(key) || !SHAPE_SENT.containsKey(key) || SHAPE_SENT.get(key) != hash) {
+					ByteBuffer shapeHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(shapeCount).flip();
+					if (!SkyLink.writeRender(Proto.REN_SHAPES, shapeHeader, shapeBoxes.flip())) {
+						markDirty(sx, sy, sz);
+					} else {
+						SHAPE_SENT.put(key, hash);
+						if (shapeCount > 0) {
+							SHAPED.add(key);
+						} else {
+							SHAPED.remove(key);
+						}
+					}
 				}
 			}
 			// Cells dug out of Skyrim's world: its geometry there goes.
 			if (dugCount > 0 || DUG.contains(key)) {
-				ByteBuffer dugHeader = ByteBuffer.allocate(24).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(dugCount)
-					.putInt(dev.skycraft.client.SkyDigClient.world()).putInt(0).flip();
-				ByteBuffer bits = ByteBuffer.allocate(dugCount > 0 ? 512 : 0).order(ByteOrder.LITTLE_ENDIAN);
-				if (dugCount > 0) {
-					for (long word : dug) {
-						bits.putLong(word);
+				long hash = hash(dug, dev.skycraft.client.SkyDigClient.world());
+				if (!DUG.contains(key) || !DUG_SENT.containsKey(key) || DUG_SENT.get(key) != hash) {
+					ByteBuffer dugHeader = ByteBuffer.allocate(24).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(dugCount)
+						.putInt(dev.skycraft.client.SkyDigClient.world()).putInt(0).flip();
+					ByteBuffer bits = ByteBuffer.allocate(dugCount > 0 ? 512 : 0).order(ByteOrder.LITTLE_ENDIAN);
+					if (dugCount > 0) {
+						for (long word : dug) {
+							bits.putLong(word);
+						}
 					}
-				}
-				if (!SkyLink.writeRender(Proto.REN_DUG, dugHeader, bits.flip())) {
-					markDirty(sx, sy, sz);
-				} else if (dugCount > 0) {
-					DUG.add(key);
-				} else {
-					DUG.remove(key);
+					if (!SkyLink.writeRender(Proto.REN_DUG, dugHeader, bits.flip())) {
+						markDirty(sx, sy, sz);
+					} else {
+						DUG_SENT.put(key, hash);
+						if (dugCount > 0) {
+							DUG.add(key);
+						} else {
+							DUG.remove(key);
+						}
+					}
 				}
 			}
 			if (++meshesSent <= 10 || meshesSent % 200 == 0) {
