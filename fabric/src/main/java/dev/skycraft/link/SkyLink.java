@@ -921,6 +921,36 @@ public final class SkyLink {
 		return false;
 	}
 
+	/**
+	 * Sends the block/item atlas: a size-only begin ({@code REN_ATLAS}) that allocates the texture in
+	 * Skyrim, then the pixels as {@code REN_ATLAS_CHUNK} horizontal bands. A resource pack with large
+	 * textures can grow the atlas past the largest single render message; bands keep every message
+	 * inside the ring's limit so the atlas still arrives. Returns false if a message did not fit.
+	 */
+	public static boolean sendAtlas(int width, int height, java.nio.ByteBuffer pixels) {
+		if (width <= 0 || height <= 0) {
+			return false;
+		}
+		java.nio.ByteBuffer begin = java.nio.ByteBuffer.allocate(8).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(width).putInt(height).flip();
+		if (!writeRender(REN_ATLAS, begin, null)) {
+			return false;
+		}
+		int stride = width * 4;
+		for (int[] band : AtlasChunks.plan(width, height)) {
+			int y = band[0], rows = band[1];
+			java.nio.ByteBuffer header = java.nio.ByteBuffer.allocate(AtlasChunks.HEADER_BYTES).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+				.putInt(width).putInt(height).putInt(y).putInt(rows).flip();
+			java.nio.ByteBuffer body = pixels.duplicate();
+			body.clear();
+			body.position(y * stride).limit((y + rows) * stride);
+			if (!writeRender(REN_ATLAS_CHUNK, header, body)) {
+				SkyCraft.LOG.warn("SkyCraft: atlas chunk y={} ({} rows) did not fit", y, rows);
+				return false;
+			}
+		}
+		return true;
+	}
+
 	// ---- overlay (publish) -----------------------------------------------------------------
 
 	private static int overlayBack = 1; // writer's private slot; Skyrim's front starts at 2, middle at 0
