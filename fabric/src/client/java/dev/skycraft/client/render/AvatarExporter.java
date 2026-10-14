@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.skycraft.SkyCraft;
+import dev.skycraft.client.RenderToggles;
 import dev.skycraft.client.mixin.RenderSetupAccessor;
 import dev.skycraft.client.mixin.RenderTypeAccessor;
 import dev.skycraft.client.mixin.TextureBindingAccessor;
@@ -319,7 +320,8 @@ final class AvatarExporter implements SubmitNodeCollector {
 		for (Entity e : level.entitiesForRendering()) {
 			boolean big = e instanceof EnderDragon || e instanceof EndCrystal || e instanceof WitherBoss || e instanceof Ghast || e instanceof HappyGhast;
 			double range = big ? FAR_SCENE_RANGE : SCENE_RANGE;
-			if (e == player || e instanceof ItemEntity || e instanceof AbstractArrow || e instanceof ItemSupplier || (e instanceof SkyrimActorEntity proxy && !proxy.isLeashed())
+			if (e == player || e instanceof AbstractArrow || (e instanceof SkyrimActorEntity proxy && !proxy.isLeashed())
+				|| (!RenderToggles.itemModels && (e instanceof ItemEntity || e instanceof ItemSupplier))
 				|| e.distanceToSqr(cam) > range * range) {
 				continue;
 			}
