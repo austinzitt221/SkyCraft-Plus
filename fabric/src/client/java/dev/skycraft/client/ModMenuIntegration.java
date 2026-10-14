@@ -46,6 +46,11 @@ public final class ModMenuIntegration implements ModMenuApi {
 				.setDefaultValue(false)
 				.setTooltip(Component.literal(RenderToggles.ITEMS_TIP))
 				.setSaveConsumer(on -> RenderToggles.itemModels = on)
+				.build())
+			.addEntry(entries.startBooleanToggle(Component.literal("Re-mesh on every block change"), RenderToggles.remeshOnChange)
+				.setDefaultValue(true)
+				.setTooltip(Component.literal(RenderToggles.REMESH_TIP))
+				.setSaveConsumer(on -> RenderToggles.remeshOnChange = on)
 				.build());
 		String[] hands = HandMixToggle.MODE_NAMES;
 		builder.getOrCreateCategory(Component.literal("Gameplay"))
