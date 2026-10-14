@@ -541,11 +541,17 @@ public final class WorldExporter {
 					ENTITIES.add(new SkyLink.WorldEntity(kind, e.getId(), (float) p.x, (float) p.y, (float) p.z, yaw, pitch, 1.0F, null, uv, 0));
 				}
 			} else if (e instanceof ItemEntity item) {
-				float bob = Mth.sin((item.getAge() + partialTick) / 10.0F + item.bobOffs) * 0.1F + 0.1F;
-				float spin = ItemEntity.getSpin(item.getAge() + partialTick, item.bobOffs) * Mth.RAD_TO_DEG;
-				addItem(minecraft, level, e, item.getItem(), p.add(0, bob, 0), spin);
+				// Off by default: RenderToggles.itemModels hands this (and thrown items) to the same
+				// capture as every other entity, which draws the real model.
+				if (!RenderToggles.itemModels) {
+					float bob = Mth.sin((item.getAge() + partialTick) / 10.0F + item.bobOffs) * 0.1F + 0.1F;
+					float spin = ItemEntity.getSpin(item.getAge() + partialTick, item.bobOffs) * Mth.RAD_TO_DEG;
+					addItem(minecraft, level, e, item.getItem(), p.add(0, bob, 0), spin);
+				}
 			} else if (e instanceof ItemSupplier supplier) {
-				addItem(minecraft, level, e, supplier.getItem(), p.add(0, e.getBbHeight() * 0.5 - 0.25, 0), 0.0F);
+				if (!RenderToggles.itemModels) {
+					addItem(minecraft, level, e, supplier.getItem(), p.add(0, e.getBbHeight() * 0.5 - 0.25, 0), 0.0F);
+				}
 			} else if (e instanceof net.minecraft.world.entity.LivingEntity && !(e instanceof dev.skycraft.combat.SkyrimActorEntity) && !e.isInvisible()
 				&& (e != minecraft.player || minecraft.gameRenderer.mainCamera().isDetached())) {
 				// Players and mobs: Skyrim darkens the ground softly under their feet.
@@ -557,8 +563,9 @@ public final class WorldExporter {
 	}
 
 	/**
-	 * A dropped item the way Minecraft shows it: blocks as small spinning cubes with their own face
-	 * textures, everything else as its icon. {@code p} is the item's resting point (bottom).
+	 * A dropped item the light way (RenderToggles.itemModels off): blocks as small spinning cubes
+	 * with their own face textures, everything else as its icon. {@code p} is the item's resting
+	 * point (bottom).
 	 */
 	private static void addItem(Minecraft minecraft, ClientLevel level, Entity e, ItemStack stack, Vec3 p, float yaw) {
 		if (stack.getItem() instanceof BlockItem blockItem) {
@@ -582,7 +589,6 @@ public final class WorldExporter {
 		}
 	}
 
-	/** Side, top and bottom atlas rects of a full-cube block's model, cached per block state. */
 	/**
 	 * SkyCraft+ : the End. An End portal's surface (12/16 up, seen from both sides) or a gateway's
 	 * whole cube, in obsidian's dark speckled texture at full brightness. Section-relative cell.
@@ -607,6 +613,7 @@ public final class WorldExporter {
 		}
 	}
 
+	/** Side, top and bottom atlas rects of a full-cube block's model, cached per block state. */
 	private static float[] cubeFaces(Minecraft minecraft, BlockState state) {
 		return CUBE_FACES.computeIfAbsent(state, s -> {
 			var model = minecraft.getModelManager().getBlockStateModelSet().get(s);
