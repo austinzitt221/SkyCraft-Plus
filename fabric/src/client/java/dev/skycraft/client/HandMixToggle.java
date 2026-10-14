@@ -35,6 +35,12 @@ public final class HandMixToggle {
 		return FabricLoader.getInstance().getConfigDir().resolve("skycraft.properties");
 	}
 
+	/** The three modes in order (the pause menu's "Hands" button and Mod Menu's screen). */
+	static final String[] MODE_NAMES = { "Skyrim item wins", "Minecraft item wins", "Last picked wins" };
+	/** Shown by Mod Menu's screen. */
+	static final String TIP = "Who gets a hand holding both a Skyrim item and a Minecraft item. "
+		+ "The pause menu's \"Hands\" button switches it too.";
+
 	public static void register() {
 		load();
 		ScreenEvents.AFTER_INIT.register((minecraft, screen, width, height) -> {
@@ -55,11 +61,7 @@ public final class HandMixToggle {
 	}
 
 	private static String name() {
-		return switch (mode) {
-			case 1 -> "Minecraft item wins";
-			case 2 -> "Last picked wins";
-			default -> "Skyrim item wins";
-		};
+		return MODE_NAMES[Math.clamp(mode, 0, MODE_NAMES.length - 1)];
 	}
 
 	private static Component label() {
@@ -92,7 +94,7 @@ public final class HandMixToggle {
 	}
 
 	/** Rewrites only its own line, keeping the file's comments and other settings. */
-	private static void save() {
+	static void save() {
 		Path file = file();
 		String line = KEY + "=" + mode;
 		try {

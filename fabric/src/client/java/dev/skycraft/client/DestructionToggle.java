@@ -25,6 +25,10 @@ import net.minecraft.network.chat.Component;
 public final class DestructionToggle {
 	private static final String KEY = "destruction";
 
+	/** Shown by Mod Menu's screen. */
+	static final String TIP = "Mining Skyrim's ground and rocks, and explosions, dig into Skyrim's world. "
+		+ "Holes already dug stay either way. In a friend's world, their setting decides.";
+
 	private DestructionToggle() {
 	}
 
@@ -74,7 +78,7 @@ public final class DestructionToggle {
 	}
 
 	/** Rewrites only its own line, keeping the file's comments and other settings (join=). */
-	private static void save() {
+	static void save() {
 		Path file = file();
 		String line = KEY + "=" + SkyDig.destruction;
 		try {
