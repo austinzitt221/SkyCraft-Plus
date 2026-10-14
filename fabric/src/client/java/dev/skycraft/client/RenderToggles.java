@@ -27,20 +27,28 @@ import net.minecraft.network.chat.Component;
 public final class RenderToggles {
 	private static final String QUADS_KEY = "fabricQuads";
 	private static final String ITEMS_KEY = "itemModels";
+	private static final String REMESH_KEY = "remeshOnChange";
 	/** Shown by Mod Menu's screen and the pause menu's buttons. */
 	static final String QUADS_TIP = "(experimental) Block models written for Fabric's renderer API "
 		+ "(Traveler's Backpack and the like), which the plain renderer draws as nothing. Can cause lags: it builds and sends more geometry.";
 	static final String ITEMS_TIP = "(experimental) Dropped and thrown items get Minecraft's own model "
 		+ "(every face, any shape) instead of a spinning cube or a flat icon. Raises CPU and GPU use: more vertices and more textures, and many items on the ground can cause lags.";
+	static final String REMESH_TIP = "Rebuild a section's mesh on every block the client changes - the mesh, "
+		+ "its lights, its collision bits and boxes and its dug cells, all at once and ahead of the queue. Off, Minecraft's own rule decides: "
+		+ "a placed redstone or a toggled lever can stay invisible until another block moves nearby.";
 	private static final String QUADS_COMMENT = "# (experimental) Block models written for Fabric's renderer API "
 		+ "(Traveler's Backpack and the like); off and they stay invisible. On by default (Mod Menu's screen).";
 	private static final String ITEMS_COMMENT = "# (experimental) Dropped and thrown items drawn with Minecraft's own model "
 		+ "instead of a cube or a flat icon; raises CPU and GPU use. Off by default (the pause menu's button, or Mod Menu).";
+	private static final String REMESH_COMMENT = "# Re-mesh a section - its mesh, lights, collision and dug cells - on every block change, "
+		+ "so a placed redstone or a toggled lever shows at once. On by default (Mod Menu's screen).";
 
 	/** Off: such a block is simply invisible, as the plain renderer draws nothing for it. */
 	public static volatile boolean fabricQuads;
 	/** Off: dropped and thrown items keep the lighter cube/icon path. */
 	public static volatile boolean itemModels;
+	/** Off: Minecraft's own rule decides which changes rebuild a section (some are left out). */
+	public static volatile boolean remeshOnChange;
 
 	private RenderToggles() {
 	}
@@ -85,12 +93,14 @@ public final class RenderToggles {
 		// them is invisible without them, so they are on by default; the item path costs more per frame.
 		fabricQuads = !"false".equalsIgnoreCase(props.getProperty(QUADS_KEY, "true").trim());
 		itemModels = "true".equalsIgnoreCase(props.getProperty(ITEMS_KEY, "false").trim());
+		remeshOnChange = !"false".equalsIgnoreCase(props.getProperty(REMESH_KEY, "true").trim());
 	}
 
 	/** Writes both switches: the pause menu's buttons and Mod Menu's screen both come through here. */
 	static void save() {
 		save(QUADS_KEY, fabricQuads, QUADS_COMMENT);
 		save(ITEMS_KEY, itemModels, ITEMS_COMMENT);
+		save(REMESH_KEY, remeshOnChange, REMESH_COMMENT);
 	}
 
 	/** Rewrites only its own line, keeping the file's comments and other settings. */
