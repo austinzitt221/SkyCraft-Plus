@@ -116,6 +116,7 @@ public final class SkyClient {
 			}
 		}
 		if (!linked) {
+			openStandaloneWhenDue(Minecraft.getInstance());
 			return;
 		}
 
@@ -225,10 +226,55 @@ public final class SkyClient {
 	private static final long STARTED_AT = System.currentTimeMillis();
 	private static boolean gaveUpWaiting;
 
+	// Linux bridge only (Windows untouched): Skyrim is started by hand there, so Minecraft can come
+	// up without it. Rather than wait on the title screen forever, after a grace period a normal
+	// Minecraft world opens and a chat note explains why. -Dskycraft.standalone=true (or
+	// SKYCRAFT_STANDALONE) skips the wait; skycraft.standaloneAfterMs / SKYCRAFT_STANDALONE_AFTER_MS
+	// change the grace period (ms).
+	private static final boolean STANDALONE_ALLOWED = !SkyLink.isWindows();
+	private static final boolean STANDALONE_NOW =
+		Boolean.getBoolean("skycraft.standalone") || System.getenv("SKYCRAFT_STANDALONE") != null;
+	private static final long STANDALONE_AFTER_MS = standaloneAfterMs();
+	private static boolean standalone;
+
+	private static long standaloneAfterMs() {
+		String value = System.getProperty("skycraft.standaloneAfterMs");
+		if (value == null) {
+			value = System.getenv("SKYCRAFT_STANDALONE_AFTER_MS");
+		}
+		try {
+			return value != null ? Long.parseLong(value.trim()) : 60_000L;
+		} catch (NumberFormatException e) {
+			return 60_000L;
+		}
+	}
+
+	/**
+	 * Linux bridge without Skyrim: open a normal Minecraft world (the mod's content, no Skyrim
+	 * terrain) after the grace period, and say so in chat. Never runs on Windows, where Skyrim
+	 * starts Minecraft and the link is expected.
+	 */
+	private static void openStandaloneWhenDue(Minecraft minecraft) {
+		if (!STANDALONE_ALLOWED) {
+			return;
+		}
+		if (!standalone) {
+			if (!STANDALONE_NOW && System.currentTimeMillis() - STARTED_AT < STANDALONE_AFTER_MS) {
+				return;
+			}
+			standalone = true;
+			SkyCraft.LOG.warn("SkyCraft: no Skyrim link; opening a normal Minecraft world (standalone)");
+			MirrorWorld.setStandalone(true);
+			MirrorWorld.setPendingNote("SkyCraft: Skyrim isn't connected, so a normal Minecraft world opened. "
+				+ "Start Skyrim with the SkyCraft SKSE plugin and restart Minecraft to play in Skyrim's world.");
+		}
+		MirrorWorld.openWhenReady(minecraft);
+	}
+
 	private static void quitWithSkyrim(Minecraft minecraft) {
 		int pid = SkyLink.skyrimPid();
 		long now = System.currentTimeMillis();
-		if (QUIT_WITH_SKYRIM && START_HIDDEN && pid == 0 && !tookOver && !gaveUpWaiting && now - STARTED_AT > NEVER_CONNECTED_QUIT_MS) {
+		if (QUIT_WITH_SKYRIM && START_HIDDEN && pid == 0 && !tookOver && !standalone && !gaveUpWaiting && now - STARTED_AT > NEVER_CONNECTED_QUIT_MS) {
 			gaveUpWaiting = true;
 			SkyCraft.LOG.warn("SkyCraft: started hidden but Skyrim never connected in {} minutes; quitting", NEVER_CONNECTED_QUIT_MS / 60000);
 			minecraft.stop();

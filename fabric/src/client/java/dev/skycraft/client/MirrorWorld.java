@@ -19,6 +19,18 @@ public final class MirrorWorld {
 		ResourceKey.create(Registries.WORLD_PRESET, Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "mirror"));
 	private static boolean attempted;
 	private static long lastLog;
+	// Linux bridge: Skyrim may not be running, so a fresh world is a normal overworld instead of the
+	// void mirror preset (the mod's own content is there; Skyrim's terrain simply never arrives).
+	private static boolean standalone;
+
+	public static void setStandalone(boolean value) {
+		standalone = value;
+	}
+
+	/** A note shown in chat once the player is in a world (e.g. why the game started without Skyrim). */
+	public static void setPendingNote(String note) {
+		pendingNote = note;
+	}
 	// /join: a friend's world for this session (the e4mc link their "Open to LAN" shows); null: our own.
 	private static @org.jspecify.annotations.Nullable String sessionJoin;
 	// Shown in chat once the player is in a world again (why they're back in their own, ...).
@@ -162,11 +174,14 @@ public final class MirrorWorld {
 			true,
 			WorldDataConfiguration.DEFAULT
 		);
+		// Linux bridge with no Skyrim: a normal overworld (nothing to collide with otherwise).
+		ResourceKey<WorldPreset> preset = standalone
+			? net.minecraft.world.level.levelgen.presets.WorldPresets.NORMAL : PRESET;
 		minecraft.createWorldOpenFlows().createFreshLevel(
 			WorldSwitcher.current(), // SkyCraft+ : world switcher
 			settings,
 			new WorldOptions(0L, true, false), // SkyCraft+ : structures, for the underground, the Nether and the End
-			registries -> registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(PRESET).value().createWorldDimensions(),
+			registries -> registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(preset).value().createWorldDimensions(),
 			title
 		);
 	}
