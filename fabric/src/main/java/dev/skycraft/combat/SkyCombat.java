@@ -230,6 +230,10 @@ public final class SkyCombat {
 		}
 	}
 
+	public static SkyLink.@org.jspecify.annotations.Nullable Actor actor(int formId) {
+		return actorById(formId);
+	}
+
 	private static SkyLink.@org.jspecify.annotations.Nullable Actor actorById(int formId) {
 		for (SkyLink.Actor a : ACTORS) {
 			if (a.formId() == formId) {
@@ -287,6 +291,7 @@ public final class SkyCombat {
 			stepOnTriggers(level, proxy);
 		}
 		syncLeads(level);  // SkyCraft+
+		SkyBreeding.tick(level, PROXIES.values(), SkyCombat::actorById);  // SkyCraft+
 		if (PROXIES.size() != before && (PROXIES.size() % 5 == 0 || PROXIES.size() < 5)) {
 			SkyCraft.LOG.info("SkyCraft: {} Skyrim actors mirrored as hittable stand-ins", PROXIES.size());
 		}

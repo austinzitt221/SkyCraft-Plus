@@ -38,6 +38,13 @@ namespace skycraft::Animals
 			return out;
 		}
 
+		std::unordered_map<RE::FormID, std::uint32_t> speciesCache;  // by race
+		// Babies bred the Minecraft way: how grown (0 half size .. 1 full), growing while near.
+		std::unordered_map<RE::FormID, float> babies;
+		float                                 babyTimer = 0.0f;
+		constexpr float                       kGrowSeconds = 1200.0f;  // as Minecraft's: twenty minutes
+		constexpr std::uint32_t               kBabiesRecord = 'BABY';
+
 		// The food this animal likes (HeldFood bits), by its race and name; 0 for anything else.
 		std::uint32_t Likes(RE::Actor* a_actor)
 		{
@@ -100,6 +107,118 @@ namespace skycraft::Animals
 	void LetGo(RE::Actor* a_actor)
 	{
 		CallActor(a_actor, "ClearKeepOffsetFromActor");
+	}
+
+	std::uint32_t Species(RE::Actor* a_actor)
+	{
+		auto* race = a_actor ? a_actor->GetRace() : nullptr;
+		if (!race) {
+			return 0;
+		}
+		if (auto it = speciesCache.find(race->GetFormID()); it != speciesCache.end()) {
+			return it->second;
+		}
+		const std::string what = Lower(race->GetName()) + " " + Lower(a_actor->GetName());
+		auto has = [&](std::string_view a_part) { return what.find(a_part) != std::string::npos; };
+		const std::uint32_t species = has("chicken") || has(" hen") ? 1 : has("cow") || has("bull") ? 2 : has("goat") ? 3 : has("deer") || has("stag") ? 4
+		                            : has("elk") ? 5 : has("hare") || has("rabbit") ? 6 : has("horse") ? 7 : has("fox") ? 8 : has("dog") || has("husky") ? 9
+		                            : has("mudcrab") ? 10 : has("boar") || has("bristleback") ? 11 : 0;
+		speciesCache.emplace(race->GetFormID(), species);
+		return species;
+	}
+
+	bool IsBaby(RE::FormID a_actor)
+	{
+		return babies.contains(a_actor);
+	}
+
+	void OnApproach(RE::FormID a_actor, RE::FormID a_to)
+	{
+		auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_actor);
+		auto* to = a_to ? RE::TESForm::LookupByID<RE::Actor>(a_to) : nullptr;
+		if (!actor || leads.contains(a_actor)) {
+			return;
+		}
+		if (to) {
+			Follow(actor, to, 0.0f, 40.0f);
+		} else {
+			LetGo(actor);
+		}
+	}
+
+	void OnBreed(RE::FormID a_parent)
+	{
+		auto* parent = RE::TESForm::LookupByID<RE::Actor>(a_parent);
+		auto* base = parent ? parent->GetActorBase() : nullptr;
+		if (!base) {
+			return;
+		}
+		auto baby = parent->PlaceObjectAtMe(base, true);  // (persists: saved with the game)
+		if (!baby) {
+			return;
+		}
+		baby->SetScale(0.5f);  // (the whole model, in proportion)
+		babies[baby->GetFormID()] = 0.0f;
+		logger::info("breeding: a baby {} ({:08X})", parent->GetName(), baby->GetFormID());
+	}
+
+	// Babies grow while loaded near the player, from half size to full in twenty minutes.
+	void TickBabies(float a_delta)
+	{
+		if (babies.empty() || (babyTimer -= a_delta) > 0.0f) {
+			return;
+		}
+		const float step = 2.0f - babyTimer;
+		babyTimer = 2.0f;
+		for (auto it = babies.begin(); it != babies.end();) {
+			auto* baby = RE::TESForm::LookupByID<RE::Actor>(it->first);
+			if (!baby || baby->IsDead()) {
+				it = babies.erase(it);
+				continue;
+			}
+			if (baby->Get3D()) {
+				it->second = std::min(1.0f, it->second + step / kGrowSeconds);
+				baby->SetScale(0.5f + 0.5f * it->second);
+			}
+			if (it->second >= 1.0f) {
+				logger::info("breeding: {} grew up", baby->GetName());
+				it = babies.erase(it);
+			} else {
+				++it;
+			}
+		}
+	}
+
+	void SaveBabies(SKSE::SerializationInterface* a_intfc)
+	{
+		if (babies.empty() || !a_intfc->OpenRecord(kBabiesRecord, 1)) {
+			return;
+		}
+		const auto count = static_cast<std::uint32_t>(babies.size());
+		a_intfc->WriteRecordData(count);
+		for (const auto& [id, grown] : babies) {
+			a_intfc->WriteRecordData(id);
+			a_intfc->WriteRecordData(grown);
+		}
+	}
+
+	void LoadBabies(SKSE::SerializationInterface* a_intfc)
+	{
+		std::uint32_t count = 0;
+		a_intfc->ReadRecordData(count);
+		for (std::uint32_t i = 0; i < count && i < 4096; ++i) {
+			RE::FormID id = 0, resolved = 0;
+			float grown = 0.0f;
+			if (a_intfc->ReadRecordData(id) && a_intfc->ReadRecordData(grown) && a_intfc->ResolveFormID(id, resolved)) {
+				babies[resolved] = grown;
+			}
+		}
+		logger::info("breeding: {} baby animal(s) still growing", babies.size());
+	}
+
+	void ClearBabies()
+	{
+		babies.clear();
 	}
 
 	bool InQuest(RE::Actor* a_actor)
@@ -178,6 +297,7 @@ namespace skycraft::Animals
 	void PerFrame(RE::PlayerCharacter* a_player, std::uint32_t a_heldFood, bool a_driving, float a_delta)
 	{
 		TickLeads(a_player, a_delta);
+		TickBabies(a_delta);
 		timer -= a_delta;
 		if (timer > 0.0f) {
 			return;

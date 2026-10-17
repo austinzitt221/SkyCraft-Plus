@@ -350,7 +350,12 @@ namespace skycraft::proto
 		kActorInCombat = 1u << 3,
 		kActorQuest = 1u << 4,     // SkyCraft+ (v44): in a quest (an alias), essential or protected: leading it can break quests
 		kActorLeashed = 1u << 5,   // SkyCraft+ (v44): on the player's Minecraft lead (kEvLeash), kept across doors
+		kActorBaby = 1u << 6,      // SkyCraft+ (v44): a baby bred the Minecraft way, still growing
+		// SkyCraft+ (v44): bits 8-15: which kind of animal it is, for Minecraft's breeding (0 none): 1 chicken,
+		// 2 cow, 3 goat, 4 deer, 5 elk, 6 hare, 7 horse, 8 fox, 9 dog, 10 mudcrab, 11 boar.
 	};
+
+	inline constexpr std::uint32_t kActorSpeciesShift = 8;  // SkyCraft+ (v44)
 
 	struct ActorRecord
 	{
@@ -399,6 +404,8 @@ namespace skycraft::proto
 		                    // Skyrim dragon soul
 		kEvLeash = 10,      // SkyCraft+ (v44): a Minecraft lead on a Skyrim actor: formId, flags = 0 off, 1 the player's,
 		                    // 2 tied to a fence post at a/b/c (MC coords)
+		kEvBreed = 11,      // SkyCraft+ (v44): formId's animal and its partner made a baby: one of its kind, half size, beside it
+		kEvApproach = 12,   // SkyCraft+ (v44): formId's animal walks to (and keeps by) flags' (0: lets go)
 		kEvMinedOre = 9,    // SkyCraft+ (v44): the player mined a block of a Skyrim ore vein (kDigOreVein): a/b/c = the
 		                    // block's centre (MC coords); the vein's ore goes into Skyrim's inventory
 	};

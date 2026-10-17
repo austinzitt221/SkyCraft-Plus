@@ -307,6 +307,14 @@ namespace skycraft
 		bool OnPlayersLead(RE::FormID a_actor);
 		// In a quest (an alias), essential or protected: leading it can break quests.
 		bool InQuest(RE::Actor* a_actor);
+		// Minecraft's breeding: which kind of animal (kActorSpeciesShift), a baby still growing, a baby made, one walked to another.
+		std::uint32_t Species(RE::Actor* a_actor);
+		bool          IsBaby(RE::FormID a_actor);
+		void          OnBreed(RE::FormID a_parent);
+		void          OnApproach(RE::FormID a_actor, RE::FormID a_to);
+		void          SaveBabies(SKSE::SerializationInterface* a_intfc);
+		void          LoadBabies(SKSE::SerializationInterface* a_intfc);
+		void          ClearBabies();
 	}
 
 	// SkyCraft+ : footsteps.

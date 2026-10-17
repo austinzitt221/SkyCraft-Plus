@@ -106,6 +106,7 @@ public final class Proto {
 	public static final int ACTOR_ESSENTIAL = 1 << 2;
 	public static final int ACTOR_IN_COMBAT = 1 << 3;
 	public static final int ACTOR_QUEST = 1 << 4, ACTOR_LEASHED = 1 << 5; // SkyCraft+ : v44, leads on Skyrim actors
+	public static final int ACTOR_BABY = 1 << 6, ACTOR_SPECIES_SHIFT = 8; // SkyCraft+ : v44, breeding (SkyBreeding's kinds)
 
 	// Event ring (relative to OFF_EVENT_RING)
 	public static final int EVENT_RING_ENTRIES = 512;
@@ -121,6 +122,7 @@ public final class Proto {
 	public static final int EV_PLAYER_HURT = 6;
 	public static final int EV_SKY_ITEM = 7; // SkyCraft+ : v35, flags = SKY_ACT_*
 	public static final int EV_LEASH = 10; // SkyCraft+ : v44, flags 0 off, 1 the player's, 2 a fence post at a/b/c
+	public static final int EV_BREED = 11, EV_APPROACH = 12; // SkyCraft+ : v44, breeding
 	public static final int EV_MINED_ORE = 9; // SkyCraft+ : v44, a/b/c = the mined block's centre: the Skyrim ore vein's ore
 	public static final int EV_DRAGON_SOUL = 8; // SkyCraft+ : v39, the Ender Dragon died near this player: a Skyrim dragon soul
 	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,

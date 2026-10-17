@@ -71,6 +71,19 @@ public class SkyrimActorEntity extends LivingEntity implements net.minecraft.wor
 		return false;
 	}
 
+	/** SkyCraft+ : breeding. Its food puts a Skyrim animal in love (SkyBreeding); otherwise a lead and the like. */
+	@Override
+	public net.minecraft.world.InteractionResult interact(net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand,
+		net.minecraft.world.phys.Vec3 location) {
+		if (player instanceof net.minecraft.server.level.ServerPlayer server) {
+			var fed = SkyBreeding.feed(this, server, player.getItemInHand(hand), SkyCombat.actor(this.formId()));
+			if (fed != null) {
+				return fed;
+			}
+		}
+		return super.interact(player, hand, location);
+	}
+
 	public int formId() {
 		return this.entityData.get(FORM_ID);
 	}
