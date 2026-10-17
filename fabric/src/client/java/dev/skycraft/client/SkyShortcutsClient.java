@@ -189,6 +189,9 @@ public final class SkyShortcutsClient {
 			if (SkyPoisonClient.apply(item)) {
 				return true;  // SkyCraft+ : onto the Minecraft weapon in hand
 			}
+			if (plant(player, item)) {
+				return true;  // SkyCraft+ : onto farmland
+			}
 			int action = switch (item.kind()) {
 				case Proto.SKY_POTION, Proto.SKY_FOOD, Proto.SKY_INGREDIENT -> Proto.SKY_ACT_USE;
 				case Proto.SKY_APPAREL, Proto.SKY_AMMO -> Proto.SKY_ACT_RIGHT;
@@ -201,6 +204,22 @@ public final class SkyShortcutsClient {
 			}
 		}
 		return false;
+	}
+
+	/** SkyCraft+ : Skyrim crops. A Skyrim thing a Skyrim plant gives, used on farmland: planted there (Skyrim gives one up). */
+	private static boolean plant(LocalPlayer player, SkyLink.SkyItem item) {
+		var minecraft = net.minecraft.client.Minecraft.getInstance();
+		if (!item.has(Proto.ITEM_PLANTABLE) || !(minecraft.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit)
+			|| hit.getType() != net.minecraft.world.phys.HitResult.Type.BLOCK || minecraft.level == null) {
+			return false;
+		}
+		var farmland = hit.getBlockPos();
+		if (!minecraft.level.getBlockState(farmland).is(net.minecraft.world.level.block.Blocks.FARMLAND) || !minecraft.level.getBlockState(farmland.above()).isAir()) {
+			return false;
+		}
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.send(new dev.skycraft.world.SkyCrops.Plant(farmland, item.formId(), item.name()));
+		SkyLink.pushEvent(Proto.EV_SKY_ITEM, item.formId(), 0.0F, 0.0F, 0.0F, 0.0F, Proto.SKY_ACT_CONSUME);
+		return true;
 	}
 
 	/** True if right click has a shortcut to use: it goes to Minecraft even with a Skyrim left hand (MC_USE_TARGET). */

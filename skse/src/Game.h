@@ -317,6 +317,17 @@ namespace skycraft
 		void          ClearBabies();
 	}
 
+	// SkyCraft+ : Skyrim crops on Minecraft farmland.
+	namespace Crops
+	{
+		bool Plantable(RE::TESBoundObject* a_produce);
+		void OnGrown(RE::PlayerCharacter* a_player, RE::FormID a_produce, double a_x, double a_y, double a_z);
+		void PerFrame(float a_delta);
+		void Save(SKSE::SerializationInterface* a_intfc);
+		void Load(SKSE::SerializationInterface* a_intfc);
+		void Clear();
+	}
+
 	// SkyCraft+ : footsteps.
 	namespace Footsteps
 	{

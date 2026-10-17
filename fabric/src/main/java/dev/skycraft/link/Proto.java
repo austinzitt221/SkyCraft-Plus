@@ -78,7 +78,8 @@ public final class Proto {
 		MAT_EBONY = 9, MAT_DAEDRIC = 10, MAT_DRAGON = 11, MAT_SILVER = 12, MAT_GOLD = 13, MAT_STALHRIM = 14, MAT_CHAIN = 15, ELEMENT_FIRE = 1, ELEMENT_FROST = 2,
 		ELEMENT_SHOCK = 3;
 	public static final int ITEM_RIGHT_HAND = 1, ITEM_LEFT_HAND = 1 << 1, ITEM_WORN = 1 << 2, ITEM_VOICE = 1 << 3, ITEM_ENCHANTED = 1 << 4, ITEM_STOLEN = 1 << 5,
-		ITEM_FAVORITE = 1 << 6, ITEM_HEAVY = 1 << 7, ITEM_LIGHT = 1 << 8, ITEM_FILLED = 1 << 9, ITEM_READ = 1 << 10, ITEM_QUEST = 1 << 11, ITEM_TWO_HANDED = 1 << 12;
+		ITEM_FAVORITE = 1 << 6, ITEM_HEAVY = 1 << 7, ITEM_LIGHT = 1 << 8, ITEM_FILLED = 1 << 9, ITEM_READ = 1 << 10, ITEM_QUEST = 1 << 11, ITEM_TWO_HANDED = 1 << 12,
+		ITEM_PLANTABLE = 1 << 13; // SkyCraft+ : v44, grows on Minecraft farmland
 
 	// Input types added in v5
 	public static final int IN_HURT = 7;
@@ -123,6 +124,7 @@ public final class Proto {
 	public static final int EV_SKY_ITEM = 7; // SkyCraft+ : v35, flags = SKY_ACT_*
 	public static final int EV_LEASH = 10; // SkyCraft+ : v44, flags 0 off, 1 the player's, 2 a fence post at a/b/c
 	public static final int EV_BREED = 11, EV_APPROACH = 12; // SkyCraft+ : v44, breeding
+	public static final int EV_CROP_GROWN = 13; // SkyCraft+ : v44, formId the Skyrim thing planted, a/b/c where its plant stands
 	public static final int EV_MINED_ORE = 9; // SkyCraft+ : v44, a/b/c = the mined block's centre: the Skyrim ore vein's ore
 	public static final int EV_DRAGON_SOUL = 8; // SkyCraft+ : v39, the Ender Dragon died near this player: a Skyrim dragon soul
 	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,

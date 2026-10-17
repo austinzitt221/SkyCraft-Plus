@@ -406,6 +406,8 @@ namespace skycraft::proto
 		                    // 2 tied to a fence post at a/b/c (MC coords)
 		kEvBreed = 11,      // SkyCraft+ (v44): formId's animal and its partner made a baby: one of its kind, half size, beside it
 		kEvApproach = 12,   // SkyCraft+ (v44): formId's animal walks to (and keeps by) flags' (0: lets go)
+		kEvCropGrown = 13,  // SkyCraft+ (v44): a Skyrim crop grew on farmland: formId = the Skyrim thing planted, a/b/c =
+		                    // where its plant stands (MC coords, on the farmland's top)
 		kEvMinedOre = 9,    // SkyCraft+ (v44): the player mined a block of a Skyrim ore vein (kDigOreVein): a/b/c = the
 		                    // block's centre (MC coords); the vein's ore goes into Skyrim's inventory
 	};
@@ -907,6 +909,7 @@ namespace skycraft::proto
 		kSkyItemRead = 1u << 10,      // a book already read
 		kSkyItemQuest = 1u << 11,     // a quest item (can't be dropped)
 		kSkyItemTwoHanded = 1u << 12,
+		kSkyItemPlantable = 1u << 13,  // SkyCraft+ (v44): a Skyrim plant gives it: it grows on Minecraft farmland
 	};
 
 	struct SkyItem

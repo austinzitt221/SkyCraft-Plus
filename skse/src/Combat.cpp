@@ -1179,6 +1179,9 @@ namespace skycraft
 				case proto::kEvApproach:
 					Animals::OnApproach(ev.formId, ev.flags);  // SkyCraft+
 					break;
+				case proto::kEvCropGrown:
+					Crops::OnGrown(a_player, ev.formId, ev.a, ev.b, ev.c);  // SkyCraft+
+					break;
 				case proto::kEvMinedOre:
 					Dig::GiveMinedOre(a_player, ev.a, ev.b, ev.c);  // SkyCraft+
 					break;

@@ -282,6 +282,9 @@ namespace skycraft::SkyInventory
 			default:
 				return;
 			}
+			if (Crops::Plantable(a_object)) {
+				item.flags |= proto::kSkyItemPlantable;  // SkyCraft+ : grows on Minecraft farmland
+			}
 			items.push_back(item);
 		}
 

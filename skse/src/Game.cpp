@@ -1396,6 +1396,7 @@ namespace skycraft
 			SkyrimShots::PerFrame(a_player, (puppet || skyrimDrives) && haveMc && st.mcInWorld, a_delta);
 			MinecraftEnemies::PerFrame(a_player, a_delta, st.parked, st.mcWorld, mc.x, mc.y, mc.z);  // SkyCraft+
 			LootSpots::PerFrame(a_player, a_delta);  // SkyCraft+
+			Crops::PerFrame(a_delta);  // SkyCraft+
 			MapMarkers::PerFrame(a_player, a_delta);  // SkyCraft+
 			SkyInventory::PerFrame(a_player, haveMc && (mc.flags & proto::kMcWantsSkyInventory) != 0, a_delta);  // SkyCraft+
 			if (haveMc && st.mcInWorld) {
@@ -2241,6 +2242,7 @@ namespace skycraft
 		void OnSave(SKSE::SerializationInterface* a_intfc)
 		{
 			Animals::SaveBabies(a_intfc);  // SkyCraft+
+			Crops::Save(a_intfc);  // SkyCraft+
 			if (!State().parked || mc.dimension < proto::kDimNether) {
 				return;
 			}
@@ -2259,6 +2261,10 @@ namespace skycraft
 			while (a_intfc->GetNextRecordInfo(type, version, length)) {
 				std::uint32_t world = 0;
 				double        x = 0.0, y = 0.0, z = 0.0;
+				if (type == 'CROP') {
+					Crops::Load(a_intfc);  // SkyCraft+
+					continue;
+				}
 				if (type == 'BABY') {
 					Animals::LoadBabies(a_intfc);  // SkyCraft+
 					continue;
@@ -2276,6 +2282,7 @@ namespace skycraft
 		void OnRevert(SKSE::SerializationInterface*)
 		{
 			Animals::ClearBabies();  // SkyCraft+
+			Crops::Clear();  // SkyCraft+
 			savedWorld = 0;
 			savedCheck = false;
 			sendingAway = 0.0f;
