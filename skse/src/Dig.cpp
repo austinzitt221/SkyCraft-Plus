@@ -346,6 +346,29 @@ namespace skycraft::Dig
 		return texture->materialType ? texture->materialType->materialID : RE::MATERIAL_ID::kNone;
 	}
 
+	// SkyCraft+ : Skyrim's ore veins (activators running MineOreScript: "Iron Ore Vein" and the like).
+	bool IsOreVein(RE::TESObjectREFR* a_ref)
+	{
+		auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
+		if (!base || !base->Is(RE::FormType::Activator)) {
+			return false;
+		}
+		static std::mutex                            lock;
+		static std::unordered_map<RE::FormID, bool> known;
+		std::scoped_lock                             guard(lock);
+		if (auto it = known.find(base->GetFormID()); it != known.end()) {
+			return it->second;
+		}
+		const std::string_view name = base->GetName() ? base->GetName() : "";
+		const char*            path = ModelPath(base);
+		const bool vein = name.ends_with(" Vein") || Contains(path, "orevein") || Contains(path, "mineore");
+		known.emplace(base->GetFormID(), vein);
+		if (vein) {
+			logger::info("ore veins: {} ({:08X}, {}) is one", name, base->GetFormID(), path);
+		}
+		return vein;
+	}
+
 	std::uint8_t MaterialFor(RE::MATERIAL_ID a_material, RE::TESObjectREFR* a_ref, bool a_tree)
 	{
 		using M = RE::MATERIAL_ID;
@@ -360,6 +383,55 @@ namespace skycraft::Dig
 			}
 			return proto::kDigOakLog;
 		};
+		// SkyCraft+ : Skyrim things that break into their Minecraft counterpart, by what they are.
+		if (IsOreVein(a_ref)) {
+			return proto::kDigOreVein;
+		}
+		const bool metal = a_material == M::kMetalLight || a_material == M::kMetalSolid || a_material == M::kMetalHeavy || a_material == M::kChainMetal ||
+		                   a_material == M::kChain;
+		if (Contains(path, "barrel")) {
+			return proto::kDigBarrel;
+		}
+		if (Contains(path, "crate")) {
+			return proto::kDigChest;
+		}
+		if (Contains(path, "bookshel") || Contains(path, "bookcase")) {
+			return proto::kDigBookshelf;
+		}
+		if (Contains(path, "woodpile") || Contains(path, "firewood") || Contains(path, "logpile") || Contains(path, "logstack")) {
+			return proto::kDigOakLog;
+		}
+		if (Contains(path, "candle")) {
+			return proto::kDigCandle;
+		}
+		if (Contains(path, "lantern")) {
+			return proto::kDigLantern;
+		}
+		if (Contains(path, "brazier") || Contains(path, "firepit") || Contains(path, "campfire")) {
+			return proto::kDigCampfire;
+		}
+		if (Contains(path, "bedroll")) {
+			return proto::kDigBed;
+		}
+		if (Contains(path, "mushroom") || Contains(path, "fungus")) {
+			return proto::kDigMushroom;
+		}
+		if (Contains(path, "rubble") || Contains(path, "rockpile")) {
+			return proto::kDigCobble;
+		}
+		if (Contains(path, "skull") || Contains(path, "bonepile")) {
+			return proto::kDigBone;
+		}
+		if (a_material == M::kCarpet || Contains(path, "\\rug") || Contains(path, "carpet")) {
+			return proto::kDigCarpet;
+		}
+		if (metal && Contains(path, "chain")) {
+			return proto::kDigChain;
+		}
+		if (metal && (Contains(path, "gate") || Contains(path, "grate") || Contains(path, "portcullis") || Contains(path, "bars") || Contains(path, "jail") ||
+					  Contains(path, "cage"))) {
+			return proto::kDigIronBars;
+		}
 		// SkyCraft+ : hay bales and piles are cloth to Skyrim's sounds, but hay to Minecraft.
 		if (Contains(path, "haybale") || Contains(path, "haypile") || Contains(path, "haystack") || Contains(path, "\\hay")) {
 			return proto::kDigHay;
@@ -434,5 +506,60 @@ namespace skycraft::Dig
 		default:
 			return treeish ? log() : proto::kDigStone;
 		}
+	}
+
+	// SkyCraft+ : the ore a vein gives, as Skyrim's own mining does (MineOreScript's "ore"), or by its
+	// name ("Iron Ore Vein": "Iron Ore").
+	RE::TESBoundObject* OreOf(RE::TESObjectREFR* a_ref)
+	{
+		if (auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton()) {
+			auto*      policy = vm->GetObjectHandlePolicy();
+			const auto handle = policy ? policy->GetHandleForObject(static_cast<RE::VMTypeID>(a_ref->GetFormType()), a_ref) : 0;
+			RE::BSTSmartPointer<RE::BSScript::Object> object;
+			if (policy && handle != policy->EmptyHandle() && vm->FindBoundObject(handle, "MineOreScript", object) && object) {
+				if (auto* ore = object->GetProperty("ore"); ore && ore->IsObject()) {
+					if (auto* form = ore->Unpack<RE::TESForm*>()) {
+						return form->As<RE::TESBoundObject>();
+					}
+				}
+			}
+		}
+		std::string name = a_ref->GetBaseObject()->GetName();
+		if (name.ends_with(" Vein")) {
+			name.resize(name.size() - 5);
+		}
+		if (auto* data = RE::TESDataHandler::GetSingleton()) {
+			for (auto* misc : data->GetFormArray<RE::TESObjectMISC>()) {
+				if (misc && misc->GetName() && name == misc->GetName()) {
+					return misc;
+				}
+			}
+		}
+		return nullptr;
+	}
+
+	void GiveMinedOre(RE::PlayerCharacter* a_player, double a_x, double a_y, double a_z)
+	{
+		const RE::NiPoint3 at = McToSky(a_x, a_y, a_z);
+		RE::TESObjectREFR* vein = nullptr;
+		float              best = 3.0f * static_cast<float>(proto::kUnitsPerBlock);
+		RE::TES::GetSingleton()->ForEachReferenceInRange(a_player, 800.0f, [&](RE::TESObjectREFR* a_ref) {
+			if (a_ref && IsOreVein(a_ref)) {
+				const float d = a_ref->GetPosition().GetDistance(at);
+				if (d < best) {
+					best = d;
+					vein = a_ref;
+				}
+			}
+			return RE::BSContainer::ForEachResult::kContinue;
+		});
+		auto* ore = vein ? OreOf(vein) : nullptr;
+		if (!ore) {
+			logger::info("ore veins: mined at {:.0f} {:.0f} {:.0f}, but no vein's ore found there", at.x, at.y, at.z);
+			return;
+		}
+		a_player->AddObjectToContainer(ore, nullptr, 1, nullptr);
+		RE::SendHUDMessage::ShowHUDMessage(std::format("{} added", ore->GetName()).c_str());
+		logger::info("ore veins: {} mined out of {}", ore->GetName(), vein->GetBaseObject()->GetName());
 	}
 }

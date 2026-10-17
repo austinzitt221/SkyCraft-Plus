@@ -39,6 +39,7 @@ public final class SkyCraft implements ModInitializer {
 		dev.skycraft.world.SkyInteriors.init();
 		dev.skycraft.world.SkyHold.init();
 		dev.skycraft.world.SkyPets.init(); // SkyCraft+ : pets through Skyrim's doors
+		dev.skycraft.world.SkyOreVein.init(); // SkyCraft+ : Skyrim's ore veins
 		// SkyCraft+ : performance. A slow server tick says so (a hitch flying up to a structure while it
 		// loads: which side it's on, for the next test).
 		final long[] tickStart = { 0L, 0L, 0L };  // start, last logged, lines

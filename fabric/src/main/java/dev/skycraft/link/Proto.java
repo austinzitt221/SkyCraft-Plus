@@ -119,6 +119,7 @@ public final class Proto {
 	public static final int EV_SKILL_USE = 5;
 	public static final int EV_PLAYER_HURT = 6;
 	public static final int EV_SKY_ITEM = 7; // SkyCraft+ : v35, flags = SKY_ACT_*
+	public static final int EV_MINED_ORE = 9; // SkyCraft+ : v44, a/b/c = the mined block's centre: the Skyrim ore vein's ore
 	public static final int EV_DRAGON_SOUL = 8; // SkyCraft+ : v39, the Ender Dragon died near this player: a Skyrim dragon soul
 	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,
 		SKY_ACT_EQUIP_RIGHT = 6, SKY_ACT_EQUIP_LEFT = 7, SKY_ACT_DROP = 8, // SkyCraft+ : v36, shortcuts
@@ -325,7 +326,10 @@ public final class Proto {
 	// DigMaterial (skycraft_protocol.h)
 	public static final int DIG_NONE = 0, DIG_GRASS = 1, DIG_DIRT = 2, DIG_STONE = 3, DIG_COBBLE = 4, DIG_SNOW = 5, DIG_ICE = 6, DIG_SAND = 7,
 		DIG_GRAVEL = 8, DIG_MUD = 9, DIG_OAK_LOG = 10, DIG_SPRUCE_LOG = 11, DIG_BIRCH_LOG = 12, DIG_PLANKS = 13, DIG_METAL = 14, DIG_GLASS = 15,
-		DIG_ORGANIC = 16, DIG_CLOTH = 17, DIG_BONE = 18, DIG_WEB = 19, DIG_ASH = 20, DIG_BEDROCK = 21, DIG_HAY = 22 /* SkyCraft+ : v43 */, DIG_MATERIAL_COUNT = 23;
+		DIG_ORGANIC = 16, DIG_CLOTH = 17, DIG_BONE = 18, DIG_WEB = 19, DIG_ASH = 20, DIG_BEDROCK = 21, DIG_HAY = 22 /* SkyCraft+ : v43 */,
+		// SkyCraft+ : v44, Skyrim things that break into their Minecraft counterpart
+		DIG_BARREL = 23, DIG_CHEST = 24, DIG_BOOKSHELF = 25, DIG_IRON_BARS = 26, DIG_CHAIN = 27, DIG_CANDLE = 28, DIG_LANTERN = 29, DIG_CAMPFIRE = 30,
+		DIG_CARPET = 31, DIG_BED = 32, DIG_MUSHROOM = 33, DIG_ORE_VEIN = 34, DIG_MATERIAL_COUNT = 35;
 	public static final int COL_REGION_HEADER_BYTES = 32;
 	public static final int COL_BLOCK_BYTES = 80;
 }

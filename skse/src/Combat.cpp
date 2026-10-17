@@ -1,4 +1,5 @@
 #include "Game.h"
+#include "Dig.h"
 
 namespace skycraft
 {
@@ -1166,6 +1167,9 @@ namespace skycraft
 					break;
 				case proto::kEvDragonSoul:
 					GiveDragonSoul(a_player);  // SkyCraft+
+					break;
+				case proto::kEvMinedOre:
+					Dig::GiveMinedOre(a_player, ev.a, ev.b, ev.c);  // SkyCraft+
 					break;
 				case proto::kEvSkillUse:
 					if (ev.formId >= static_cast<std::uint32_t>(RE::ActorValue::kOneHanded) && ev.formId <= static_cast<std::uint32_t>(RE::ActorValue::kEnchanting)) {

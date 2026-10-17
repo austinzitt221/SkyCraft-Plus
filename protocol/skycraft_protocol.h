@@ -378,6 +378,8 @@ namespace skycraft::proto
 		                    // flags = SkyItemAction
 		kEvDragonSoul = 8,  // SkyCraft+ (v39): the Ender Dragon died while this player was in its fight: one
 		                    // Skyrim dragon soul
+		kEvMinedOre = 9,    // SkyCraft+ (v44): the player mined a block of a Skyrim ore vein (kDigOreVein): a/b/c = the
+		                    // block's centre (MC coords); the vein's ore goes into Skyrim's inventory
 	};
 
 	// SkyCraft+ : what a click on a Skyrim item does (McEvent::flags of kEvSkyItem).
@@ -622,6 +624,19 @@ namespace skycraft::proto
 		kDigAsh = 20,
 		kDigBedrock = 21,  // Minecraft only: a few blocks under the land
 		kDigHay = 22,      // SkyCraft+ (v43): hay bales
+		// SkyCraft+ (v44): Skyrim things that break into their Minecraft counterpart.
+		kDigBarrel = 23,
+		kDigChest = 24,       // crates
+		kDigBookshelf = 25,
+		kDigIronBars = 26,    // iron gates, bars, grates, portcullises
+		kDigChain = 27,
+		kDigCandle = 28,
+		kDigLantern = 29,
+		kDigCampfire = 30,    // braziers, fire pits
+		kDigCarpet = 31,      // rugs
+		kDigBed = 32,         // bedrolls
+		kDigMushroom = 33,
+		kDigOreVein = 34,     // a Skyrim ore vein: mined with a pickaxe, its ore goes into Skyrim's inventory (kEvMinedOre)
 		kDigMaterialCount
 	};
 

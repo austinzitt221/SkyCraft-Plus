@@ -62,6 +62,13 @@ public final class SkyCraftClient implements ClientModInitializer {
 			}
 		});
 		// SkyCraft+ : a guest in a friend's End: the Ender Dragon died, a dragon soul for this player's Skyrim.
+		// SkyCraft+ : a Skyrim ore vein mined in the host's world: this guest's Skyrim gets its ore.
+		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(dev.skycraft.world.SkyOreVein.MinedOre.TYPE, (payload, context) -> {
+			if (dev.skycraft.link.SkyLink.active()) {
+				dev.skycraft.link.SkyLink.pushEvent(dev.skycraft.link.Proto.EV_MINED_ORE, 0, payload.pos().getX() + 0.5F, payload.pos().getY() + 0.5F,
+					payload.pos().getZ() + 0.5F, 0.0F, 0);
+			}
+		});
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.registerGlobalReceiver(dev.skycraft.net.SkyNet.DragonSoul.TYPE, (payload, context) -> {
 			if (dev.skycraft.link.SkyLink.active()) {
 				dev.skycraft.link.SkyLink.pushEvent(dev.skycraft.link.Proto.EV_DRAGON_SOUL, 0, 0, 0, 0, 0, 0);

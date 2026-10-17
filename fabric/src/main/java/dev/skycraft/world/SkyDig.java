@@ -361,6 +361,20 @@ public final class SkyDig {
 			case DIG_ASH -> Blocks.CONCRETE_POWDER.pick(DyeColor.LIGHT_GRAY).defaultBlockState();
 			case DIG_BEDROCK -> Blocks.BEDROCK.defaultBlockState();
 			case DIG_HAY -> Blocks.HAY_BLOCK.defaultBlockState();  // SkyCraft+
+			// SkyCraft+ : Skyrim things that break into their Minecraft counterpart.
+			case DIG_BARREL -> Blocks.BARREL.defaultBlockState();
+			case DIG_CHEST -> Blocks.CHEST.defaultBlockState();
+			case DIG_BOOKSHELF -> Blocks.BOOKSHELF.defaultBlockState();
+			case DIG_IRON_BARS -> Blocks.IRON_BARS.defaultBlockState();
+			case DIG_CHAIN -> Blocks.IRON_CHAIN.defaultBlockState();
+			case DIG_CANDLE -> Blocks.CANDLE.defaultBlockState();
+			case DIG_LANTERN -> Blocks.LANTERN.defaultBlockState();
+			case DIG_CAMPFIRE -> Blocks.CAMPFIRE.defaultBlockState().setValue(net.minecraft.world.level.block.CampfireBlock.LIT, false);
+			case DIG_CARPET -> Blocks.CARPET.pick(DyeColor.RED).defaultBlockState();
+			case DIG_BED -> Blocks.BED.pick(DyeColor.RED).defaultBlockState().setValue(net.minecraft.world.level.block.BedBlock.PART,
+				net.minecraft.world.level.block.state.properties.BedPart.HEAD);
+			case DIG_MUSHROOM -> Blocks.BROWN_MUSHROOM.defaultBlockState();
+			case DIG_ORE_VEIN -> SkyOreVein.BLOCK.defaultBlockState();
 			default -> Blocks.STONE.defaultBlockState();
 		};
 	}
@@ -708,7 +722,9 @@ public final class SkyDig {
 			case DIG_OAK_LOG, DIG_SPRUCE_LOG, DIG_BIRCH_LOG -> surface;
 			case DIG_PLANKS -> depth < 2.5 ? DIG_PLANKS : DIG_STONE;
 			case DIG_METAL -> depth < 1.5 ? DIG_METAL : DIG_STONE;
-			case DIG_GLASS, DIG_ORGANIC, DIG_CLOTH, DIG_BONE, DIG_WEB, DIG_HAY -> depth < 1.0 ? surface : DIG_STONE;
+			case DIG_GLASS, DIG_ORGANIC, DIG_CLOTH, DIG_BONE, DIG_WEB, DIG_HAY, DIG_BARREL, DIG_CHEST, DIG_BOOKSHELF, DIG_IRON_BARS, DIG_CHAIN, DIG_CANDLE,
+				DIG_LANTERN, DIG_CAMPFIRE, DIG_CARPET, DIG_BED, DIG_MUSHROOM -> depth < 1.0 ? surface : DIG_STONE;
+			case DIG_ORE_VEIN -> depth < 2.5 ? DIG_ORE_VEIN : DIG_STONE;  // SkyCraft+ : the vein goes in a way
 			default -> DIG_STONE;
 		};
 	}

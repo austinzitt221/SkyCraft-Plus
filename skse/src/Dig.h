@@ -36,6 +36,9 @@ namespace skycraft::Dig
 	bool IsDiggableCollidable(const RE::hkpCollidable* a_collidable);
 	// The Minecraft block (proto::DigMaterial) a piece of Skyrim geometry digs into.
 	std::uint8_t MaterialFor(RE::MATERIAL_ID a_material, RE::TESObjectREFR* a_ref, bool a_tree);
+
+	// SkyCraft+ : a block of a Skyrim ore vein mined at this Minecraft spot: the vein's ore into the player's inventory.
+	void GiveMinedOre(RE::PlayerCharacter* a_player, double a_x, double a_y, double a_z);
 	// Havok's material for one part of a shape (terrain: per triangle); kNone if unknown.
 	RE::MATERIAL_ID ShapeMaterial(const RE::hkpShape* a_top, RE::hkpShapeKey a_key);
 	// The land's material at a point (Skyrim units, x y): from the texture painted there (grass,
