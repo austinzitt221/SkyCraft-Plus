@@ -64,6 +64,9 @@ public final class SkySpawner {
 	private static final double ROOM_RADIUS = 12.0;
 	// How dungeon spawns go (the log, once a minute): tries, no ground there, out of reach, room full, spawned.
 	private static final int[] DUNGEON_TRIES = new int[5];
+	// SkyCraft+ : wandering traders, now and then anywhere outdoors: the chance every two minutes (percent).
+	private static boolean wanderingTraders = true;
+	private static int wanderingTraderChance = 10;
 	private static int villagerCap = 6; // within VILLAGER_RANGE: a city's worth, a few streets apart
 	private static final int VILLAGER_RANGE = 64;
 	private static final List<ResourceKey<VillagerProfession>> JOBS = List.of(VillagerProfession.ARMORER, VillagerProfession.BUTCHER,
@@ -106,6 +109,8 @@ public final class SkySpawner {
 		monsterCap = parseInt(p.getProperty("monsterCap"), monsterCap);
 		dungeonMonsterCap = parseInt(p.getProperty("dungeonMonsterCap"), dungeonMonsterCap);
 		villagerCap = parseInt(p.getProperty("villagerCap"), villagerCap);
+		wanderingTraders = Boolean.parseBoolean(p.getProperty("wanderingTraders", "true").trim());
+		wanderingTraderChance = parseInt(p.getProperty("wanderingTraderChance"), wanderingTraderChance);
 		SkyCraft.LOG.info("SkyCraft: spawning animals {} (up to {}), monsters {} (up to {}, {} in dungeons), villagers in towns {} (up to {})", spawnAnimals, animalCap,
 			spawnMonsters, monsterCap, dungeonMonsterCap, spawnVillagers, villagerCap);
 	}
@@ -142,6 +147,9 @@ public final class SkySpawner {
 		if (spawnAnimals && outdoors && count(level, host, MobCategory.CREATURE) < animalCap) {
 			trySpawn(level, host, random, false);
 		}
+		if (wanderingTraders && outdoors && server.getTickCount() % 2400 == 0 && random.nextInt(100) < wanderingTraderChance) {
+			trySpawnTrader(level, host, random);
+		}
 		if (spawnVillagers && outdoors && SkyWorld.town() && server.getTickCount() % 200 == 0 && countVillagers(level, host) < villagerCap) {
 			trySpawnVillager(level, host, random);
 		}
@@ -173,6 +181,64 @@ public final class SkySpawner {
 			} else {
 				server.setWeatherParameters(12000, 0, false, false);
 			}
+		}
+	}
+
+	/**
+	 * SkyCraft+ : a wandering trader, with its two llamas, somewhere near the player outdoors (out
+	 * of sight, as Minecraft's): it wanders about there for a couple of Minecraft days and leaves,
+	 * as Minecraft's do. Never more than one around.
+	 */
+	private static void trySpawnTrader(ServerLevel level, ServerPlayer player, RandomSource random) {
+		if (!level.getEntitiesOfClass(net.minecraft.world.entity.npc.wanderingtrader.WanderingTrader.class, player.getBoundingBox().inflate(160.0),
+			net.minecraft.world.entity.LivingEntity::isAlive).isEmpty()) {
+			return;
+		}
+		for (int attempt = 0; attempt < 10; attempt++) {
+			double angle = random.nextDouble() * Math.PI * 2.0;
+			double distance = MIN_DISTANCE + random.nextDouble() * (MAX_DISTANCE - MIN_DISTANCE);
+			int x = (int) Math.floor(player.getX() + Math.cos(angle) * distance);
+			int z = (int) Math.floor(player.getZ() + Math.sin(angle) * distance);
+			BlockPos ground = findGround(level, x, (int) Math.floor(player.getY()), z);
+			if (ground == null) {
+				continue;
+			}
+			var trader = EntityTypes.WANDERING_TRADER.create(level, EntitySpawnReason.EVENT);
+			if (trader == null) {
+				return;
+			}
+			trader.snapTo(ground.getX() + 0.5, SkyCollision.floorUnder(ground) + 0.01, ground.getZ() + 0.5, random.nextFloat() * 360.0F, 0.0F);
+			if (!level.noCollision(trader)) {
+				trader.discard();
+				continue;
+			}
+			trader.finalizeSpawn(level, level.getCurrentDifficultyAt(ground), EntitySpawnReason.EVENT, null);
+			trader.setDespawnDelay(48000);
+			trader.setWanderTarget(ground);
+			trader.setHomeTo(ground, 16);
+			if (!level.tryAddFreshEntityWithPassengers(trader)) {
+				return;
+			}
+			int llamas = 0;
+			for (int i = 0; i < 8 && llamas < 2; i++) {
+				BlockPos at = findGround(level, ground.getX() + random.nextInt(7) - 3, ground.getY(), ground.getZ() + random.nextInt(7) - 3);
+				var llama = at == null ? null : EntityTypes.TRADER_LLAMA.create(level, EntitySpawnReason.EVENT);
+				if (llama == null) {
+					continue;
+				}
+				llama.snapTo(at.getX() + 0.5, SkyCollision.floorUnder(at) + 0.01, at.getZ() + 0.5, random.nextFloat() * 360.0F, 0.0F);
+				if (!level.noCollision(llama)) {
+					llama.discard();
+					continue;
+				}
+				llama.finalizeSpawn(level, level.getCurrentDifficultyAt(at), EntitySpawnReason.EVENT, null);
+				if (level.tryAddFreshEntityWithPassengers(llama)) {
+					llama.setLeashedTo(trader, true);
+					llamas++;
+				}
+			}
+			SkyCraft.LOG.info("SkyCraft: a wandering trader came by ({} llamas) at {}", llamas, ground.toShortString());
+			return;
 		}
 	}
 
