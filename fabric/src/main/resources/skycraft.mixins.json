@@ -6,6 +6,7 @@
     "AbstractArrowMixin",
     "BlockCollisionsMixin",
     "BlockStateBaseMixin",
+    "BucketSkyrimWaterMixin",
     "ChunkGeneratorStructureMixin",
     "EntityFluidInteractionMixin",
     "EntityPickMixin",
