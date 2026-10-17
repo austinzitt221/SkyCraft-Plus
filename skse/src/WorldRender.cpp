@@ -209,10 +209,33 @@ float SkyrimSunShadow(float3 rel, float3 n, float viewZ)
 // SkyCraft+ : Minecraft's own light underground. Its lightmap as at its default brightness: block
 // light warm and boosted as its flicker does, the sky's by the time of day (renderMode.w), the
 // brightness option's curve and the faint floor that keeps a cave from going pitch black.
-float3 McLight(float2 l)
+// SkyCraft+ : how open to the sky a camera-relative point is, past Skyrim's own land: Minecraft can't
+// see Skyrim's ground over a tunnel dug into it, so its sky light there is full daylight. Looking
+// straight up the contact volume (Skyrim geometry, bit 1): any above, and the sky is shut out.
+float SkyOpen(float3 rel)
+{
+	if (aoVolume.w < 0.5) {
+		return 1.0;
+	}
+	float3 p = float3(rel.x, rel.z, -rel.y) / 70.0 - aoVolume.xyz;
+	uint   w, h, d;
+	contactVolume.GetDimensions(w, h, d);
+	int3 c = (int3)floor(p);
+	if (any(c < 0) || c.x >= (int)w || c.z >= (int)d || c.y >= (int)h) {
+		return 1.0;
+	}
+	[loop] for (int y = max(c.y + 1, 0); y < (int)h; ++y) {
+		if (contactVolume.Load(int4(c.x, y, c.z, 0)) & 2) {
+			return 0.0;
+		}
+	}
+	return 1.0;
+}
+
+float3 McLight(float2 l, float skyOpen)
 {
 	float  block = saturate(Curve(l.x) * 1.5);
-	float  sky = Curve(l.y) * renderMode.w;
+	float  sky = Curve(l.y) * renderMode.w * skyOpen;
 	float3 c = float3(block, block * ((block * 0.6 + 0.4) * 0.6 + 0.4), block * (block * block * 0.6 + 0.4));
 	c = lerp(saturate(c + sky), float3(0.75, 0.75, 0.75), 0.04);
 	float3 bright = 1.0 - (1.0 - c) * (1.0 - c) * (1.0 - c) * (1.0 - c);
@@ -238,7 +261,7 @@ float3 Lighting(VSOut i, float3 n, bool hasNormal, float sunVisible)
 	lit = renderMode.x > 0.5 ? max(lit, 0.0) : 1.0 - exp(-max(lit, 0.0) * sunDir.w);
 	float block = Curve(i.light.x);
 	float3 skyrim = max(lit, block * float3(1.0, 0.85, 0.65));
-	return renderMode.z > 0.0 ? lerp(skyrim, McLight(i.light), renderMode.z) : skyrim;  // SkyCraft+
+	return renderMode.z > 0.0 ? lerp(skyrim, McLight(i.light, SkyOpen(i.rel)), renderMode.z) : skyrim;  // SkyCraft+
 }
 
 // Soft contact shadows under Minecraft players and mobs (their bodies are drawn after Skyrim's own
