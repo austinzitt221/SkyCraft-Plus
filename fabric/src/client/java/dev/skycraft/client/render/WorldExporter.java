@@ -3,9 +3,12 @@ package dev.skycraft.client.render;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.skycraft.SkyCraft;
+import dev.skycraft.client.RenderToggles;
 import dev.skycraft.link.Proto;
 import dev.skycraft.link.SkyLink;
 import dev.skycraft.world.SkyClip;
+import it.unimi.dsi.fastutil.longs.Long2LongMap;
+import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
 import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.nio.ByteBuffer;
@@ -79,6 +82,15 @@ public final class WorldExporter {
 	private static ByteBuffer shapeBoxes = ByteBuffer.allocate(64 * 1024).order(ByteOrder.LITTLE_ENDIAN);
 	private static final LongOpenHashSet DUG = new LongOpenHashSet(); // sections Skyrim holds dug cells for
 	private static final ByteBuffer LIGHTS = ByteBuffer.allocate(16 * 16 * 16 * 8).order(ByteOrder.LITTLE_ENDIAN);
+	// SkyCraft+ : performance. The last content sent for a section's lights, collision bits, shapes
+	// and dug cells. Re-meshing a section for one block change used to send all of them again
+	// unchanged (the lights alone are a record per torch); only what differs goes over now. Keyed
+	// with the section, and kept in step with LIT/SOLID/SHAPED/DUG below (removed with them, cleared
+	// with them, so a section Skyrim no longer holds anything for is sent whole again).
+	private static final Long2LongMap LIGHT_SENT = new Long2LongOpenHashMap();
+	private static final Long2LongMap SOLID_SENT = new Long2LongOpenHashMap();
+	private static final Long2LongMap SHAPE_SENT = new Long2LongOpenHashMap();
+	private static final Long2LongMap DUG_SENT = new Long2LongOpenHashMap();
 	private static int sentGeneration = Integer.MIN_VALUE;
 	private static int meshesSent;
 	private static ClientLevel sentLevel;
@@ -190,7 +202,9 @@ public final class WorldExporter {
 	/** Empties one section in Skyrim: no mesh, lights, solids or shapes. False if the ring is full. */
 	private static boolean forget(long key) {
 		int sx = SectionPos.x(key), sy = SectionPos.y(key), sz = SectionPos.z(key);
-		Object[][] kinds = { { Proto.REN_SECTION, SENT }, { Proto.REN_LIGHTS, LIT }, { Proto.REN_SOLIDS, SOLID }, { Proto.REN_SHAPES, SHAPED } };
+		Object[][] kinds = {
+			{ Proto.REN_SECTION, SENT, null }, { Proto.REN_LIGHTS, LIT, LIGHT_SENT }, { Proto.REN_SOLIDS, SOLID, SOLID_SENT }, { Proto.REN_SHAPES, SHAPED, SHAPE_SENT }
+		};
 		for (Object[] kind : kinds) {
 			LongOpenHashSet set = (LongOpenHashSet) kind[1];
 			if (!set.contains(key)) {
@@ -201,6 +215,9 @@ public final class WorldExporter {
 				return false;
 			}
 			set.remove(key);
+			if (kind[2] != null) {
+				((Long2LongMap) kind[2]).remove(key); // what Skyrim holds is gone: the next mesh sends it whole
+			}
 		}
 		return true;
 	}
@@ -217,14 +234,17 @@ public final class WorldExporter {
 		blockRenderer = new ModelBlockRenderer(ao, true, minecraft.getBlockColors());
 		fluidRenderer = new FluidRenderer(minecraft.getModelManager().getFluidStateModelSet());
 		SkyLink.writeRender(Proto.REN_CLEAR_ALL, ByteBuffer.allocate(0), null);
-		ByteBuffer header = ByteBuffer.allocate(8).order(ByteOrder.LITTLE_ENDIAN).putInt(atlas.width).putInt(atlas.height).flip();
-		boolean ok = SkyLink.writeRender(Proto.REN_ATLAS, header, atlas.pixels.duplicate().clear());
+		boolean ok = SkyLink.sendAtlas(atlas.width, atlas.height, atlas.pixels);
 		SkyCraft.LOG.info("SkyCraft: sent {}x{} texture atlas to Skyrim ({})", atlas.width, atlas.height, ok ? "ok" : "FAILED");
 		SENT.clear();
 		LIT.clear();
 		SOLID.clear();
 		SHAPED.clear();
 		DUG.clear();
+		LIGHT_SENT.clear();
+		SOLID_SENT.clear();
+		SHAPE_SENT.clear();
+		DUG_SENT.clear();
 		dev.skycraft.client.SkyDigClient.resendAll();
 		// Everything already loaded needs meshing again; later chunk loads mark themselves dirty.
 		int radius = minecraft.options.getEffectiveRenderDistance() + 1;
@@ -329,6 +349,26 @@ public final class WorldExporter {
 		return (byte) Mth.clamp((int) v, 0, 255);
 	}
 
+	/** FNV-1a over a buffer's first {@code length} bytes: a section's lights or its shape boxes. */
+	private static long hash(ByteBuffer buf, int length) {
+		long h = 0xcbf29ce484222325L;
+		for (int i = 0; i < length; i++) {
+			h = (h ^ (buf.get(i) & 0xFF)) * 0x100000001b3L;
+		}
+		return h;
+	}
+
+	/** FNV-1a over some 64-bit words: a section's collision bits (a null array is all zero). */
+	private static long hash(long[] words, int world) {
+		long h = 0xcbf29ce484222325L ^ world;
+		if (words != null) {
+			for (long w : words) {
+				h = (h ^ w) * 0x100000001b3L;
+			}
+		}
+		return h;
+	}
+
 	private static LevelChunkSection sectionAt(ClientLevel level, LevelChunk chunk, int sy) {
 		int index = level.getSectionIndexFromSectionY(sy);
 		return index >= 0 && index < chunk.getSections().length ? chunk.getSections()[index] : null;
@@ -423,7 +463,14 @@ public final class WorldExporter {
 						}
 						if (state.getRenderShape() == RenderShape.MODEL) {
 							var model = Minecraft.getInstance().getModelManager().getBlockStateModelSet().get(state);
-							blockRenderer.tesselateBlock(MESH, x, y, z, level, pos.immutable(), state, model, state.getSeed(pos));
+							// FabricBlockModels handles a model written for Fabric's renderer API (Traveler's
+							// Backpack, ...): it leaves collectParts empty and draws through emitQuads, which
+							// vanilla's renderer below would see as nothing. Delete these lines and the file
+							// and it is gone again (RenderToggles.fabricQuads switches it off).
+							if (!RenderToggles.fabricQuads
+								|| !FabricBlockModels.tesselate(atlas, x, y, z, level, pos.immutable(), state, model, state.getSeed(pos), MESH::vertex)) {
+								blockRenderer.tesselateBlock(MESH, x, y, z, level, pos.immutable(), state, model, state.getSeed(pos));
+							}
 						}
 						// SkyCraft+ : the End. End portals and gateways are drawn by a shader of Minecraft's
 						// own that never reaches Skyrim: a glowing obsidian surface stands in for them.
@@ -452,57 +499,82 @@ public final class WorldExporter {
 				SENT.remove(key);
 			}
 			if (lightCount > 0 || LIT.contains(key)) {
-				ByteBuffer lightHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(lightCount).flip();
-				if (!SkyLink.writeRender(Proto.REN_LIGHTS, lightHeader, LIGHTS.flip())) {
-					markDirty(sx, sy, sz); // ring full; send both again later
-				} else if (lightCount > 0) {
-					LIT.add(key);
-				} else {
-					LIT.remove(key);
+				long hash = hash(LIGHTS, lightCount * 8);
+				// Skyrim already has exactly this: the section was re-meshed for a block that isn't a light.
+				if (!LIT.contains(key) || !LIGHT_SENT.containsKey(key) || LIGHT_SENT.get(key) != hash) {
+					ByteBuffer lightHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(lightCount).flip();
+					if (!SkyLink.writeRender(Proto.REN_LIGHTS, lightHeader, LIGHTS.flip())) {
+						markDirty(sx, sy, sz); // ring full; send both again later
+					} else {
+						LIGHT_SENT.put(key, hash);
+						if (lightCount > 0) {
+							LIT.add(key);
+						} else {
+							LIT.remove(key);
+						}
+					}
 				}
 			}
 			if (solidCount > 0 || SOLID.contains(key)) {
-				ByteBuffer solidHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(solidCount).flip();
-				ByteBuffer bits = ByteBuffer.allocate(solidCount > 0 ? 512 : 0).order(ByteOrder.LITTLE_ENDIAN);
-				if (solidCount > 0) {
-					for (long word : SOLID_BITS) {
-						bits.putLong(word);
+				long hash = hash(SOLID_BITS, 0);
+				if (!SOLID.contains(key) || !SOLID_SENT.containsKey(key) || SOLID_SENT.get(key) != hash) {
+					ByteBuffer solidHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(solidCount).flip();
+					ByteBuffer bits = ByteBuffer.allocate(solidCount > 0 ? 512 : 0).order(ByteOrder.LITTLE_ENDIAN);
+					if (solidCount > 0) {
+						for (long word : SOLID_BITS) {
+							bits.putLong(word);
+						}
 					}
-				}
-				if (!SkyLink.writeRender(Proto.REN_SOLIDS, solidHeader, bits.flip())) {
-					markDirty(sx, sy, sz);
-				} else if (solidCount > 0) {
-					SOLID.add(key);
-				} else {
-					SOLID.remove(key);
+					if (!SkyLink.writeRender(Proto.REN_SOLIDS, solidHeader, bits.flip())) {
+						markDirty(sx, sy, sz);
+					} else {
+						SOLID_SENT.put(key, hash);
+						if (solidCount > 0) {
+							SOLID.add(key);
+						} else {
+							SOLID.remove(key);
+						}
+					}
 				}
 			}
 			if (shapeCount > 0 || SHAPED.contains(key)) {
-				ByteBuffer shapeHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(shapeCount).flip();
-				if (!SkyLink.writeRender(Proto.REN_SHAPES, shapeHeader, shapeBoxes.flip())) {
-					markDirty(sx, sy, sz);
-				} else if (shapeCount > 0) {
-					SHAPED.add(key);
-				} else {
-					SHAPED.remove(key);
+				long hash = hash(shapeBoxes, shapeCount * 8);
+				if (!SHAPED.contains(key) || !SHAPE_SENT.containsKey(key) || SHAPE_SENT.get(key) != hash) {
+					ByteBuffer shapeHeader = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(shapeCount).flip();
+					if (!SkyLink.writeRender(Proto.REN_SHAPES, shapeHeader, shapeBoxes.flip())) {
+						markDirty(sx, sy, sz);
+					} else {
+						SHAPE_SENT.put(key, hash);
+						if (shapeCount > 0) {
+							SHAPED.add(key);
+						} else {
+							SHAPED.remove(key);
+						}
+					}
 				}
 			}
 			// Cells dug out of Skyrim's world: its geometry there goes.
 			if (dugCount > 0 || DUG.contains(key)) {
-				ByteBuffer dugHeader = ByteBuffer.allocate(24).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(dugCount)
-					.putInt(dev.skycraft.client.SkyDigClient.world()).putInt(0).flip();
-				ByteBuffer bits = ByteBuffer.allocate(dugCount > 0 ? 512 : 0).order(ByteOrder.LITTLE_ENDIAN);
-				if (dugCount > 0) {
-					for (long word : dug) {
-						bits.putLong(word);
+				long hash = hash(dug, dev.skycraft.client.SkyDigClient.world());
+				if (!DUG.contains(key) || !DUG_SENT.containsKey(key) || DUG_SENT.get(key) != hash) {
+					ByteBuffer dugHeader = ByteBuffer.allocate(24).order(ByteOrder.LITTLE_ENDIAN).putInt(sx).putInt(sy).putInt(sz).putInt(dugCount)
+						.putInt(dev.skycraft.client.SkyDigClient.world()).putInt(0).flip();
+					ByteBuffer bits = ByteBuffer.allocate(dugCount > 0 ? 512 : 0).order(ByteOrder.LITTLE_ENDIAN);
+					if (dugCount > 0) {
+						for (long word : dug) {
+							bits.putLong(word);
+						}
 					}
-				}
-				if (!SkyLink.writeRender(Proto.REN_DUG, dugHeader, bits.flip())) {
-					markDirty(sx, sy, sz);
-				} else if (dugCount > 0) {
-					DUG.add(key);
-				} else {
-					DUG.remove(key);
+					if (!SkyLink.writeRender(Proto.REN_DUG, dugHeader, bits.flip())) {
+						markDirty(sx, sy, sz);
+					} else {
+						DUG_SENT.put(key, hash);
+						if (dugCount > 0) {
+							DUG.add(key);
+						} else {
+							DUG.remove(key);
+						}
+					}
 				}
 			}
 			if (++meshesSent <= 10 || meshesSent % 200 == 0) {
@@ -534,11 +606,17 @@ public final class WorldExporter {
 					ENTITIES.add(new SkyLink.WorldEntity(kind, e.getId(), (float) p.x, (float) p.y, (float) p.z, yaw, pitch, 1.0F, null, uv, 0));
 				}
 			} else if (e instanceof ItemEntity item) {
-				float bob = Mth.sin((item.getAge() + partialTick) / 10.0F + item.bobOffs) * 0.1F + 0.1F;
-				float spin = ItemEntity.getSpin(item.getAge() + partialTick, item.bobOffs) * Mth.RAD_TO_DEG;
-				addItem(minecraft, level, e, item.getItem(), p.add(0, bob, 0), spin);
+				// Off by default: RenderToggles.itemModels hands this (and thrown items) to the same
+				// capture as every other entity, which draws the real model.
+				if (!RenderToggles.itemModels) {
+					float bob = Mth.sin((item.getAge() + partialTick) / 10.0F + item.bobOffs) * 0.1F + 0.1F;
+					float spin = ItemEntity.getSpin(item.getAge() + partialTick, item.bobOffs) * Mth.RAD_TO_DEG;
+					addItem(minecraft, level, e, item.getItem(), p.add(0, bob, 0), spin);
+				}
 			} else if (e instanceof ItemSupplier supplier) {
-				addItem(minecraft, level, e, supplier.getItem(), p.add(0, e.getBbHeight() * 0.5 - 0.25, 0), 0.0F);
+				if (!RenderToggles.itemModels) {
+					addItem(minecraft, level, e, supplier.getItem(), p.add(0, e.getBbHeight() * 0.5 - 0.25, 0), 0.0F);
+				}
 			} else if (e instanceof net.minecraft.world.entity.LivingEntity && !(e instanceof dev.skycraft.combat.SkyrimActorEntity) && !e.isInvisible()
 				&& (e != minecraft.player || minecraft.gameRenderer.mainCamera().isDetached())) {
 				// Players and mobs: Skyrim darkens the ground softly under their feet.
@@ -550,8 +628,9 @@ public final class WorldExporter {
 	}
 
 	/**
-	 * A dropped item the way Minecraft shows it: blocks as small spinning cubes with their own face
-	 * textures, everything else as its icon. {@code p} is the item's resting point (bottom).
+	 * A dropped item the light way (RenderToggles.itemModels off): blocks as small spinning cubes
+	 * with their own face textures, everything else as its icon. {@code p} is the item's resting
+	 * point (bottom).
 	 */
 	private static void addItem(Minecraft minecraft, ClientLevel level, Entity e, ItemStack stack, Vec3 p, float yaw) {
 		if (stack.getItem() instanceof BlockItem blockItem) {
@@ -575,7 +654,6 @@ public final class WorldExporter {
 		}
 	}
 
-	/** Side, top and bottom atlas rects of a full-cube block's model, cached per block state. */
 	/**
 	 * SkyCraft+ : the End. An End portal's surface (12/16 up, seen from both sides) or a gateway's
 	 * whole cube, in obsidian's dark speckled texture at full brightness. Section-relative cell.
@@ -600,6 +678,7 @@ public final class WorldExporter {
 		}
 	}
 
+	/** Side, top and bottom atlas rects of a full-cube block's model, cached per block state. */
 	private static float[] cubeFaces(Minecraft minecraft, BlockState state) {
 		return CUBE_FACES.computeIfAbsent(state, s -> {
 			var model = minecraft.getModelManager().getBlockStateModelSet().get(s);

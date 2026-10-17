@@ -14,6 +14,7 @@ public final class SkyCraftClient implements ClientModInitializer {
 		DestructionToggle.register();
 		WorldSwitcher.register(); // SkyCraft+ : world switcher
 		HandMixToggle.register(); // SkyCraft+ : hand mixing
+		RenderToggles.register(); // SkyCraft+ : experimental rendering switches
 		SkyInventoryPanels.register(); // SkyCraft+ : Skyrim's inventory in Minecraft's
 		SkyShortcutsClient.register(); // SkyCraft+ : Skyrim shortcuts
 		ClientTickEvents.END_CLIENT_TICK.register(SkyShortcutsClient::tick);

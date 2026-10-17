@@ -529,7 +529,8 @@ namespace skycraft::proto
 	enum RenType : std::uint32_t
 	{
 		kRenPad = 0,
-		kRenAtlas = 1,     // RenAtlas + RGBA8 pixels (w * h * 4), top row first
+		kRenAtlas = 1,     // RenAtlas only: begin the atlas and allocate its w x h texture; the RGBA8
+		                   // pixels follow as kRenAtlasChunk bands (an atlas can dwarf one message)
 		kRenSection = 2,   // RenSection + RenVertex[vertexCount] (triangle list); 0 vertices = remove
 		kRenClearAll = 3,  // drop every section (world change)
 		kRenTexture = 4,   // RenTexture + RGBA8 pixels: an entity texture (player skin, armour, ...)
@@ -552,6 +553,9 @@ namespace skycraft::proto
 		                      // relative to the feet and facing +Z, split into its parts (RenBatch
 		                      // flags bits 8-11: RagdollPart). Sent about once a second while alive;
 		                      // Skyrim hangs the parts on its ragdoll when the player dies.
+		kRenAtlasChunk = 13,  // RenAtlasChunk + RGBA8 pixels: one horizontal band of the atlas begun by
+		                      // kRenAtlas, top row first. Bands arrive in order; the last one
+		                      // (y + rows == height) completes the atlas and its mipmaps.
 	};
 
 	struct RenSolids
@@ -697,6 +701,13 @@ namespace skycraft::proto
 	struct RenAtlas
 	{
 		std::uint32_t width, height;
+	};
+
+	// One horizontal band of the atlas opened by RenAtlas. width/height must match it.
+	struct RenAtlasChunk
+	{
+		std::uint32_t width, height;
+		std::uint32_t y, rows;  // rows [y, y + rows) of RGBA8 pixels; top row of the band first
 	};
 
 	struct RenSection

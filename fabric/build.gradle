@@ -11,6 +11,13 @@ repositories {
 			includeGroup "maven.modrinth"
 		}
 	}
+	// Config screen: Cloth Config, and Mod Menu to reach it (both optional, see fabric.mod.json).
+	maven {
+		url = "https://maven.shedaniel.me/"
+	}
+	maven {
+		url = "https://maven.terraformersmc.com/releases/"
+	}
 	// Add repositories to retrieve artifacts from in here.
 	// You should only use this when depending on other mods because
 	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
@@ -46,6 +53,11 @@ dependencies {
 
 	// e4mc 6.2.2 (Fabric, 26.1-26.3): "Open to LAN" gives a link friends can join over the internet.
 	runtimeOnly "maven.modrinth:e4mc:AouleFRY"
+
+	// The settings screen (ModMenuIntegration): optional at runtime (declared in fabric.mod.json's
+	// "recommends"), on the dev classpath so it can be tried out with runClient.
+	implementation "me.shedaniel.cloth:cloth-config-fabric:26.3.159"
+	implementation "com.terraformersmc:modmenu:21.0.0"
 
 	testImplementation platform("org.junit:junit-bom:5.11.4")
 	testImplementation "org.junit.jupiter:junit-jupiter"

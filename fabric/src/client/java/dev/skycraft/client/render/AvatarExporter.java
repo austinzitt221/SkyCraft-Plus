@@ -5,6 +5,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.QuadInstance;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import dev.skycraft.SkyCraft;
+import dev.skycraft.client.RenderToggles;
 import dev.skycraft.client.mixin.RenderSetupAccessor;
 import dev.skycraft.client.mixin.RenderTypeAccessor;
 import dev.skycraft.client.mixin.TextureBindingAccessor;
@@ -319,7 +320,8 @@ final class AvatarExporter implements SubmitNodeCollector {
 		for (Entity e : level.entitiesForRendering()) {
 			boolean big = e instanceof EnderDragon || e instanceof EndCrystal || e instanceof WitherBoss || e instanceof Ghast || e instanceof HappyGhast;
 			double range = big ? FAR_SCENE_RANGE : SCENE_RANGE;
-			if (e == player || e instanceof ItemEntity || e instanceof AbstractArrow || e instanceof ItemSupplier || e instanceof SkyrimActorEntity
+			if (e == player || e instanceof AbstractArrow || e instanceof SkyrimActorEntity
+				|| (!RenderToggles.itemModels && (e instanceof ItemEntity || e instanceof ItemSupplier))
 				|| e.distanceToSqr(cam) > range * range) {
 				continue;
 			}
@@ -990,8 +992,20 @@ final class AvatarExporter implements SubmitNodeCollector {
 	public void submitShapeOutline(PoseStack poseStack, VoxelShape shape, RenderType renderType, int color, float width, boolean afterTerrain) {
 	}
 
+	/**
+	 * Custom geometry (CC:Tweaked's turtles, monitors and printouts, and anything else that draws
+	 * through Fabric's renderer API): the renderer writes its own posed vertices, so they go into
+	 * the batch of the render type's texture exactly like a model.
+	 */
 	@Override
-	public void submitCustomGeometry(PoseStack poseStack, RenderType renderType, SubmitNodeCollector.CustomGeometryRenderer customGeometryRenderer) {
+	public void submitCustomGeometry(PoseStack poseStack, RenderType renderType, SubmitNodeCollector.CustomGeometryRenderer renderer) {
+		Batch batch = this.batchFor(renderType);
+		if (batch == null) {
+			return;
+		}
+		this.capture.begin(batch);
+		renderer.render(poseStack.last(), this.capture);
+		this.capture.flush();
 	}
 
 	@Override
