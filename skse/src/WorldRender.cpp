@@ -1144,11 +1144,13 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 		}
 
 		// ---- per-frame geometry for entities and the outline -----------------------------------
+		std::uint32_t quadLight = kFullSkyLight;  // SkyCraft+ : the light of the entity being built (WorldEntity::light)
+
 		void Quad(const float a_p[4][3], const float a_uv[4], std::uint32_t a_color = 0xFFFFFFFFu, std::uint32_t a_flags = kFlagCutout)
 		{
 			const float uv[4][2] = { { a_uv[0], a_uv[1] }, { a_uv[2], a_uv[1] }, { a_uv[2], a_uv[3] }, { a_uv[0], a_uv[3] } };
 			for (int k : { 0, 1, 2, 0, 2, 3 }) {
-				dynVerts.push_back({ a_p[k][0], a_p[k][1], a_p[k][2], uv[k][0], uv[k][1], a_color, kFullSkyLight, a_flags });
+				dynVerts.push_back({ a_p[k][0], a_p[k][1], a_p[k][2], uv[k][0], uv[k][1], a_color, quadLight, a_flags });
 			}
 		}
 
@@ -1297,6 +1299,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			for (std::uint32_t i = 0; i < entities.count; ++i) {
 				const auto& e = entities.entities[i];
 				const float px = float(e.x - a_o[0]), py = float(e.y - a_o[1]), pz = float(e.z - a_o[2]);
+				quadLight = (e.light & 0x80000000u) ? (e.light & 0x0F0Fu) : kFullSkyLight;
 				if (e.kind == proto::kWeShadow) {
 					continue;  // not geometry: see GatherContactShadows
 				}
@@ -1338,6 +1341,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 					Quad(p, e.uv[0], 0xFFFFFFFFu, kFlagCutout | kFlagNoMip);
 				}
 			}
+			quadLight = kFullSkyLight;
 		}
 
 		void BuildOutline(const double a_o[3])

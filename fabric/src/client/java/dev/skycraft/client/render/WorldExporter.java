@@ -546,7 +546,13 @@ public final class WorldExporter {
 			}
 		}
 		addCracks(level);
-		SkyLink.writeWorldEntities(ENTITIES, selection(minecraft, level));
+		// SkyCraft+ : each one lit by Minecraft's light where it is (a dropped item down a mine isn't in daylight).
+		BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+		SkyLink.writeWorldEntities(ENTITIES, selection(minecraft, level), w -> {
+			at.set(Mth.floor(w.x()), Mth.floor(w.y() + 0.05F), Mth.floor(w.z()));
+			return 0x80000000 | level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, at)
+				| level.getBrightness(net.minecraft.world.level.LightLayer.SKY, at) << 8;
+		});
 	}
 
 	/**

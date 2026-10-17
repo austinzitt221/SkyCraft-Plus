@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 43;
+	inline constexpr std::uint32_t kVersion = 44;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -461,8 +461,11 @@ namespace skycraft::proto
 		float         ext[3];      // kWeCrack: box size
 		float         uv[3][4];    // atlas rects {u0, v0, u1, v1}
 		std::uint32_t tint;        // RGBA8 multiplier for the top face (grass, leaves); 0 = none
+		// SkyCraft+ (v44): Minecraft's light where it is (block | sky << 8, levels 0-15) with bit 31
+		// set; 0: none given (full daylight). Underground it's lit as the blocks around it are.
+		std::uint32_t light;
 	};
-	static_assert(sizeof(WorldEntity) == 96);
+	static_assert(sizeof(WorldEntity) == 100);
 
 	struct WorldEntities
 	{

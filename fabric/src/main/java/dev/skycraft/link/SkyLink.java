@@ -781,7 +781,7 @@ public final class SkyLink {
 	}
 
 	/** Seqlock write of the world-entity table and block selection. Render thread only. */
-	public static void writeWorldEntities(java.util.List<WorldEntity> entities, float[] selection) {
+	public static void writeWorldEntities(java.util.List<WorldEntity> entities, float[] selection, java.util.function.ToIntFunction<WorldEntity> light) {
 		MemorySegment s = shm;
 		if (s == null) {
 			return;
@@ -816,6 +816,7 @@ public final class SkyLink {
 				s.set(JAVA_FLOAT, r + 44 + k * 4L, w.uv() != null && k < w.uv().length ? w.uv()[k] : 0.0F);
 			}
 			s.set(JAVA_INT, r + 92, w.tint());
+			s.set(JAVA_INT, r + 96, light.applyAsInt(w));  // SkyCraft+ : v44
 		}
 		INT.setRelease(s, b + WE_SEQ, seq + 2);
 	}
