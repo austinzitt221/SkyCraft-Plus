@@ -4,7 +4,6 @@ import dev.skycraft.combat.SkyCombat;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.rendering.v1.EntityRendererRegistry;
-import net.minecraft.client.renderer.entity.NoopRenderer;
 
 public final class SkyCraftClient implements ClientModInitializer {
 	@Override
@@ -79,7 +78,7 @@ public final class SkyCraftClient implements ClientModInitializer {
 			(payload, context) -> SkyHands.otherPlayerHands(payload.entityId(), payload.hands()));
 		net.fabricmc.fabric.api.client.networking.v1.ClientPlayConnectionEvents.JOIN.register((handler, sender, minecraft) -> SkyHands.forgetOtherPlayers());
 		// Skyrim draws the real NPC; its Minecraft stand-in is only a hitbox.
-		EntityRendererRegistry.register(SkyCombat.SKYRIM_ACTOR, NoopRenderer::new);
+		EntityRendererRegistry.register(SkyCombat.SKYRIM_ACTOR, dev.skycraft.client.render.ProxyRenderer::new);  // SkyCraft+ : leads, no names
 		// Players (client-side movement AND the integrated server's re-check of it) use the smooth
 		// triangle collider, never Skyrim's voxels; otherwise the server sees the smooth position
 		// dip into a voxel and teleports the player back every few ticks.

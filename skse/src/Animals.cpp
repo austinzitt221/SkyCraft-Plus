@@ -81,32 +81,48 @@ namespace skycraft::Animals
 		}
 	}
 
-	// A Papyrus Actor method on this actor (Skyrim's own behaviour, as scripts use it).
+	// A Papyrus Actor method on this actor (Skyrim's own behaviour, as scripts use it). An actor with
+	// no script of its own (most animals) gets a plain Actor object bound to it first: without one the
+	// call went nowhere.
 	template <class... Args>
-	void CallActor(RE::Actor* a_actor, const char* a_function, Args&&... a_args)
+	bool CallActor(RE::Actor* a_actor, const char* a_function, Args&&... a_args)
 	{
 		auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
 		auto* policy = vm ? vm->GetObjectHandlePolicy() : nullptr;
 		if (!policy) {
-			return;
+			return false;
 		}
 		const auto handle = policy->GetHandleForObject(static_cast<RE::VMTypeID>(RE::Actor::FORMTYPE), a_actor);
 		if (handle == policy->EmptyHandle()) {
-			return;
+			return false;
+		}
+		RE::BSTSmartPointer<RE::BSScript::Object> object;
+		if (!vm->FindBoundObject(handle, "Actor", object) || !object) {
+			auto* bind = vm->GetObjectBindPolicy();
+			if (!bind || !vm->CreateObject("Actor", object) || !object) {
+				return false;
+			}
+			bind->BindObject(object, handle);
 		}
 		RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
 		auto* arguments = RE::MakeFunctionArguments(std::forward<Args>(a_args)...);
-		vm->DispatchMethodCall2(handle, "Actor", a_function, arguments, callback);
+		return vm->DispatchMethodCall1(object, a_function, arguments, callback);
 	}
 
 	void Follow(RE::Actor* a_actor, RE::Actor* a_target, float a_offsetX, float a_offsetY)
 	{
-		CallActor(a_actor, "KeepOffsetFromActor", std::move(a_target), std::move(a_offsetX), std::move(a_offsetY), 0.0f, 0.0f, 0.0f, 0.0f, 300.0f, 60.0f);
+		const bool sent = CallActor(a_actor, "KeepOffsetFromActor", std::move(a_target), std::move(a_offsetX), std::move(a_offsetY), 0.0f, 0.0f, 0.0f, 0.0f, 300.0f, 60.0f);
+		a_actor->EvaluatePackage(true, false);  // (at once, not at its next AI update)
+		static int logged = 0;
+		if (logged++ < 20) {
+			logger::info("animals: {} keeps by {}: {}", a_actor->GetName(), a_target ? a_target->GetName() : "?", sent ? "sent" : "couldn't send");
+		}
 	}
 
 	void LetGo(RE::Actor* a_actor)
 	{
 		CallActor(a_actor, "ClearKeepOffsetFromActor");
+		a_actor->EvaluatePackage(true, false);
 	}
 
 	std::uint32_t Species(RE::Actor* a_actor)
@@ -279,7 +295,10 @@ namespace skycraft::Animals
 				continue;
 			}
 			auto& lead = it->second;
-			if (lead.mode == 1 && moved && cell && actor->GetParentCell() != cell) {
+			auto* actorCell = actor->GetParentCell();
+			const bool otherPlace = cell && actorCell != cell && (cell->IsInteriorCell() || !actorCell || actorCell->IsInteriorCell() ||
+			                                                     actor->GetWorldspace() != a_player->GetWorldspace());
+			if (lead.mode == 1 && moved && otherPlace && actor->GetPosition().GetDistance(a_player->GetPosition()) > 30.0f * float(proto::kUnitsPerBlock)) {
 				actor->MoveTo(a_player);
 				Follow(actor, a_player, 0.0f, -120.0f);
 				logger::info("leads: {} came through the door on the lead", actor->GetName());
@@ -288,6 +307,7 @@ namespace skycraft::Animals
 				if (actor->GetParentCell() == lead.marker->GetParentCell() && actor->GetPosition().GetDistance(lead.post) > kPostSlack) {
 					RE::TESObjectREFR* post = lead.marker.get();
 					CallActor(actor, "PathToReference", std::move(post), 0.5f);
+					actor->EvaluatePackage(true, false);
 				}
 			}
 			++it;

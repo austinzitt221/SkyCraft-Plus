@@ -42,7 +42,22 @@ final class ProxySync {
 				proxy.zo = a.z();
 				proxy.setYRot(a.yaw());
 				proxy.yRotO = a.yaw();
+				logLead(proxy);
 			}
+		}
+	}
+
+	// SkyCraft+ : leads on Skyrim actors. When this client's copy of a stand-in gains or loses its lead
+	// (testing leads that weren't drawn at first).
+	private static final Map<Integer, Boolean> LEASHED = new HashMap<>();
+
+	private static void logLead(SkyrimActorEntity proxy) {
+		boolean leashed = proxy.isLeashed();
+		Boolean was = LEASHED.put(proxy.formId(), leashed);
+		if (was != null && was != leashed || was == null && leashed) {
+			var holder = proxy.getLeashHolder();
+			dev.skycraft.SkyCraft.LOG.info("SkyCraft: lead on {} here: {} (holder {}, {} blocks away)", proxy.getName().getString(), leashed ? "on" : "off",
+				holder == null ? "none" : holder.getName().getString(), holder == null ? 0 : Math.round(holder.distanceTo(proxy)));
 		}
 	}
 }
