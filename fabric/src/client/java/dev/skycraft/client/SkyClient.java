@@ -584,6 +584,9 @@ public final class SkyClient {
 				ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
 				if (sp != null) {
 					var target = server.getLevel(dimension);
+					// SkyCraft+ : pets come through the door too (a teleport of a few blocks isn't a door).
+					boolean door = target != sp.level() || sp.position().distanceToSqr(x, y, z) > 24.0 * 24.0;
+					var pets = door ? dev.skycraft.world.SkyPets.company(sp) : java.util.List.<net.minecraft.world.entity.Mob>of();
 					if (target != null && target != sp.level()) {
 						// SkyCraft+ : interiors and other worldspaces have dimensions of their own.
 						dev.skycraft.world.SkyMinecraftWorlds.sentBySave = bySave;
@@ -600,6 +603,7 @@ public final class SkyClient {
 						sp.teleportTo(x, y, z);
 					}
 					sp.resetFallDistance();
+					dev.skycraft.world.SkyPets.bringAlong(sp, pets);
 				}
 			});
 		} else if (minecraft.level != null && dimension != minecraft.level.dimension() && dimensionCode(dimension) <= Proto.DIM_WORLDSPACES

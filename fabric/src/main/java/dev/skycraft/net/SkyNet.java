@@ -147,7 +147,9 @@ public final class SkyNet {
 		if (target == null || skyrimDimension(player.level().dimension()) == null || target == player.level() || !Double.isFinite(x + y + z)) {
 			return;
 		}
+		var pets = dev.skycraft.world.SkyPets.company(player);  // SkyCraft+ : pets come through the door too
 		player.teleportTo(target, x, y, z, java.util.Set.of(), yaw, pitch, true);
+		dev.skycraft.world.SkyPets.bringAlong(player, pets);
 		player.resetFallDistance();
 		SkyCraft.LOG.info("SkyCraft: {} into {}", player.getName().getString(), target.dimension().identifier());
 	}

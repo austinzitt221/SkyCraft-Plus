@@ -260,7 +260,8 @@ public final class SkyInteriors {
 		List<net.minecraft.world.entity.Entity> leaving = new ArrayList<>();
 		for (net.minecraft.world.entity.Entity e : level.getAllEntities()) {
 			if (e == null || !e.isAlive() || e.getVehicle() != null || e instanceof net.minecraft.world.entity.player.Player
-				|| e instanceof dev.skycraft.combat.SkyrimActorEntity || e.getSelfAndPassengers().anyMatch(p -> p instanceof net.minecraft.world.entity.player.Player)) {
+				|| e instanceof dev.skycraft.combat.SkyrimActorEntity || e.getSelfAndPassengers().anyMatch(p -> p instanceof net.minecraft.world.entity.player.Player)
+				|| SkyPets.travelling(e)) {  // (SkyCraft+ : pets that just came along with their player are its company)
 				continue;
 			}
 			var out = net.minecraft.world.level.storage.TagValueOutput.createWithContext(net.minecraft.util.ProblemReporter.DISCARDING, level.registryAccess());
