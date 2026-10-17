@@ -861,9 +861,32 @@ final class AvatarExporter implements SubmitNodeCollector {
 				batch = this.batch(id, UV_RAW, flags);
 			}
 			this.capture.begin(batch);
+			int before = batch.count;
 			particles.buildLayer(layer, this.capture);
 			this.capture.flush();
+			logParticleLight(batch, before);
 		}
+	}
+
+	// SkyCraft+ : what light particles come with, against the light where the player is (testing the
+	// bright flash of block-breaking particles in Minecraft's light underground). Once in 5 s at most.
+	private static long particleLogAt;
+
+	private static void logParticleLight(Batch batch, int from) {
+		long now = System.nanoTime();
+		if (batch.count <= from || now - particleLogAt < 5_000_000_000L) {
+			return;
+		}
+		Minecraft minecraft = Minecraft.getInstance();
+		if (minecraft.player == null || minecraft.level == null) {
+			return;
+		}
+		particleLogAt = now;
+		int light = batch.data[from * 8 + 6];
+		var at = minecraft.player.blockPosition();
+		SkyCraft.LOG.info("SkyCraft: particles lit block {} sky {}; the player's cell block {} sky {}, the cell above {}/{}", light & 0xF, (light >> 8) & 0xF,
+			minecraft.level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, at), minecraft.level.getBrightness(net.minecraft.world.level.LightLayer.SKY, at),
+			minecraft.level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, at.above(2)), minecraft.level.getBrightness(net.minecraft.world.level.LightLayer.SKY, at.above(2)));
 	}
 
 	@Override
