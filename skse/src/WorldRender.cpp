@@ -51,7 +51,8 @@ cbuffer Frame : register(b0)
 	row_major float4x4 prevViewProj;   // last frame's camera, re-based on this frame's (motion vectors)
 	float4 shadowParams;          // x: sun shadows on, y: normal offset (units), z: shadow map texel (uv), w: depth bias
 	float4 shadowExtra;           // x: Skyrim's shadow mask usable, y: squared reach of the shadow map (units)
-	float4 renderMode;            // x: into Skyrim's HDR scene (Skyrim tone maps and grades), y: Skyrim's depth buffer occludes
+	float4 renderMode;            // x: into Skyrim's HDR scene (Skyrim tone maps and grades), y: Skyrim's depth buffer occludes,
+	                              // z: Minecraft's own light instead of Skyrim's (underground), w: Minecraft's sky brightness
 	float4 camRight;              // camera axes (Skyrim world), for view-space normals
 	float4 camUp;
 	float4 camForward;
@@ -205,6 +206,19 @@ float SkyrimSunShadow(float3 rel, float3 n, float viewZ)
 	return lerp(lit / 9.0, 1.0, saturate((viewZ - end * 0.85) / (end * 0.15)));  // fade out at the far end
 }
 
+// SkyCraft+ : Minecraft's own light underground. Its lightmap as at its default brightness: block
+// light warm and boosted as its flicker does, the sky's by the time of day (renderMode.w), the
+// brightness option's curve and the faint floor that keeps a cave from going pitch black.
+float3 McLight(float2 l)
+{
+	float  block = saturate(Curve(l.x) * 1.5);
+	float  sky = Curve(l.y) * renderMode.w;
+	float3 c = float3(block, block * ((block * 0.6 + 0.4) * 0.6 + 0.4), block * (block * block * 0.6 + 0.4));
+	c = lerp(saturate(c + sky), float3(0.75, 0.75, 0.75), 0.04);
+	float3 bright = 1.0 - (1.0 - c) * (1.0 - c) * (1.0 - c) * (1.0 - c);
+	return lerp(lerp(c, bright, 0.5), float3(0.75, 0.75, 0.75), 0.04);
+}
+
 // Skyrim's lights on a Minecraft surface. Minecraft's sky light still darkens what Minecraft
 // blocks roof over, and its block light (torches, glowstone) still glows.
 float3 Lighting(VSOut i, float3 n, bool hasNormal, float sunVisible)
@@ -223,7 +237,8 @@ float3 Lighting(VSOut i, float3 n, bool hasNormal, float sunVisible)
 	}
 	lit = renderMode.x > 0.5 ? max(lit, 0.0) : 1.0 - exp(-max(lit, 0.0) * sunDir.w);
 	float block = Curve(i.light.x);
-	return max(lit, block * float3(1.0, 0.85, 0.65));
+	float3 skyrim = max(lit, block * float3(1.0, 0.85, 0.65));
+	return renderMode.z > 0.0 ? lerp(skyrim, McLight(i.light), renderMode.z) : skyrim;  // SkyCraft+
 }
 
 // Soft contact shadows under Minecraft players and mobs (their bodies are drawn after Skyrim's own
@@ -2640,6 +2655,21 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			fc.screen[1] = 1.0f / float(a_t.height);
 			fc.renderMode[0] = a_t.hdr ? 1.0f : 0.0f;
 			fc.renderMode[1] = a_t.skyrimDepth ? 1.0f : 0.0f;
+			{
+				// SkyCraft+ : Minecraft's own light underground (and inside Skyrim's walls), faded in and out.
+				static float mcLight = 0.0f;
+				static auto  last = std::chrono::steady_clock::now();
+				const auto   now = std::chrono::steady_clock::now();
+				const float  dt = std::min(0.1f, std::chrono::duration<float>(now - last).count());
+				last = now;
+				const float want = State().minecraftLightUnderground && State().playerUnderLand && !State().parked ? 1.0f : 0.0f;
+				mcLight += std::clamp(want - mcLight, -dt * 1.5f, dt * 1.5f);
+				fc.renderMode[2] = mcLight;
+				// Minecraft's sky: full by day, a fifth at night, dawn and dusk between (Skyrim's hour).
+				const float hour = RE::Calendar::GetSingleton() ? RE::Calendar::GetSingleton()->GetHour() : 12.0f;
+				const float day = std::clamp(std::cos((hour - 12.0f) / 24.0f * 6.2831853f) * 2.0f + 0.5f, 0.0f, 1.0f);
+				fc.renderMode[3] = 0.2f + 0.8f * day;
+			}
 			const auto& R = a_camera->world.rotate;  // columns: forward, up, right
 			Set4(fc.camForward, R.entry[0][0], R.entry[1][0], R.entry[2][0], 0.0f);
 			Set4(fc.camUp, R.entry[0][1], R.entry[1][1], R.entry[2][1], 0.0f);

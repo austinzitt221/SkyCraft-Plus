@@ -83,6 +83,8 @@ namespace skycraft
 		std::atomic<bool>          playerUnderLand{ false };
 		// SkyCraft+ : performance. Deep down, Skyrim's world isn't drawn ([Worlds] bHideWorldDeep).
 		bool                       hideWorldDeepOption{ true };
+		// SkyCraft+ : underground, Minecraft blocks lit as in Minecraft ([Worlds] bMinecraftLightUnderground).
+		bool                       minecraftLightUnderground{ true };
 
 		// Look direction in MC degrees; integrated from raw mouse input (main thread).
 		float yaw{ 0.0f };
