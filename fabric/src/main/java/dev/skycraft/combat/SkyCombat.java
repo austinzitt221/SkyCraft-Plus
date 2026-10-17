@@ -200,6 +200,45 @@ public final class SkyCombat {
 		}
 	}
 
+	// SkyCraft+ : leads on Skyrim actors. What Skyrim was last told of each proxy's lead: 0 none, 1 the
+	// host's, 2 a fence post (with where).
+	private static final Map<Integer, Long> LEADS = new HashMap<>();
+
+	private static void syncLeads(ServerLevel level) {
+		ServerPlayer host = null;
+		for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
+			if (dev.skycraft.net.SkyNet.isHost(player)) {
+				host = player;
+			}
+		}
+		for (SkyrimActorEntity proxy : PROXIES.values()) {
+			Entity holder = proxy.getLeashHolder();
+			int mode = holder == null ? 0 : holder == host ? 1 : holder instanceof net.minecraft.world.entity.decoration.LeashFenceKnotEntity ? 2 : 0;
+			long key = mode == 2 ? 2L | (holder.blockPosition().asLong() << 2) : mode;
+			Long was = LEADS.get(proxy.formId());
+			if (was != null && was == key || was == null && mode == 0) {
+				continue;
+			}
+			LEADS.put(proxy.formId(), key);
+			float x = mode == 2 ? (float) holder.getX() : 0.0F, y = mode == 2 ? (float) holder.getY() : 0.0F, z = mode == 2 ? (float) holder.getZ() : 0.0F;
+			SkyLink.pushEvent(Proto.EV_LEASH, proxy.formId(), x, y, z, 0.0F, mode);
+			SkyLink.Actor actor = actorById(proxy.formId());
+			if (mode == 1 && host != null && actor != null && (actor.flags() & Proto.ACTOR_QUEST) != 0 && (was == null || was != 2)) {
+				host.sendSystemMessage(Component.literal("Careful: " + proxy.getName().getString()
+					+ " is in a quest. Leading quest characters away can break quests.").withStyle(net.minecraft.ChatFormatting.YELLOW));
+			}
+		}
+	}
+
+	private static SkyLink.@org.jspecify.annotations.Nullable Actor actorById(int formId) {
+		for (SkyLink.Actor a : ACTORS) {
+			if (a.formId() == formId) {
+				return a;
+			}
+		}
+		return null;
+	}
+
 	private static void sync(ServerLevel level) {
 		Map<Integer, SkyLink.Actor> live = new HashMap<>();
 		for (SkyLink.Actor a : ACTORS) {
@@ -230,6 +269,15 @@ public final class SkyCombat {
 					continue;
 				}
 				PROXIES.put(a.formId(), proxy);
+				// SkyCraft+ : on the player's lead in Skyrim (it came through a door with them): on it here too.
+				if ((a.flags() & Proto.ACTOR_LEASHED) != 0) {
+					for (ServerPlayer player : level.getServer().getPlayerList().getPlayers()) {
+						if (dev.skycraft.net.SkyNet.isHost(player) && player.level() == level) {
+							proxy.setLeashedTo(player, true);
+							LEADS.put(a.formId(), 1L);
+						}
+					}
+				}
 				continue;
 			}
 			proxy.setSize(a.width(), a.height());
@@ -238,6 +286,7 @@ public final class SkyCombat {
 			proxy.setYHeadRot(a.yaw());
 			stepOnTriggers(level, proxy);
 		}
+		syncLeads(level);  // SkyCraft+
 		if (PROXIES.size() != before && (PROXIES.size() % 5 == 0 || PROXIES.size() < 5)) {
 			SkyCraft.LOG.info("SkyCraft: {} Skyrim actors mirrored as hittable stand-ins", PROXIES.size());
 		}

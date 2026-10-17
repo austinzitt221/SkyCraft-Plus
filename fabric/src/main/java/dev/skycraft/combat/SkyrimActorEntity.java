@@ -25,7 +25,9 @@ import org.jspecify.annotations.Nullable;
  * enchantments, attack cooldown, bows, tridents) can target and hit Skyrim NPCs. What it receives is
  * collected into one hit per tick and forwarded to the real actor; its own health never drops.
  */
-public class SkyrimActorEntity extends LivingEntity {
+public class SkyrimActorEntity extends LivingEntity implements net.minecraft.world.entity.Leashable {
+	// SkyCraft+ : leads on Skyrim actors. Its lead (SkyCombat tells Skyrim, which walks the actor along).
+	private net.minecraft.world.entity.Leashable.@Nullable LeashData leashData;
 	private static final EntityDataAccessor<Integer> FORM_ID = SynchedEntityData.defineId(SkyrimActorEntity.class, EntityDataSerializers.INT);
 	private static final EntityDataAccessor<Float> WIDTH = SynchedEntityData.defineId(SkyrimActorEntity.class, EntityDataSerializers.FLOAT);
 	private static final EntityDataAccessor<Float> HEIGHT = SynchedEntityData.defineId(SkyrimActorEntity.class, EntityDataSerializers.FLOAT);
@@ -45,6 +47,28 @@ public class SkyrimActorEntity extends LivingEntity {
 		this.noPhysics = true;
 		this.setInvisible(true);
 		this.setSilent(true);
+	}
+
+	@Override
+	public net.minecraft.world.entity.Leashable.@Nullable LeashData getLeashData() {
+		return this.leashData;
+	}
+
+	@Override
+	public void setLeashData(net.minecraft.world.entity.Leashable.@Nullable LeashData leashData) {
+		this.leashData = leashData;
+	}
+
+	/** Skyrim walks the actor after the lead; it may lag a little behind before it catches up. */
+	@Override
+	public double leashSnapDistance() {
+		return 32.0;
+	}
+
+	/** It goes where Skyrim's actor goes: no pull of Minecraft's own (Skyrim does the walking). */
+	@Override
+	public boolean checkElasticInteractions(Entity leashHolder, net.minecraft.world.entity.Leashable.LeashData leashData) {
+		return false;
 	}
 
 	public int formId() {

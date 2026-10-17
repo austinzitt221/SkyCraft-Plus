@@ -357,7 +357,8 @@ namespace skycraft
 				proto::ActorRecord r{};
 				r.formId = actor->GetFormID();
 				r.flags = (actor->IsHostileToActor(a_player) ? proto::kActorHostile : 0u) | (actor->IsDead() ? proto::kActorDead : 0u) |
-				          (actor->IsEssential() ? proto::kActorEssential : 0u) | (actor->IsInCombat() ? proto::kActorInCombat : 0u);
+				          (actor->IsEssential() ? proto::kActorEssential : 0u) | (actor->IsInCombat() ? proto::kActorInCombat : 0u) |
+				          (Animals::InQuest(actor) ? proto::kActorQuest : 0u) | (Animals::OnPlayersLead(actor->GetFormID()) ? proto::kActorLeashed : 0u);  // SkyCraft+
 				const auto mc = SkyToMc(pos);
 				r.x = static_cast<float>(mc.x);
 				r.y = static_cast<float>(mc.y);
@@ -1167,6 +1168,9 @@ namespace skycraft
 					break;
 				case proto::kEvDragonSoul:
 					GiveDragonSoul(a_player);  // SkyCraft+
+					break;
+				case proto::kEvLeash:
+					Animals::OnLeash(a_player, ev.formId, ev.flags, ev.a, ev.b, ev.c);  // SkyCraft+
 					break;
 				case proto::kEvMinedOre:
 					Dig::GiveMinedOre(a_player, ev.a, ev.b, ev.c);  // SkyCraft+

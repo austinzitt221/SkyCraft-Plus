@@ -319,7 +319,7 @@ final class AvatarExporter implements SubmitNodeCollector {
 		for (Entity e : level.entitiesForRendering()) {
 			boolean big = e instanceof EnderDragon || e instanceof EndCrystal || e instanceof WitherBoss || e instanceof Ghast || e instanceof HappyGhast;
 			double range = big ? FAR_SCENE_RANGE : SCENE_RANGE;
-			if (e == player || e instanceof ItemEntity || e instanceof AbstractArrow || e instanceof ItemSupplier || e instanceof SkyrimActorEntity
+			if (e == player || e instanceof ItemEntity || e instanceof AbstractArrow || e instanceof ItemSupplier || (e instanceof SkyrimActorEntity proxy && !proxy.isLeashed())
 				|| e.distanceToSqr(cam) > range * range) {
 				continue;
 			}
@@ -996,8 +996,50 @@ final class AvatarExporter implements SubmitNodeCollector {
 	public void submitFlame(PoseStack poseStack, EntityRenderState renderState, Quaternionf rotation) {
 	}
 
+	/**
+	 * SkyCraft+ : leads drawn in Skyrim (on Minecraft's animals and on Skyrim's own). Minecraft's
+	 * rope: two crossed strips of 24 steps sagging between the two ends, in its two browns, here as
+	 * quads, untextured and shaded by Minecraft's light along it.
+	 */
 	@Override
 	public void submitLeash(PoseStack poseStack, EntityRenderState.LeashState leashState) {
+		Batch batch = this.batch(0, UV_RAW, 4);  // kFlagUntextured
+		this.capture.begin(batch);
+		org.joml.Matrix4f pose = new org.joml.Matrix4f(poseStack.last().pose());
+		pose.translate((float) leashState.offset.x, (float) leashState.offset.y, (float) leashState.offset.z);
+		float dx = (float) (leashState.end.x - leashState.start.x);
+		float dy = (float) (leashState.end.y - leashState.start.y);
+		float dz = (float) (leashState.end.z - leashState.start.z);
+		float off = net.minecraft.util.Mth.invSqrt(dx * dx + dz * dz) * 0.05F / 2.0F;
+		float dxOff = dz * off, dzOff = dx * off;
+		for (int strip = 0; strip < 2; strip++) {
+			float fudge = strip == 0 ? 0.05F : 0.0F;
+			for (int k = 0; k < 24; k++) {
+				float[][] pair0 = leashPair(dx, dy, dz, fudge, dxOff, dzOff, k, leashState);
+				float[][] pair1 = leashPair(dx, dy, dz, fudge, dxOff, dzOff, k + 1, leashState);
+				int color = leashColor(k, strip == 1, leashState);
+				for (float[] v : new float[][] { pair0[0], pair0[1], pair1[1], pair1[0] }) {
+					this.capture.addVertex(pose, v[0], v[1], v[2]).setColor(color).setLight(0xF000F0);
+				}
+			}
+		}
+		this.capture.flush();
+	}
+
+	private static float[][] leashPair(float dx, float dy, float dz, float fudge, float dxOff, float dzOff, int k, EntityRenderState.LeashState state) {
+		float progress = k / 24.0F;
+		float y = state.slack ? (dy > 0.0F ? dy * progress * progress : dy - dy * (1.0F - progress) * (1.0F - progress)) : dy * progress;
+		float x = dx * progress, z = dz * progress;
+		return new float[][] { { x - dxOff, y + fudge, z + dzOff }, { x + dxOff, y + 0.05F - fudge, z - dzOff } };
+	}
+
+	private static int leashColor(int k, boolean backwards, EntityRenderState.LeashState state) {
+		float progress = k / 24.0F;
+		float light = Math.max(net.minecraft.util.Mth.lerp(progress, state.startBlockLight, state.endBlockLight),
+			net.minecraft.util.Mth.lerp(progress, state.startSkyLight, state.endSkyLight)) / 15.0F;
+		float shade = (k % 2 == (backwards ? 1 : 0) ? 0.7F : 1.0F) * (0.15F + 0.85F * light);
+		int r = (int) (0.5F * shade * 255.0F), g = (int) (0.4F * shade * 255.0F), b = (int) (0.3F * shade * 255.0F);
+		return 0xFF000000 | (r << 16) | (g << 8) | b;
 	}
 
 	@Override

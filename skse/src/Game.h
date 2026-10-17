@@ -302,6 +302,11 @@ namespace skycraft
 		// Skyrim's own KeepOffsetFromActor / ClearKeepOffsetFromActor on an actor.
 		void Follow(RE::Actor* a_actor, RE::Actor* a_target, float a_offsetX, float a_offsetY);
 		void LetGo(RE::Actor* a_actor);
+		// A Minecraft lead on this actor (kEvLeash): 0 off, 1 the player's, 2 a fence post at this Minecraft spot.
+		void OnLeash(RE::PlayerCharacter* a_player, RE::FormID a_actor, std::uint32_t a_mode, double a_x, double a_y, double a_z);
+		bool OnPlayersLead(RE::FormID a_actor);
+		// In a quest (an alias), essential or protected: leading it can break quests.
+		bool InQuest(RE::Actor* a_actor);
 	}
 
 	// SkyCraft+ : footsteps.
