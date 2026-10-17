@@ -378,6 +378,7 @@ public final class SkyLink {
 		public float healthFrac;
 		public int dimension; // Proto.DIM_*
 		public int hands; // SkyCraft+ : hand mixing (Proto.MS_HANDS)
+		public int heldFood; // SkyCraft+ : Skyrim animals follow food (Proto.FOOD_*)
 		public int cursorSeq, cursorX, cursorY; // SkyCraft+ : controller inventory snapping
 	}
 
@@ -426,6 +427,7 @@ public final class SkyLink {
 		s.set(JAVA_FLOAT, b + MS_HEALTH_FRAC, st.healthFrac);
 		s.set(JAVA_INT, b + MS_DIMENSION, st.dimension);
 		s.set(JAVA_INT, b + MS_HANDS, st.hands);
+		s.set(JAVA_INT, b + MS_HELD_FOOD, st.heldFood);
 		s.set(JAVA_INT, b + MS_CURSOR_SEQ, st.cursorSeq);
 		s.set(JAVA_INT, b + MS_CURSOR_X, st.cursorX);
 		s.set(JAVA_INT, b + MS_CURSOR_Y, st.cursorY);

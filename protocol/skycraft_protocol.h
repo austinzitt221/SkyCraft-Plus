@@ -253,8 +253,25 @@ namespace skycraft::proto
 		// kInSlotJump): cursorSeq counts the moves, cursorX/Y is where it went (overlay pixels).
 		std::uint32_t cursorSeq;
 		std::int32_t  cursorX, cursorY;
+		// SkyCraft+ : Skyrim animals follow food (v44). What the player holds that tempts animals
+		// (HeldFood bits, either hand): Skyrim's animals that like it follow, as Minecraft's do.
+		std::uint32_t heldFood;
+		std::uint32_t padE4;
 	};
-	static_assert(sizeof(McState) == 0xE0);
+	static_assert(sizeof(McState) == 0xE8);
+
+	// SkyCraft+ : McState::heldFood.
+	enum HeldFood : std::uint32_t
+	{
+		kFoodSeeds = 1u << 0,     // chickens
+		kFoodWheat = 1u << 1,     // cows, goats, deer, elk
+		kFoodCarrot = 1u << 2,    // hares (and golden carrots: horses)
+		kFoodApple = 1u << 3,     // horses (apples, golden apples, golden carrots)
+		kFoodBerries = 1u << 4,   // foxes
+		kFoodMeat = 1u << 5,      // dogs (bones and meat)
+		kFoodFish = 1u << 6,      // mudcrabs
+		kFoodBeetroot = 1u << 7,  // boars
+	};
 	static_assert(sizeof(McState) <= 0x100);
 
 	// ---- overlay triple buffer @0x300 --------------------------------------------------------

@@ -401,6 +401,39 @@ public final class SkyClient {
 	}
 
 	/** One health pool: back in Minecraft's hands, the player keeps Skyrim's share of their health. */
+	/** SkyCraft+ : Skyrim animals follow food. What this held thing tempts (Proto.FOOD_*), as Minecraft's own animals are tempted. */
+	private static int heldFood(net.minecraft.world.item.ItemStack stack) {
+		if (stack.isEmpty()) {
+			return 0;
+		}
+		var item = stack.getItem();
+		if (stack.is(net.minecraft.tags.ItemTags.CHICKEN_FOOD)) {
+			return Proto.FOOD_SEEDS;
+		}
+		if (item == net.minecraft.world.item.Items.WHEAT) {
+			return Proto.FOOD_WHEAT;
+		}
+		if (item == net.minecraft.world.item.Items.CARROT || item == net.minecraft.world.item.Items.DANDELION) {
+			return Proto.FOOD_CARROT;
+		}
+		if (item == net.minecraft.world.item.Items.GOLDEN_CARROT) {
+			return Proto.FOOD_CARROT | Proto.FOOD_APPLE;
+		}
+		if (item == net.minecraft.world.item.Items.APPLE || item == net.minecraft.world.item.Items.GOLDEN_APPLE) {
+			return Proto.FOOD_APPLE;
+		}
+		if (item == net.minecraft.world.item.Items.SWEET_BERRIES || item == net.minecraft.world.item.Items.GLOW_BERRIES) {
+			return Proto.FOOD_BERRIES;
+		}
+		if (item == net.minecraft.world.item.Items.BONE || stack.is(net.minecraft.tags.ItemTags.MEAT)) {
+			return Proto.FOOD_MEAT;
+		}
+		if (stack.is(net.minecraft.tags.ItemTags.FISHES)) {
+			return Proto.FOOD_FISH;
+		}
+		return item == net.minecraft.world.item.Items.BEETROOT ? Proto.FOOD_BEETROOT : 0;
+	}
+
 	private static void takeSkyrimHealth(Minecraft minecraft, float fraction) {
 		if (fraction > 0.0F) {
 			act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.SET_HEALTH, 0, Math.min(fraction, 1.0F), 0.0F));
@@ -673,6 +706,7 @@ public final class SkyClient {
 			mc.healthFrac = player.getMaxHealth() > 0.0F ? Math.clamp(player.getHealth() / player.getMaxHealth(), 0.0F, 1.0F) : 0.0F;
 			mc.dimension = dimensionCode(minecraft.level.dimension());
 			mc.hands = handsCode(minecraft, player);  // SkyCraft+ : hand mixing
+			mc.heldFood = heldFood(player.getMainHandItem()) | heldFood(player.getOffhandItem());  // SkyCraft+ : Skyrim animals follow food
 		}
 		if (minecraft.gui.screen() != null) {
 			flags |= Proto.MC_SCREEN_OPEN;

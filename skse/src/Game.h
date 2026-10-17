@@ -74,6 +74,8 @@ namespace skycraft
 		bool                       ridingAsMinecraft{ false };  // this frame: Minecraft's body in the saddle
 		// SkyCraft+ : Skyrim footsteps for Minecraft's walking ([Controls] bMinecraftFootsteps).
 		bool                       minecraftFootsteps{ true };
+		// SkyCraft+ : Skyrim animals follow Minecraft food ([Controls] bAnimalsFollowFood).
+		bool                       animalsFollowFood{ true };
 		// SkyCraft+ : hunger points Skyrim food and stamina potions gave (SkyState::fed; [Combat] bSkyrimFoodFeeds).
 		std::atomic<std::uint32_t> fedPoints{ 0 };
 		bool                       skyrimFoodFeeds{ true };
@@ -290,6 +292,16 @@ namespace skycraft
 		void PerFrame();
 		// Present: draws them and hands the pictures to Minecraft.
 		void Draw(ID3D11Device* a_device, ID3D11DeviceContext* a_context);
+	}
+
+	// SkyCraft+ : Skyrim animals and Minecraft's ways with animals.
+	namespace Animals
+	{
+		// Main thread, every frame: Skyrim's animals that like the food held follow (McState::heldFood).
+		void PerFrame(RE::PlayerCharacter* a_player, std::uint32_t a_heldFood, bool a_driving, float a_delta);
+		// Skyrim's own KeepOffsetFromActor / ClearKeepOffsetFromActor on an actor.
+		void Follow(RE::Actor* a_actor, RE::Actor* a_target, float a_offsetX, float a_offsetY);
+		void LetGo(RE::Actor* a_actor);
 	}
 
 	// SkyCraft+ : footsteps.
