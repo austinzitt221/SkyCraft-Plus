@@ -55,6 +55,7 @@ namespace skycraft
 		// SkyCraft+ : controller inventory snapping. bControllerSlots: in a screen with item slots the
 		// D-pad and left stick jump slot to slot.
 		bool padSlots = true;
+		bool activateInView = true;  // SkyCraft+ : G with no Skyrim crosshair target
 
 		// "Tab", "I", "F1", "0x0F" -> DirectInput scan code, or 0 if unknown.
 		std::uint32_t DikFromName(std::string a_name)
@@ -129,6 +130,8 @@ namespace skycraft
 
 			State().skyrimHandsOption = ini.GetBoolValue("Controls", "bSkyrimHands", false);
 			logger::info("Skyrim hands (equip Skyrim gear in a Minecraft hand): {}", State().skyrimHandsOption ? "on" : "off");
+			State().rideAsMinecraft = ini.GetBoolValue("Controls", "bRideAsMinecraft", true);  // SkyCraft+
+			logger::info("riding Skyrim's horses: {}", State().rideAsMinecraft ? "as Minecraft's player" : "as Skyrim's");
 
 			// SkyCraft+ : the Nether and the End.
 			State().minecraftWorldsOption = ini.GetBoolValue("Worlds", "bMinecraftWorlds", true);
@@ -167,6 +170,8 @@ namespace skycraft
 			State().mcDamagePerLevel = std::max(0.0f, static_cast<float>(ini.GetDoubleValue("Combat", "fMinecraftDamagePerLevel", 0.125)));
 			State().skyrimVsMinecraft = std::max(0.0f, static_cast<float>(ini.GetDoubleValue("Combat", "fSkyrimWeaponsVsMinecraft", 1.5)));
 			State().minecraftHitsObjects = ini.GetBoolValue("Combat", "bMinecraftHitsObjects", true);
+			State().enderDragonSoul = ini.GetBoolValue("Worlds", "bEnderDragonSoul", true);
+			logger::info("the Ender Dragon gives a dragon soul: {}", State().enderDragonSoul ? "on" : "off");
 			logger::info("damage: Minecraft hits on Skyrim's actors x({:.2f} + {:.3f} per level), Skyrim weapons on Minecraft's mobs x{:.2f}", State().mcDamageBase,
 				State().mcDamagePerLevel, State().skyrimVsMinecraft);
 			logger::info("Minecraft's structures on Skyrim's map: {}", State().structureMarkersOption ? "on" : "off");
@@ -177,6 +182,7 @@ namespace skycraft
 			logger::info("controller in Minecraft mode: {}", padEnabled ? "on (right stick click switches modes)" : "off");
 			padSlots = ini.GetBoolValue("Controls", "bControllerSlots", true);
 			logger::info("controller in Minecraft's inventories: {}", padSlots ? "jumps slot to slot (left stick, D-pad)" : "a free cursor");
+			activateInView = ini.GetBoolValue("Controls", "bActivateInView", true);
 
 			const std::string toggle = ini.GetValue("Controls", "sModeToggleKey", "");
 			if (!toggle.empty()) {
@@ -201,6 +207,70 @@ namespace skycraft
 		float lookDx = 0.0f;
 		float lookDy = 0.0f;
 
+		// SkyCraft+ : Skyrim's opening. After the escape from the block Skyrim's crosshair found
+		// nothing (no prompt) even facing Helgen Keep's door, and the way on was shut. With no target
+		// of Skyrim's, G takes the nearest door, NPC, container, activator, furniture, plant or item
+		// along Minecraft's look within reach. Setting: bActivateInView in [Controls].
+		RE::TESObjectREFR* NearestActivatableInView(RE::PlayerCharacter* a_player)
+		{
+			proto::McState mc{};
+			auto*          tes = RE::TES::GetSingleton();
+			if (!tes || !Link::Get().ReadMcState(mc)) {
+				return nullptr;
+			}
+			constexpr double kDeg = 3.14159265358979 / 180.0;
+			const double     yaw = mc.yaw * kDeg, pitch = mc.pitch * kDeg;
+			const double     lx = -std::sin(yaw) * std::cos(pitch), ly = -std::sin(pitch), lz = std::cos(yaw) * std::cos(pitch);
+			const RE::NiPoint3 eye = McToSky(mc.eyeX, mc.eyeY, mc.eyeZ);
+			RE::NiPoint3       dir = McToSky(mc.eyeX + lx, mc.eyeY + ly, mc.eyeZ + lz) - eye;
+			if (dir.Length() < 1e-3f) {
+				return nullptr;
+			}
+			dir /= dir.Length();
+			constexpr float    kReach = 3.0f * float(proto::kUnitsPerBlock);
+			RE::TESObjectREFR* best = nullptr;
+			float              bestAlong = std::numeric_limits<float>::max();
+			tes->ForEachReferenceInRange(a_player, kReach + 400.0f, [&](RE::TESObjectREFR* a_ref) {
+				if (!a_ref || a_ref == a_player || a_ref->IsDisabled() || a_ref->IsDeleted() || !a_ref->Is3DLoaded()) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				auto* base = a_ref->GetBaseObject();
+				if (!base) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				switch (base->GetFormType()) {
+				case RE::FormType::Door:
+				case RE::FormType::Container:
+				case RE::FormType::Activator:
+				case RE::FormType::TalkingActivator:
+				case RE::FormType::Furniture:
+				case RE::FormType::Flora:
+				case RE::FormType::NPC:
+					break;
+				default:
+					if (!base->IsInventoryObject()) {
+						return RE::BSContainer::ForEachResult::kContinue;
+					}
+				}
+				auto* root3D = a_ref->Get3D();
+				if (!root3D) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				const auto&        bound = root3D->worldBound;
+				const RE::NiPoint3 to = bound.center - eye;
+				const float        along = to.Dot(dir);
+				const RE::NiPoint3 side = to - dir * along;
+				const float        radius = std::max(bound.radius, 20.0f);
+				if (along < -radius || along - radius > kReach || side.Length() > radius * 0.8f + 15.0f || along >= bestAlong) {
+					return RE::BSContainer::ForEachResult::kContinue;
+				}
+				best = a_ref;
+				bestAlong = along;
+				return RE::BSContainer::ForEachResult::kContinue;
+			});
+			return best;
+		}
+
 		// G on something Skyrim can activate (door, NPC, container, item, furniture) activates it in
 		// Skyrim. Furniture (chairs, beds, crafting stations, pull-bar levers) hands the player to
 		// Skyrim while it's used (Game.cpp, SkyrimTakeover).
@@ -213,11 +283,27 @@ namespace skycraft
 			}
 			auto target = pick->GetActiveTarget().get();
 			if (!target || target.get() == player) {
+				if (auto* inView = activateInView ? NearestActivatableInView(player) : nullptr) {
+					inView->ActivateRef(player, 0, nullptr, 1, false);
+					logger::info("activated {:08X} ({}): in view, Skyrim's crosshair had no target", inView->GetFormID(), inView->GetDisplayFullName());
+					return;
+				}
 				logger::info("G: nothing to activate under the crosshair");
 				return;
 			}
-			target->ActivateRef(player, 0, nullptr, 0, false);
-			logger::info("activated {:08X} ({})", target->GetFormID(), target->GetDisplayFullName());
+			// SkyCraft+ : items off the floor and shelves. A target count of 0 took the item out of the
+			// world and gave the player none of it; 1 is what Papyrus's Activate passes.
+			auto* item = target->GetBaseObject();
+			const bool pickup = item && item->IsInventoryObject();
+			const auto before = pickup ? player->GetItemCount(item) : 0;
+			const auto name = std::string(target->GetDisplayFullName());
+			const auto id = target->GetFormID();
+			target->ActivateRef(player, 0, nullptr, 1, false);
+			if (pickup) {
+				logger::info("activated {:08X} ({}): the player has {} (had {})", id, name, player->GetItemCount(item), before);
+			} else {
+				logger::info("activated {:08X} ({})", id, name);
+			}
 		}
 
 		// SkyCraft+ : a right click with a Skyrim left hand goes to Minecraft when its crosshair is on

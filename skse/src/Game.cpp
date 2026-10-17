@@ -160,6 +160,35 @@ namespace skycraft
 			});
 		}
 
+		// SkyCraft+ : riding as Minecraft's player. Skyrim's third-person body is hidden on the horse
+		// (Minecraft's sits in the saddle instead). Like the first-person meshes above: only meshes,
+		// never nodes (the seat is read from the pelvis), checked every frame as equipping rebuilds them.
+		std::vector<RE::NiPointer<RE::BSGeometry>> hiddenRider;
+
+		void HideRiderMeshes(RE::PlayerCharacter* a_player, bool a_hide)
+		{
+			if (!a_hide) {
+				for (auto& mesh : hiddenRider) {
+					if (mesh && mesh->GetAppCulled()) {
+						mesh->SetAppCulled(false);
+					}
+				}
+				hiddenRider.clear();
+				return;
+			}
+			auto* root = a_player->Get3D(false);
+			if (!root) {
+				return;
+			}
+			RE::BSVisit::TraverseScenegraphGeometries(root, [&](RE::BSGeometry* a_mesh) {
+				if (!a_mesh->GetAppCulled()) {
+					a_mesh->SetAppCulled(true);
+					hiddenRider.emplace_back(a_mesh);
+				}
+				return RE::BSVisit::BSVisitControl::kContinue;
+			});
+		}
+
 		float AngleDeg(RE::NiPoint3 a_a, RE::NiPoint3 a_b)
 		{
 			const float la = a_a.Length(), lb = a_b.Length();
@@ -380,15 +409,37 @@ namespace skycraft
 			if (!a_hide && !hidden) {
 				return;
 			}
-			hidden = a_hide;
 			static constexpr const char* kCrosshair[] = {
 				"_root.HUDMovieBaseInstance.CrosshairInstance",
 				"_root.HUDMovieBaseInstance.CrosshairAlert",
 			};
+			// SkyCraft+ : Skyrim's opening. From the escape off the block on, Skyrim's crosshair showed
+			// over Minecraft's: its HUD shows it again between our frames. Its scripts set the
+			// crosshair's visibility and alpha but not its size, so it's shrunk to nothing as well
+			// (and given back the size it had).
+			static double scales[2][2] = { { 100.0, 100.0 }, { 100.0, 100.0 } };
+			static int    reshown = 0;
+			for (int i = 0; i < 2; ++i) {
+				const std::string path(kCrosshair[i]);
+				RE::GFxValue      value;
+				if (a_hide && !hidden) {
+					for (int axis = 0; axis < 2; ++axis) {
+						if (hud->uiMovie->GetVariable(&value, (path + (axis ? "._yscale" : "._xscale")).c_str()) && value.IsNumber() && value.GetNumber() > 0.0) {
+							scales[i][axis] = value.GetNumber();
+						}
+					}
+				} else if (a_hide && hud->uiMovie->GetVariable(&value, (path + "._visible").c_str()) && value.IsBool() && value.GetBool() && reshown++ < 10) {
+					logger::info("Skyrim's HUD showed its crosshair again ({})", path);
+				}
+			}
+			hidden = a_hide;
 			const RE::GFxValue visible(!a_hide), alpha(a_hide ? 0.0 : 100.0);
-			for (const auto* path : kCrosshair) {
-				hud->uiMovie->SetVariable((std::string(path) + "._visible").c_str(), visible);
-				hud->uiMovie->SetVariable((std::string(path) + "._alpha").c_str(), alpha);
+			for (int i = 0; i < 2; ++i) {
+				const std::string path(kCrosshair[i]);
+				hud->uiMovie->SetVariable((path + "._visible").c_str(), visible);
+				hud->uiMovie->SetVariable((path + "._alpha").c_str(), alpha);
+				hud->uiMovie->SetVariable((path + "._xscale").c_str(), RE::GFxValue(a_hide ? 0.0 : scales[i][0]));
+				hud->uiMovie->SetVariable((path + "._yscale").c_str(), RE::GFxValue(a_hide ? 0.0 : scales[i][1]));
 			}
 			hud->uiMovie->SetVariable("_root.HUDMovieBaseInstance.StealthMeterInstance._visible", RE::GFxValue(!a_hide || a_sneaking));
 		}
@@ -1345,6 +1396,7 @@ namespace skycraft
 			SkyrimShots::PerFrame(a_player, (puppet || skyrimDrives) && haveMc && st.mcInWorld, a_delta);
 			MinecraftEnemies::PerFrame(a_player, a_delta, st.parked, st.mcWorld, mc.x, mc.y, mc.z);  // SkyCraft+
 			MapMarkers::PerFrame(a_player, a_delta);  // SkyCraft+
+			SkyInventory::PerFrame(a_player, haveMc && (mc.flags & proto::kMcWantsSkyInventory) != 0, a_delta);  // SkyCraft+
 			if (haveMc && st.mcInWorld) {
 				MinecraftEnemies::StopShotsAtBlocks(a_player);  // SkyCraft+
 			}
@@ -1667,6 +1719,36 @@ namespace skycraft
 				}
 			}
 
+			// SkyCraft+ : riding as Minecraft's player. In Skyrim's third-person riding camera, Skyrim's
+			// body is hidden and Minecraft's (sent in its riding pose, facing the horse's way) is drawn
+			// in the saddle: its hips (12 of its 16ths of a block above its feet) on Skyrim's pelvis.
+			bool  rideAsMinecraft = false;
+			float riderYaw = st.yaw;
+			if (st.rideAsMinecraft && skyrimDrives && !st.skyrimMode && a_player->IsOnMount()) {
+				auto* camera = RE::PlayerCamera::GetSingleton();
+				auto* root = a_player->Get3D(false);
+				auto* pelvis = root ? root->GetObjectByName("NPC Pelvis [Pelv]") : nullptr;
+				if (camera && !camera->IsInFirstPerson() && pelvis) {
+					rideAsMinecraft = true;
+					RE::NiPoint3 seat = pelvis->world.translate;
+					seat.z -= static_cast<float>(proto::kUnitsPerBlock * 0.75);
+					const auto seatMc = SkyToMc(seat);
+					st.feetX = seatMc.x, st.feetY = seatMc.y, st.feetZ = seatMc.z;
+					st.feetValid = true;
+					RE::NiPointer<RE::Actor> mount;
+					const float heading = a_player->GetMount(mount) && mount ? mount->data.angle.z : a_player->data.angle.z;
+					riderYaw = std::fmod(HeadingToMcYaw(heading) + 360.0f, 360.0f);
+				}
+			}
+			if (rideAsMinecraft != st.ridingAsMinecraft) {
+				st.ridingAsMinecraft = rideAsMinecraft;
+				logger::info("riding: {}", rideAsMinecraft ? "Minecraft's player in the saddle, Skyrim's body hidden" : "stopped (or Skyrim's camera)");
+				if (!rideAsMinecraft) {
+					st.feetValid = false;
+				}
+			}
+			HideRiderMeshes(a_player, rideAsMinecraft);
+
 			captureTimer -= a_delta;
 			hudTimer -= a_delta;
 			if (hudTimer <= 0.0f || rightHand != hudRightHand || leftHand != hudLeftHand) {
@@ -1681,7 +1763,8 @@ namespace skycraft
 			sky.flags = (cell ? proto::kSkyInGame : 0u) | (menu ? proto::kSkyMenuOpen : 0u) | (loading ? proto::kSkyLoading : 0u) |
 			            (skyrimDrives ? proto::kSkyDrivesPlayer : 0u) | (rightHand ? proto::kSkyRightHandSkyrim : 0u) |
 			            (leftHand ? proto::kSkyLeftHandSkyrim : 0u) | ((puppet || skyrimDrives) && a_player->IsBlocking() ? proto::kSkyBlocking : 0u) |
-			            (st.parked ? proto::kSkyParked : 0u) | (bringingBack > 0.0f ? proto::kSkyBringBack : 0u);
+			            (st.parked ? proto::kSkyParked : 0u) | (bringingBack > 0.0f ? proto::kSkyBringBack : 0u) |
+			            (rideAsMinecraft ? proto::kSkyRiding : 0u);
 			static float         placeTimer = 0.0f;
 			static std::uint32_t placeFlags = 0;
 			static std::uint32_t placeWorld = 0;
@@ -1723,7 +1806,7 @@ namespace skycraft
 				sky.posY = savedY;
 				sky.posZ = savedZ;
 			}
-			sky.yaw = st.yaw;
+			sky.yaw = rideAsMinecraft ? riderYaw : st.yaw;  // SkyCraft+ : the rider faces the horse's way
 			sky.pitch = st.pitch;
 			sky.teleportSeq = teleportSeq;
 			sky.viewportW = static_cast<std::uint32_t>(st.viewportW.load());

@@ -24,6 +24,8 @@ public final class SkyCraft implements ModInitializer {
 		SkyCombat.init();
 		dev.skycraft.combat.SkyWeaponTools.init();
 		dev.skycraft.net.SkyNet.init();
+		dev.skycraft.net.SkyShortcuts.init(); // SkyCraft+ : Skyrim shortcuts
+		dev.skycraft.net.SkyStorage.init(); // SkyCraft+ : Skyrim items in Minecraft's containers
 		dev.skycraft.world.SkyDig.init();
 		dev.skycraft.world.SkySpawner.init();
 		dev.skycraft.combat.SkyMagic.init();
@@ -46,10 +48,30 @@ public final class SkyCraft implements ModInitializer {
 		});
 		ServerLifecycleEvents.SERVER_STARTED.register(SkyCraft::configureServer);
 		ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-			giveStarterKit(handler.getPlayer());
-			giveBuilderKit(handler.getPlayer());
+			if (starterKits()) {
+				giveStarterKit(handler.getPlayer());
+				giveBuilderKit(handler.getPlayer());
+			}
 			dressTestGuest(handler.getPlayer());
 		});
+	}
+
+	/**
+	 * SkyCraft+ : no starter kit. Minecraft's ores, trees and mobs are in Skyrim's world now, so a
+	 * new player starts empty-handed as in Minecraft. Setting: starterKit in config/skycraft.properties
+	 * (true gives upstream's kits again).
+	 */
+	private static boolean starterKits() {
+		java.util.Properties p = new java.util.Properties();
+		java.nio.file.Path config = net.fabricmc.loader.api.FabricLoader.getInstance().getConfigDir().resolve("skycraft.properties");
+		if (java.nio.file.Files.exists(config)) {
+			try (java.io.Reader in = java.nio.file.Files.newBufferedReader(config)) {
+				p.load(in);
+			} catch (java.io.IOException e) {
+				LOG.warn("SkyCraft: couldn't read {}: {}", config, e.toString());
+			}
+		}
+		return Boolean.parseBoolean(p.getProperty("starterKit", "false").trim());
 	}
 
 	/** The mirror world is a void that only exists to host the player; Skyrim drives time and spawning. */

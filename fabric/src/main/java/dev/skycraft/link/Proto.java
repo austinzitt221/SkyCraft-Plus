@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 35;
+	public static final int VERSION = 41;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -42,7 +42,39 @@ public final class Proto {
 		SHOT_FIRE = 1 << 8, SHOT_FROST = 1 << 9, SHOT_SHOCK = 1 << 10, SHOT_PUSH = 1 << 11;
 	public static final long OFF_RENDER_RING = OFF_OVERLAY_PIXELS + OVERLAY_SLOT_BYTES * OVERLAY_SLOTS;
 	public static final long RENDER_RING_BYTES = 64L << 20;
-	public static final long MAPPING_BYTES = OFF_RENDER_RING + RENDER_RING_BYTES;
+	// SkyCraft+ : v35, Skyrim's inventory (Skyrim -> MC, seqlock), see SkyInventory
+	public static final long OFF_SKY_INVENTORY = OFF_RENDER_RING + RENDER_RING_BYTES;
+	public static final long SKY_INVENTORY_BYTES = 1L << 20;
+	// SkyCraft+ : v37, Skyrim's item pictures (Skyrim -> MC), see SkyIcons
+	public static final long OFF_SKY_ICONS = OFF_SKY_INVENTORY + SKY_INVENTORY_BYTES;
+	public static final long SKY_ICONS_BYTES = 17L << 20;
+	// SkyCraft+ : v41, Skyrim items in Minecraft's containers (both ways), see SkyStoreRequest
+	public static final long OFF_SKY_STORE = OFF_SKY_ICONS + SKY_ICONS_BYTES;
+	public static final long SKY_STORE_BYTES = 64L << 10;
+	public static final long MAPPING_BYTES = OFF_SKY_STORE + SKY_STORE_BYTES;
+	public static final int STORE_REQUESTS = 32, STORE_RESULTS = 64, STORE_REQUEST_BYTES = 96, STORE_RESULT_BYTES = 224;
+	public static final long STORE_REQ_HEAD = 0x00, STORE_REQ_TAIL = 0x40, STORE_RES_HEAD = 0x80, STORE_RES_TAIL = 0xC0, STORE_REQ_DATA = 0x100,
+		STORE_RES_DATA = STORE_REQ_DATA + STORE_REQUESTS * STORE_REQUEST_BYTES;
+	public static final int STORE_TAKE = 1, STORE_GIVE = 2, STORE_PICTURE = 3;
+	public static final int STORE_OK = 1, STORE_QUEST = 2, STORE_MADE_HERE = 3, STORE_NONE = 4, STORE_MISSING = 5;
+	public static final int SKY_ICON_SIZE = 64, MAX_SKY_ICONS = 1024, SKY_ICON_CATEGORY = 0xFFFFFF00;
+	public static final long ICONS_GENERATION = 0x0, ICONS_SLOTS = 0x40, ICON_SLOT_BYTES = 16 + SKY_ICON_SIZE * SKY_ICON_SIZE * 4;
+	public static final long ICON_SEQ = 0x0, ICON_KEY = 0x4, ICON_RGBA = 0x10;
+	public static final int MAX_SKY_ITEMS = 4096, SKY_ITEM_BYTES = 192, SKY_ITEM_NAME_BYTES = 96, SKY_ITEM_PLUGIN_BYTES = 60;
+	public static final long INV_SEQ = 0x0, INV_COUNT = 0x4, INV_GENERATION = 0x8, INV_GOLD = 0xC, INV_CARRIED = 0x10, INV_CARRY_MAX = 0x14, INV_ITEMS = 0x40;
+	// SkyItem: formId 0, kind 4, sub 5, material 6, count 8, flags 12, weight 16, value 20, stat 24, stat2 28, name 32, localId 128, plugin 132 (v36)
+	public static final int SKY_WEAPON = 1, SKY_APPAREL = 2, SKY_POTION = 3, SKY_FOOD = 4, SKY_INGREDIENT = 5, SKY_BOOK = 6, SKY_KEY = 7, SKY_MISC = 8, SKY_AMMO = 9,
+		SKY_SCROLL = 10, SKY_SPELL = 20, SKY_SHOUT = 21, SKY_POWER = 22;
+	public static final int W_HAND = 0, W_SWORD = 1, W_DAGGER = 2, W_WAR_AXE = 3, W_MACE = 4, W_GREATSWORD = 5, W_BATTLEAXE = 6, W_WARHAMMER = 7, W_BOW = 8, W_STAFF = 9,
+		W_CROSSBOW = 10, W_PICKAXE = 11, W_WOOD_AXE = 12;
+	public static final int A_BODY = 0, A_HEAD = 1, A_HANDS = 2, A_FEET = 3, A_SHIELD = 4, A_RING = 5, A_AMULET = 6, A_CIRCLET = 7;
+	public static final int P_OTHER = 0, P_HEALTH = 1, P_MAGICKA = 2, P_STAMINA = 3, P_POISON = 4;
+	public static final int SCHOOL_ALTERATION = 0, SCHOOL_CONJURATION = 1, SCHOOL_DESTRUCTION = 2, SCHOOL_ILLUSION = 3, SCHOOL_RESTORATION = 4;
+	public static final int MAT_NONE = 0, MAT_WOOD = 1, MAT_LEATHER = 2, MAT_IRON = 3, MAT_STEEL = 4, MAT_ORCISH = 5, MAT_DWARVEN = 6, MAT_ELVEN = 7, MAT_GLASS = 8,
+		MAT_EBONY = 9, MAT_DAEDRIC = 10, MAT_DRAGON = 11, MAT_SILVER = 12, MAT_GOLD = 13, MAT_STALHRIM = 14, MAT_CHAIN = 15, ELEMENT_FIRE = 1, ELEMENT_FROST = 2,
+		ELEMENT_SHOCK = 3;
+	public static final int ITEM_RIGHT_HAND = 1, ITEM_LEFT_HAND = 1 << 1, ITEM_WORN = 1 << 2, ITEM_VOICE = 1 << 3, ITEM_ENCHANTED = 1 << 4, ITEM_STOLEN = 1 << 5,
+		ITEM_FAVORITE = 1 << 6, ITEM_HEAVY = 1 << 7, ITEM_LIGHT = 1 << 8, ITEM_FILLED = 1 << 9, ITEM_READ = 1 << 10, ITEM_QUEST = 1 << 11, ITEM_TWO_HANDED = 1 << 12;
 
 	// Input types added in v5
 	public static final int IN_HURT = 7;
@@ -82,6 +114,11 @@ public final class Proto {
 	public static final int EV_ARROW_STUCK = 4;
 	public static final int EV_SKILL_USE = 5;
 	public static final int EV_PLAYER_HURT = 6;
+	public static final int EV_SKY_ITEM = 7; // SkyCraft+ : v35, flags = SKY_ACT_*
+	public static final int EV_DRAGON_SOUL = 8; // SkyCraft+ : v39, the Ender Dragon died near this player: a Skyrim dragon soul
+	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,
+		SKY_ACT_EQUIP_RIGHT = 6, SKY_ACT_EQUIP_LEFT = 7, SKY_ACT_DROP = 8, // SkyCraft+ : v36, shortcuts
+		SKY_ACT_UNEQUIP_RIGHT = 9, SKY_ACT_UNEQUIP_LEFT = 10; // SkyCraft+ : v38
 	// Skyrim skills (ActorValue) Minecraft reports use of; weapon skills come from EV_HIT_ACTOR.
 	public static final int SKILL_BLOCK = 9;
 	public static final int SKILL_SMITHING = 10;
@@ -177,6 +214,7 @@ public final class Proto {
 	public static final int SKY_PAUSED = 1 << 7;
 	public static final int SKY_PARKED = 1 << 8; // SkyCraft+ : v26
 	public static final int SKY_BRING_BACK = 1 << 9; // SkyCraft+ : v28
+	public static final int SKY_RIDING = 1 << 10; // SkyCraft+ : v40, on a Skyrim horse in Skyrim's third-person camera
 
 	// SkyState handKinds (SkyCraft+ : v29): what a Skyrim-held hand holds.
 	public static final int HAND_NONE = 0, HAND_SWORD = 1, HAND_DAGGER = 2, HAND_WAR_AXE = 3, HAND_MACE = 4, HAND_GREATSWORD = 5, HAND_BATTLEAXE = 6,
@@ -234,6 +272,7 @@ public final class Proto {
 	public static final int MC_UNDER_LAND = 1 << 9; // SkyCraft+ : v27
 	public static final int MC_DEEP_UNDER_LAND = 1 << 10; // SkyCraft+ : v31, 24 blocks and more under
 	public static final int MC_SLOT_SCREEN = 1 << 11; // SkyCraft+ : v34, a screen with item slots
+	public static final int MC_WANTS_SKY_INVENTORY = 1 << 12; // SkyCraft+ : v35
 
 	// SkyCraft+ : McState dimension (v26). 3 and up: Minecraft's own worlds, Skyrim parks its player.
 	public static final int DIM_TAMRIEL = 0;

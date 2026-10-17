@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 35;
+	inline constexpr std::uint32_t kVersion = 41;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -40,7 +40,13 @@ namespace skycraft::proto
 	inline constexpr std::uint64_t kOffWorldEntities = 0x1C000;  // MC -> Skyrim, see WorldEntities
 	inline constexpr std::uint64_t kOffRenderRing = kOffOverlayPixels + kOverlaySlotBytes * kOverlaySlots;
 	inline constexpr std::uint64_t kRenderRingBytes = 64ull << 20;
-	inline constexpr std::uint64_t kMappingBytes = kOffRenderRing + kRenderRingBytes;
+	inline constexpr std::uint64_t kOffSkyInventory = kOffRenderRing + kRenderRingBytes;  // SkyCraft+ : v35, Skyrim -> MC, see SkyInventory
+	inline constexpr std::uint64_t kSkyInventoryBytes = 1ull << 20;
+	inline constexpr std::uint64_t kOffSkyIcons = kOffSkyInventory + kSkyInventoryBytes;  // SkyCraft+ : v37, Skyrim -> MC, see SkyIcons
+	inline constexpr std::uint64_t kSkyIconsBytes = 17ull << 20;
+	inline constexpr std::uint64_t kOffSkyStore = kOffSkyIcons + kSkyIconsBytes;  // SkyCraft+ : v41, both ways, see SkyStoreRequest
+	inline constexpr std::uint64_t kSkyStoreBytes = 64ull << 10;
+	inline constexpr std::uint64_t kMappingBytes = kOffSkyStore + kSkyStoreBytes;
 
 	// ---- header @0x0 ------------------------------------------------------------------------
 	struct Header
@@ -81,6 +87,9 @@ namespace skycraft::proto
 		// while Minecraft's is in the Nether or the End (v28): the save wins. Minecraft takes the
 		// teleport anyway, out of its own world to Skyrim's player.
 		kSkyBringBack = 1u << 9,
+		// SkyCraft+ : riding a Skyrim horse in Skyrim's third-person camera (v40): Minecraft sends its
+		// player's body (kRenAvatar) in its riding pose, facing yaw; Skyrim draws it in the saddle.
+		kSkyRiding = 1u << 10,
 	};
 
 	// SkyState::placeFlags: where the player is and the weather, for Minecraft's spawning.
@@ -178,6 +187,9 @@ namespace skycraft::proto
 		// SkyCraft+ : controller inventory snapping (v34). The screen open has item slots (an
 		// inventory, chest, furnace...): the D-pad and left stick jump slot to slot (kInSlotJump).
 		kMcSlotScreen = 1u << 11,
+		// SkyCraft+ : Skyrim's inventory in Minecraft's (v35). Minecraft's inventory or one of its
+		// Skyrim item screens is open: Skyrim keeps SkyInventory up to date.
+		kMcWantsSkyInventory = 1u << 12,
 	};
 
 	// SkyCraft+ : McState::dimension. 3 and up are Minecraft's own worlds: Skyrim parks its player in
@@ -360,6 +372,27 @@ namespace skycraft::proto
 		                    // 10 Smithing, 11 Heavy Armor, 12 Light Armor), a = uses (as Skyrim's AdvanceSkill counts them)
 		kEvPlayerHurt = 6,  // Skyrim mode: a Minecraft mob or explosion hurt the player: a = share of Minecraft's max
 		                    // health it took; Skyrim takes that share of its own
+		kEvSkyItem = 7,     // SkyCraft+ (v35): a click in a Skyrim item screen: formId = SkyItem::formId,
+		                    // flags = SkyItemAction
+		kEvDragonSoul = 8,  // SkyCraft+ (v39): the Ender Dragon died while this player was in its fight: one
+		                    // Skyrim dragon soul
+	};
+
+	// SkyCraft+ : what a click on a Skyrim item does (McEvent::flags of kEvSkyItem).
+	enum SkyItemAction : std::uint32_t
+	{
+		kSkyItemRight = 1,     // equip in (or, if there already, take off) the right hand; worn things: put on/take off
+		kSkyItemLeft = 2,      // the same with the left hand
+		kSkyItemUse = 3,       // drink, eat, read; shouts and powers: make it the voice's
+		kSkyItemMenuStats = 4, // open Skyrim's skills (level up) menu (formId 0)
+		kSkyItemMenuMap = 5,   // open Skyrim's map (formId 0)
+		// SkyCraft+ (v36): Skyrim shortcuts on Minecraft's hotbar.
+		kSkyItemEquipRight = 6,  // equip in the right hand (never takes it off): a shortcut picked on the hotbar
+		kSkyItemEquipLeft = 7,   // the same with the left hand: a shortcut in the off-hand slot
+		kSkyItemDrop = 8,        // drop all of it in front of the player: a shortcut thrown out
+		// SkyCraft+ (v38): a shortcut taken out of the off-hand slot (or its hotbar slot).
+		kSkyItemUnequipRight = 9,  // out of the right hand if it's there (never puts it in)
+		kSkyItemUnequipLeft = 10,  // the same with the left hand (a shield: taken off)
 	};
 
 	// InputEvent::code for kInSkyrimHit.
@@ -765,4 +798,208 @@ namespace skycraft::proto
 		std::uint64_t bits[8];
 	};
 	static_assert(sizeof(ColBlock) == 80);
+
+	// ---- SkyCraft+ : Skyrim's inventory @kOffSkyInventory (Skyrim -> MC, seqlock), v35 -------
+	// The player's Skyrim items, spells, shouts and powers, for Minecraft's own Skyrim item
+	// screens (Skyrim's menus can't be open alongside Minecraft's inventory). Written a few times a
+	// second while McFlags::kMcWantsSkyInventory is set, and right after each kEvSkyItem.
+	inline constexpr std::uint32_t kMaxSkyItems = 4096;
+
+	enum SkyItemKind : std::uint8_t
+	{
+		kSkyWeapon = 1,      // sub: SkyWeaponType
+		kSkyApparel = 2,     // sub: SkyApparelSlot; flags kSkyItemHeavy / kSkyItemLight
+		kSkyPotion = 3,      // sub: SkyPotionKind
+		kSkyFood = 4,
+		kSkyIngredient = 5,
+		kSkyBook = 6,        // sub: 1 spell tome, 2 note, 0 other
+		kSkyKey = 7,
+		kSkyMisc = 8,        // sub: 1 soul gem (filled: kSkyItemFilled), 2 torch, 3 lockpick, 0 other
+		kSkyAmmo = 9,        // sub: 1 bolt, 0 arrow
+		kSkyScroll = 10,
+		kSkySpell = 20,      // sub: SkySchool; element: SkyElement
+		kSkyShout = 21,
+		kSkyPower = 22,      // sub: 1 lesser power
+	};
+
+	enum SkyWeaponType : std::uint8_t
+	{
+		kSkyHand = 0, kSkySword = 1, kSkyDagger = 2, kSkyWarAxe = 3, kSkyMace = 4, kSkyGreatsword = 5,
+		kSkyBattleaxe = 6, kSkyWarhammer = 7, kSkyBow = 8, kSkyStaff = 9, kSkyCrossbow = 10, kSkyPickaxe = 11, kSkyWoodAxe = 12,
+	};
+
+	enum SkyApparelSlot : std::uint8_t
+	{
+		kSkyBody = 0, kSkyHead = 1, kSkyHands = 2, kSkyFeet = 3, kSkyShield = 4, kSkyRing = 5, kSkyAmulet = 6, kSkyCirclet = 7,
+	};
+
+	enum SkyPotionKind : std::uint8_t
+	{
+		kSkyPotionOther = 0, kSkyPotionHealth = 1, kSkyPotionMagicka = 2, kSkyPotionStamina = 3, kSkyPoison = 4,
+	};
+
+	enum SkySchool : std::uint8_t
+	{
+		kSkyAlteration = 0, kSkyConjuration = 1, kSkyDestruction = 2, kSkyIllusion = 3, kSkyRestoration = 4,
+	};
+
+	// SkyItem::material: what a Minecraft stand-in is made of. For spells, the element.
+	enum SkyMaterial : std::uint8_t
+	{
+		kSkyMatNone = 0, kSkyMatWood = 1, kSkyMatLeather = 2, kSkyMatIron = 3, kSkyMatSteel = 4, kSkyMatOrcish = 5,
+		kSkyMatDwarven = 6, kSkyMatElven = 7, kSkyMatGlass = 8, kSkyMatEbony = 9, kSkyMatDaedric = 10, kSkyMatDragon = 11,
+		kSkyMatSilver = 12, kSkyMatGold = 13, kSkyMatStalhrim = 14, kSkyMatChain = 15,
+		kSkyFire = 1, kSkyFrost = 2, kSkyShock = 3,
+	};
+
+	enum SkyItemFlags : std::uint32_t
+	{
+		kSkyItemRightHand = 1u << 0,  // equipped in the right hand
+		kSkyItemLeftHand = 1u << 1,   // equipped in the left hand
+		kSkyItemWorn = 1u << 2,       // apparel put on; ammo readied
+		kSkyItemVoice = 1u << 3,      // the shout or power in use
+		kSkyItemEnchanted = 1u << 4,
+		kSkyItemStolen = 1u << 5,
+		kSkyItemFavorite = 1u << 6,
+		kSkyItemHeavy = 1u << 7,
+		kSkyItemLight = 1u << 8,
+		kSkyItemFilled = 1u << 9,     // a soul gem with a soul
+		kSkyItemRead = 1u << 10,      // a book already read
+		kSkyItemQuest = 1u << 11,     // a quest item (can't be dropped)
+		kSkyItemTwoHanded = 1u << 12,
+	};
+
+	struct SkyItem
+	{
+		std::uint32_t formId;
+		std::uint8_t  kind;      // SkyItemKind
+		std::uint8_t  sub;
+		std::uint8_t  material;  // SkyMaterial
+		std::uint8_t  pad0;
+		std::int32_t  count;     // spells: 1; shouts: words known
+		std::uint32_t flags;     // SkyItemFlags
+		float         weight;
+		std::int32_t  value;
+		float         stat;      // damage, armor rating, magicka cost, or the main effect's magnitude
+		float         stat2;     // potions and spells: duration (s); shouts: recharge (s)
+		char          name[96];  // UTF-8, zero-terminated
+		// SkyCraft+ (v36): where it comes from, which stays the same across load orders (shortcuts
+		// keep these): the plugin's file name and the id within it. Made in game (FF...): no plugin
+		// and the form id.
+		std::uint32_t localId;
+		char          plugin[60];
+	};
+	static_assert(sizeof(SkyItem) == 192);
+
+	struct SkyInventory
+	{
+		std::uint32_t seq;
+		std::uint32_t count;
+		std::uint32_t generation;   // changes whenever anything in it does
+		std::int32_t  gold;
+		float         carried, carryMax;
+		std::uint32_t pad[10];
+		SkyItem       items[kMaxSkyItems];
+	};
+	static_assert(sizeof(SkyInventory) == 0x40 + sizeof(SkyItem) * kMaxSkyItems);
+	static_assert(sizeof(SkyInventory) <= kSkyInventoryBytes);
+
+	// ---- SkyCraft+ : Skyrim's item pictures @kOffSkyIcons (Skyrim -> MC), v37 ----------------
+	// Skyrim draws each listed item's model (and one for each of Minecraft's Skyrim categories) to
+	// a small picture for Minecraft's Skyrim panels and shortcuts. Each slot is its own seqlock;
+	// SkyIcons::generation changes whenever any slot does.
+	inline constexpr std::uint32_t kSkyIconSize = 64;
+	inline constexpr std::uint32_t kMaxSkyIcons = 1024;
+	// SkyIconSlot::key for a category's picture: this plus its index in Minecraft's list (All items,
+	// Weapons, Apparel, Potions, Scrolls, Food, Ingredients, Books, Keys, Misc, All magic, Alteration,
+	// Conjuration, Destruction, Illusion, Restoration, Shouts, Powers).
+	inline constexpr std::uint32_t kSkyIconCategory = 0xFFFFFF00;
+
+	struct SkyIconSlot
+	{
+		std::uint32_t seq;
+		std::uint32_t key;     // SkyItem::formId, or kSkyIconCategory + n; 0 = empty
+		std::uint32_t pad[2];
+		std::uint8_t  rgba[kSkyIconSize * kSkyIconSize * 4];  // rows top to bottom, straight alpha
+	};
+	static_assert(sizeof(SkyIconSlot) == 16 + kSkyIconSize * kSkyIconSize * 4);
+
+	struct SkyIcons
+	{
+		std::uint32_t generation;
+		std::uint32_t pad[15];
+		SkyIconSlot   slots[kMaxSkyIcons];
+	};
+	static_assert(sizeof(SkyIcons) <= kSkyIconsBytes);
+
+	// ---- SkyCraft+ : Skyrim items in Minecraft's containers @kOffSkyStore, v41 ---------------------
+	// A Skyrim item put in a Minecraft chest (shulker box, hopper, bundle...) leaves Skyrim's inventory
+	// and becomes a Minecraft item that says what it is (plugin, id, tempering, charge, soul); taken
+	// back into Minecraft's inventory it goes back into Skyrim's. Minecraft asks (requests ring, MC ->
+	// Skyrim), Skyrim answers each request with one result per kind of copy it took out (results
+	// ring, Skyrim -> MC), or one with a status saying why not.
+	inline constexpr std::uint32_t kStoreRequests = 32;   // power of two
+	inline constexpr std::uint32_t kStoreResults = 64;    // power of two
+	inline constexpr std::uint64_t kStoreReqHeadOff = 0x00;  // u64, written by MC
+	inline constexpr std::uint64_t kStoreReqTailOff = 0x40;  // u64, written by Skyrim
+	inline constexpr std::uint64_t kStoreResHeadOff = 0x80;  // u64, written by Skyrim
+	inline constexpr std::uint64_t kStoreResTailOff = 0xC0;  // u64, written by MC
+	inline constexpr std::uint64_t kStoreReqDataOff = 0x100;
+
+	enum SkyStoreOp : std::uint8_t
+	{
+		kStoreTake = 1,  // take count of formId out of Skyrim's inventory (plain copies first)
+		kStoreGive = 2,  // put count of plugin/localId, with health/charge/soul, into it
+		kStorePicture = 3,  // draw plugin/localId's picture too for a while (SkyIcons; the result's formId is its key)
+	};
+
+	enum SkyStoreStatus : std::uint8_t
+	{
+		kStoreOk = 1,
+		kStoreQuest = 2,     // a quest item: it stays
+		kStoreMadeHere = 3,  // made in this game (FF..., a potion you brewed) or enchanted by you: it stays
+		kStoreNone = 4,      // none of it left
+		kStoreMissing = 5,   // give: no such thing (its plugin isn't loaded)
+	};
+
+	struct SkyStoreRequest
+	{
+		std::uint32_t id;
+		std::uint8_t  op;  // SkyStoreOp
+		std::uint8_t  pad[3];
+		std::uint32_t formId;  // take
+		std::int32_t  count;
+		float         health;  // give: tempering (1 = none)
+		float         charge;  // give: an enchanted weapon's charge (< 0 = none)
+		std::int32_t  soul;    // give: a soul gem's soul (RE::SOUL_LEVEL, 0 = none)
+		std::uint32_t localId;
+		char          plugin[60];
+		std::uint32_t pad2;
+	};
+	static_assert(sizeof(SkyStoreRequest) == 96);
+
+	struct SkyStoreResult
+	{
+		std::uint32_t id;      // the request's
+		std::uint8_t  status;  // SkyStoreStatus
+		std::uint8_t  kind;    // SkyItemKind
+		std::uint8_t  sub;
+		std::uint8_t  material;
+		std::int32_t  count;   // how many were taken (or given)
+		float         health;
+		float         charge;
+		std::int32_t  soul;
+		std::uint32_t flags;   // SkyItemFlags
+		float         weight;
+		std::int32_t  value;
+		float         stat, stat2;
+		std::uint32_t localId;
+		char          plugin[60];
+		char          name[96];
+		std::uint32_t formId;
+		std::uint32_t pad[4];
+	};
+	static_assert(sizeof(SkyStoreResult) == 224);
+	inline constexpr std::uint64_t kStoreResDataOff = kStoreReqDataOff + kStoreRequests * sizeof(SkyStoreRequest);
+	static_assert(kStoreResDataOff + kStoreResults * sizeof(SkyStoreResult) <= kSkyStoreBytes);
 }

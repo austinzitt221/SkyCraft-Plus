@@ -275,6 +275,8 @@ namespace skycraft
 		const int prz = static_cast<int>(std::floor(a_playerMc.z / kRegionSize));
 		const auto now = Clock::now();
 
+		WatchMovers(player);  // SkyCraft+ : opened doors
+
 		int  done = 0;
 		bool gathered = false;
 		const auto start = now;
@@ -302,7 +304,9 @@ namespace skycraft
 			const int rx = prx + o[0], ry = pry + o[1], rz = prz + o[2];
 			const auto key = RegionKey(rx, ry, rz);
 			const auto it = harvested_.find(key);
-			const bool isNear = std::abs(o[0]) <= 1 && std::abs(o[2]) <= 1 && o[1] >= -1 && o[1] <= 0;
+			// SkyCraft+ : opened doors. And the regions above: a door or drawbridge reaching up into
+			// one stayed shut there, at head height, an invisible wall in the open doorway.
+			const bool isNear = std::abs(o[0]) <= 1 && std::abs(o[2]) <= 1 && o[1] >= -1 && o[1] <= 1;
 			if (it != harvested_.end() && !(isNear && now - it->second > kRefreshNear)) {
 				continue;
 			}
@@ -324,6 +328,112 @@ namespace skycraft
 		// Bound memory: drop bookkeeping for far-away regions.
 		if (harvested_.size() > offsets_.size() * 4) {
 			harvested_.clear();
+		}
+	}
+
+	// SkyCraft+ : opened doors. In Helgen Keep every door, gate and cage door opened in Skyrim
+	// stayed an invisible wall in Minecraft, and so did the drawbridge once lowered, until a block
+	// dug beside it sent its region again. Things near the player that move (their 3D's bounds
+	// change) have the regions they cover sent again at once, and once more when they stop.
+	void Collision::WatchMovers(RE::PlayerCharacter* a_player)
+	{
+		const auto now = Clock::now();
+		auto*      tes = RE::TES::GetSingleton();
+		if (!tes || now - moversAt_ < 200ms) {
+			return;
+		}
+		moversAt_ = now;
+		constexpr float kRange = 16.0f * float(proto::kUnitsPerBlock);
+		constexpr float kStill = 1.0f;  // game units
+		std::unordered_map<RE::FormID, Mover> seen;
+		tes->ForEachReferenceInRange(a_player, kRange, [&](RE::TESObjectREFR* a_ref) {
+			if (!a_ref || a_ref == a_player || a_ref->IsDisabled() || a_ref->IsDeleted() || !a_ref->Is3DLoaded()) {
+				return RE::BSContainer::ForEachResult::kContinue;
+			}
+			auto* base = a_ref->GetBaseObject();
+			if (!base) {
+				return RE::BSContainer::ForEachResult::kContinue;
+			}
+			switch (base->GetFormType()) {
+			case RE::FormType::Door:
+			case RE::FormType::Activator:
+			case RE::FormType::MovableStatic:
+			case RE::FormType::Static:
+			case RE::FormType::Furniture:
+				break;
+			default:
+				return RE::BSContainer::ForEachResult::kContinue;
+			}
+			auto* root3D = a_ref->Get3D();
+			if (!root3D) {
+				return RE::BSContainer::ForEachResult::kContinue;
+			}
+			Mover now3D{ root3D->worldBound.center, root3D->worldBound.radius };
+			const auto it = movers_.find(a_ref->GetFormID());
+			if (it == movers_.end()) {
+				// Only things with collision matter (looked for once per thing in range).
+				std::function<bool(RE::NiAVObject*, int)> solid = [&](RE::NiAVObject* a_obj, int a_depth) {
+					if (!a_obj || a_depth > 12) {
+						return false;
+					}
+					if (a_obj->GetCollisionObject()) {
+						return true;
+					}
+					if (auto* node = a_obj->AsNode()) {
+						for (auto& child : node->GetChildren()) {
+							if (solid(child.get(), a_depth + 1)) {
+								return true;
+							}
+						}
+					}
+					return false;
+				};
+				now3D.solid = solid(root3D, 0);
+			} else {
+				now3D.solid = it->second.solid;
+			}
+			if (it != movers_.end() && now3D.solid) {
+				const bool moved = it->second.centre.GetDistance(now3D.centre) > kStill || std::fabs(it->second.radius - now3D.radius) > kStill;
+				now3D.moving = moved;
+				now3D.movingFor = moved ? it->second.movingFor + 0.2f : 0.0f;
+				if ((moved || it->second.moving) && now3D.movingFor < 10.0f) {
+					// Both where it was and where it is now (and once more where it came to rest).
+					for (const auto* m : { &it->second, &now3D }) {
+						const auto c = SkyToMc(m->centre);
+						const float r = m->radius / float(proto::kUnitsPerBlock) + 0.5f;
+						const float lo[3] = { float(c.x) - r, float(c.y) - r, float(c.z) - r };
+						const float hi[3] = { float(c.x) + r, float(c.y) + r, float(c.z) + r };
+						QueueRegions(lo, hi);
+					}
+					static int logged = 0;
+					if (moved && !it->second.moving && logged++ < 30) {
+						logger::info("collision: {:08X} ({}) moves: its collision is sent again", a_ref->GetFormID(), a_ref->GetDisplayFullName());
+					}
+				}
+			}
+			seen.emplace(a_ref->GetFormID(), now3D);
+			return RE::BSContainer::ForEachResult::kContinue;
+		});
+		movers_ = std::move(seen);
+	}
+
+	void Collision::QueueRegions(const float* a_lo, const float* a_hi)
+	{
+		if (a_hi[0] - a_lo[0] > 64.0f || a_hi[1] - a_lo[1] > 64.0f || a_hi[2] - a_lo[2] > 64.0f) {
+			return;  // (something huge; the regions around the player are sent again anyway)
+		}
+		std::unordered_set<std::uint64_t> queued;
+		for (const auto& r : urgent_) {
+			queued.insert(RegionKey(r[0], r[1], r[2]));
+		}
+		for (int rx = int(std::floor(a_lo[0] / kRegionSize)); rx <= int(std::floor(a_hi[0] / kRegionSize)); ++rx) {
+			for (int ry = int(std::floor(a_lo[1] / kRegionSize)); ry <= int(std::floor(a_hi[1] / kRegionSize)); ++ry) {
+				for (int rz = int(std::floor(a_lo[2] / kRegionSize)); rz <= int(std::floor(a_hi[2] / kRegionSize)); ++rz) {
+					if (queued.insert(RegionKey(rx, ry, rz)).second) {
+						urgent_.push_back({ rx, ry, rz });
+					}
+				}
+			}
 		}
 	}
 

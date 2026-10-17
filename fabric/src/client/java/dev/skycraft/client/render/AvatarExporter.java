@@ -149,8 +149,11 @@ final class AvatarExporter implements SubmitNodeCollector {
 		this.atlas = atlas;
 		var player = minecraft.player;
 		Camera camera = minecraft.gameRenderer.mainCamera();
-		// While Skyrim drives its own player, its body is the one on screen.
-		if (player == null || !camera.isDetached() || dev.skycraft.client.SkyClient.sky().skyrimDrives()) {
+		// While Skyrim drives its own player, its body is the one on screen. SkyCraft+ : except on a
+		// Skyrim horse: Skyrim draws this body in the saddle (sitting, facing the horse's way).
+		var sky = dev.skycraft.client.SkyClient.sky();
+		boolean riding = sky.riding() && sky.skyrimDrives();
+		if (player == null || (!riding && (!camera.isDetached() || sky.skyrimDrives()))) {
 			this.sendEmpty(Proto.REN_AVATAR, false);
 			return;
 		}
@@ -159,6 +162,15 @@ final class AvatarExporter implements SubmitNodeCollector {
 			var dispatcher = minecraft.getEntityRenderDispatcher();
 			dispatcher.prepare(camera, minecraft.crosshairPickEntity);
 			EntityRenderState state = dispatcher.extractEntity(player, partialTick);
+			if (riding && state instanceof HumanoidRenderState rider) {
+				rider.isPassenger = true;
+				rider.bodyRot = sky.yaw;
+				rider.yRot = 0.0F;
+				rider.xRot = 0.0F;
+				rider.walkAnimationSpeed = 0.0F;
+				rider.isCrouching = false;
+				rider.pose = Pose.STANDING;
+			}
 			CameraRenderState cameraState = minecraft.gameRenderer.gameRenderState().levelRenderState.cameraRenderState;
 			// At the origin: positions come out relative to the player's feet.
 			dispatcher.submit(state, cameraState, 0.0, 0.0, 0.0, new PoseStack(), this);

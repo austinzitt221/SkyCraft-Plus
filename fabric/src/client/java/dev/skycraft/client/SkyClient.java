@@ -308,6 +308,15 @@ public final class SkyClient {
 		boolean rightMain = player.getMainArm() == net.minecraft.world.entity.HumanoidArm.RIGHT;
 		var right = rightMain ? player.getMainHandItem() : player.getOffhandItem();
 		var left = rightMain ? player.getOffhandItem() : player.getMainHandItem();
+		// SkyCraft+ : Skyrim shortcuts. One that goes into a hand is Skyrim's there, not a Minecraft item:
+		// picking it equips the Skyrim thing, which the change mustn't take out again.
+		boolean rightShortcut = SkyShortcutsClient.equipsShortcut(right), leftShortcut = SkyShortcutsClient.equipsShortcut(left);
+		if (rightShortcut) {
+			right = net.minecraft.world.item.ItemStack.EMPTY;
+		}
+		if (leftShortcut) {
+			left = net.minecraft.world.item.ItemStack.EMPTY;
+		}
 		int slot = player.getInventory().getSelectedSlot();
 		boolean rightChanged = !net.minecraft.world.item.ItemStack.isSameItem(right, lastRight);
 		boolean leftChanged = !net.minecraft.world.item.ItemStack.isSameItem(left, lastLeft);
@@ -316,10 +325,10 @@ public final class SkyClient {
 		boolean byHand = minecraft.gui.screen() != null || swapped;
 		if (lastSlot >= 0) {
 			boolean mainSlot = slot != lastSlot;
-			if (rightMain && mainSlot || rightChanged && byHand) {
+			if ((rightMain && mainSlot || rightChanged && byHand) && !rightShortcut) {
 				rightChanges++;
 			}
-			if (!rightMain && mainSlot || leftChanged && byHand) {
+			if ((!rightMain && mainSlot || leftChanged && byHand) && !leftShortcut) {
 				leftChanges++;
 			}
 		}
@@ -659,8 +668,12 @@ public final class SkyClient {
 			mc.cursorSeq = InputBridge.jumpSeq;
 			mc.cursorX = InputBridge.jumpX;
 			mc.cursorY = InputBridge.jumpY;
-		} else if (player != null && SkyHands.usableTargetInView(minecraft)) {
-			flags |= Proto.MC_USE_TARGET;
+		} else if (player != null && (SkyHands.usableTargetInView(minecraft) || SkyShortcutsClient.usableInHand(player))) {
+			flags |= Proto.MC_USE_TARGET;  // (SkyCraft+ : Skyrim shortcuts: a potion's right click is Minecraft's too)
+		}
+		// SkyCraft+ : Skyrim's inventory in Minecraft's (and the shortcuts' counts). Skyrim keeps its list current meanwhile.
+		if (SkyShortcutsClient.wanted()) {
+			flags |= Proto.MC_WANTS_SKY_INVENTORY;
 		}
 		// SkyCraft+ : the underground. Under Skyrim's land, by the land heights it has sent (where it
 		// hasn't sent any around here yet, as before).

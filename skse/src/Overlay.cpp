@@ -378,6 +378,7 @@ float4 PSMain(VSOut i) : SV_Target {
 				// Minecraft's world things (blocks, arrows, items) go under its hand and HUD.
 				if (Link::Get().Valid() && InitResources(a_swapChain)) {
 					WorldRender::Draw(device, context, a_swapChain);
+					IconRender::Draw(device, context);  // SkyCraft+ : Skyrim's item pictures
 				}
 				DrawOverlay(a_swapChain);
 				if (device) {

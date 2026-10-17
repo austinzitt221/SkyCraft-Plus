@@ -68,6 +68,10 @@ namespace skycraft
 		float                      skyrimVsMinecraft{ 1.5f };
 		// SkyCraft+ : Minecraft's attacks break Skyrim's breakable objects, spider webs and the like ([Combat] bMinecraftHitsObjects).
 		bool                       minecraftHitsObjects{ true };
+		bool                       enderDragonSoul{ true };  // SkyCraft+ : bEnderDragonSoul
+		// SkyCraft+ : riding Skyrim's horses as Minecraft's player ([Controls] bRideAsMinecraft).
+		bool                       rideAsMinecraft{ true };
+		bool                       ridingAsMinecraft{ false };  // this frame: Minecraft's body in the saddle
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).
 		std::atomic<bool>          playerUnderLand{ false };
 		// SkyCraft+ : performance. Deep down, Skyrim's world isn't drawn ([Worlds] bHideWorldDeep).
@@ -257,6 +261,26 @@ namespace skycraft
 		// Main thread, every frame: marks the structures Minecraft listed (structures.txt) once per loaded game.
 		void PerFrame(RE::PlayerCharacter* a_player, float a_delta);
 		void OnGameLoaded();
+	}
+
+	// SkyCraft+ : Skyrim's inventory in Minecraft's (SkyInventory.cpp).
+	namespace SkyInventory
+	{
+		// Main thread, every frame: keeps proto::SkyInventory current while Minecraft wants it.
+		void PerFrame(RE::PlayerCharacter* a_player, bool a_wanted, float a_delta);
+		// Main thread: a click in one of Minecraft's Skyrim item screens (kEvSkyItem).
+		void Apply(RE::PlayerCharacter* a_player, const proto::McEvent& a_event);
+	}
+
+	// SkyCraft+ : Skyrim's item pictures (IconRender.cpp).
+	namespace IconRender
+	{
+		// Main thread: the things listed for Minecraft (pictures for these, and the categories').
+		void Want(const proto::SkyItem* a_items, std::size_t a_count);
+		// Main thread, while Minecraft wants Skyrim's inventory: loads the models still to draw.
+		void PerFrame();
+		// Present: draws them and hands the pictures to Minecraft.
+		void Draw(ID3D11Device* a_device, ID3D11DeviceContext* a_context);
 	}
 
 	// SkyCraft+ : Skyrim enemies in Minecraft's own worlds (the Nether, the End's outer islands).

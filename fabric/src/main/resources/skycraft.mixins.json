@@ -38,7 +38,12 @@
     "StrongholdPlacementMixin",
     "WalkNodeEvaluatorMixin",
     "WorldOptionsMixin",
-    "SmithingMixin"
+    "SmithingMixin",
+    "SlotShortcutMixin",
+    "LivingEntityShortcutMixin",
+    "EnderDragonFightMixin",
+    "BundleShortcutMixin",
+    "ShulkerBoxSlotShortcutMixin"
   ],
   "injectors": { "defaultRequire": 1 }
 }

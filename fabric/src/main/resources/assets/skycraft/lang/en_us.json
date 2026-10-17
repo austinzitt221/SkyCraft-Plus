@@ -1,3 +1,4 @@
 {
-  "entity.skycraft.skyrim_actor": "Skyrim NPC"
+  "entity.skycraft.skyrim_actor": "Skyrim NPC",
+  "item.skycraft.skyrim_item": "Skyrim item"
 }

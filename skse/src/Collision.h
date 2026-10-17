@@ -111,6 +111,19 @@ namespace skycraft
 		std::atomic<std::uint32_t>                                     epoch_{ 0 };
 		std::unordered_map<std::uint64_t, std::chrono::steady_clock::time_point> harvested_;
 		std::vector<std::array<int, 3>>                                urgent_;  // regions to send again first
+		// SkyCraft+ : opened doors. Bounds of things that can move (doors, gates, drawbridges).
+		struct Mover
+		{
+			RE::NiPoint3 centre;
+			float        radius{ 0.0f };
+			bool         moving{ false };
+			float        movingFor{ 0.0f };  // seconds; one that never stops (a banner) is let be
+			bool         solid{ false };     // has collision
+		};
+		void WatchMovers(RE::PlayerCharacter* a_player);
+		void QueueRegions(const float* a_lo, const float* a_hi);
+		std::unordered_map<RE::FormID, Mover>                          movers_;
+		std::chrono::steady_clock::time_point                          moversAt_{};
 		std::vector<Body>                                              bodies_;
 		std::vector<std::array<int, 3>>                                offsets_;
 		std::unordered_set<int>                                        loggedTypes_;

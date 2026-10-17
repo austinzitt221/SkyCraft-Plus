@@ -97,20 +97,27 @@ public final class InputBridge {
 		var pos = (dev.skycraft.client.mixin.ContainerScreenAccessor) screen;
 		double scale = (double) minecraft.getWindow().getScreenWidth() / minecraft.getWindow().getGuiScaledWidth();
 		double gx = cursorX / scale, gy = cursorY / scale;
-		net.minecraft.world.inventory.Slot here = null;
+		// Slot centres (GUI pixels), and the Skyrim panels' tabs and things beside the inventory.
+		java.util.List<int[]> targets = new java.util.ArrayList<>();
 		for (var slot : screen.getMenu().slots) {
-			int sx = pos.skycraft$leftPos() + slot.x, sy = pos.skycraft$topPos() + slot.y;
-			if (slot.isActive() && gx >= sx - 1 && gx < sx + 17 && gy >= sy - 1 && gy < sy + 17) {
-				here = slot;
+			if (slot.isActive()) {
+				targets.add(new int[] { pos.skycraft$leftPos() + slot.x + 8, pos.skycraft$topPos() + slot.y + 8 });
 			}
 		}
-		net.minecraft.world.inventory.Slot best = null;
+		targets.addAll(SkyInventoryPanels.jumpTargets(screen));
+		int[] here = null;
+		for (int[] target : targets) {
+			if (gx >= target[0] - 9 && gx < target[0] + 9 && gy >= target[1] - 9 && gy < target[1] + 9) {
+				here = target;
+			}
+		}
+		int[] best = null;
 		double bestScore = Double.MAX_VALUE;
-		for (var slot : screen.getMenu().slots) {
-			if (!slot.isActive() || slot == here) {
+		for (int[] target : targets) {
+			if (target == here) {
 				continue;
 			}
-			double cx = pos.skycraft$leftPos() + slot.x + 8 - gx, cy = pos.skycraft$topPos() + slot.y + 8 - gy;
+			double cx = target[0] - gx, cy = target[1] - gy;
 			double score;
 			if (here == null) {
 				score = cx * cx + cy * cy;
@@ -124,13 +131,13 @@ public final class InputBridge {
 			}
 			if (score < bestScore) {
 				bestScore = score;
-				best = slot;
+				best = target;
 			}
 		}
 		if (best == null) {
 			return;
 		}
-		double x = (pos.skycraft$leftPos() + best.x + 8) * scale, y = (pos.skycraft$topPos() + best.y + 8) * scale;
+		double x = best[0] * scale, y = best[1] * scale;
 		double mx = x - cursorX, my = y - cursorY;
 		cursorX = x;
 		cursorY = y;

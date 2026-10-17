@@ -52,6 +52,29 @@ public final class SkyNet {
 		}
 	}
 
+	/** SkyCraft+ : server -> guest: the Ender Dragon died in the guest's fight; their Skyrim gets a dragon soul. */
+	public record DragonSoul() implements CustomPacketPayload {
+		public static final Type<DragonSoul> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "dragon_soul"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, DragonSoul> CODEC = StreamCodec.unit(new DragonSoul());
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** SkyCraft+ : one Skyrim dragon soul for this player: the host's through the link, a guest's through theirs. */
+	public static void giveDragonSoul(ServerPlayer player) {
+		if (isHost(player)) {
+			if (dev.skycraft.link.SkyLink.active()) {
+				dev.skycraft.link.SkyLink.pushEvent(dev.skycraft.link.Proto.EV_DRAGON_SOUL, 0, 0.0F, 0.0F, 0.0F, 0.0F, 0);
+			}
+		} else if (ServerPlayNetworking.canSend(player, DragonSoul.TYPE)) {
+			ServerPlayNetworking.send(player, new DragonSoul());
+		}
+		SkyCraft.LOG.info("SkyCraft: the Ender Dragon died; a dragon soul for {}", player.getPlainTextName());
+	}
+
 	/** Client -> server: the player hit Skyrim's geometry in this cell (SkyDig.open). */
 	public record DigOpen(int world, BlockPos pos, int material) implements CustomPacketPayload {
 		public static final Type<DigOpen> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "dig_open"));
@@ -314,6 +337,7 @@ public final class SkyNet {
 			context.server().execute(() -> SkyDig.reveal(player, payload.world(), payload.cells(), materials));
 		});
 		PayloadTypeRegistry.clientboundPlay().register(Died.TYPE, Died.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(DragonSoul.TYPE, DragonSoul.CODEC); // SkyCraft+
 		// SkyCraft+ : held items in multiplayer.
 		PayloadTypeRegistry.clientboundPlay().register(HandsOf.TYPE, HandsOf.CODEC);
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {

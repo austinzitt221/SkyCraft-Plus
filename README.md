@@ -32,6 +32,24 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   woodcutter's axe and war axes chop wood, and swords and maces work slowly on anything soft.
   Power attacks count for more. (`skyrimWeaponsBreakBlocks` in `skycraft.properties`.)
 
+**Skyrim's inventory inside Minecraft's**
+- Open Minecraft's inventory and Skyrim's is right beside it: your items on the right, your magic
+  (spells by school, shouts, powers) on the left, in Minecraft-style grids with tabs. Click to
+  equip in either hand, put on, drink, eat or read; tooltips show Skyrim's stats. **Skills** and
+  **Map** buttons open Skyrim's menus.
+- Every item is shown with **Skyrim's own picture of it**, drawn from its real 3D model.
+- Sort by name, power, value, weight or count, scroll with the wheel or the scroll bar, and use
+  it all on a controller (the D-pad jumps into the panels).
+- **Shortcuts:** drag a Skyrim item, spell or shout onto your hotbar or inventory (or shift-click
+  it). Picking it on the hotbar equips it, in the off hand it goes in your left hand, right click
+  drinks or eats, and Q drops the real item in Skyrim. It shows Skyrim's count live.
+- **Skyrim items in Minecraft storage:** put Skyrim items in chests, barrels, ender chests,
+  shulker boxes, bundles, hoppers and droppers. They leave your Skyrim inventory, keep their
+  tempering and charge, and hoppers and sorters move them like any Minecraft item. Take one out
+  and it goes back into your Skyrim (it's how you hand Skyrim gear to a friend, too). Quest items
+  and things you made or enchanted yourself stay in Skyrim. (`skyrimStorage` in
+  `skycraft.properties`.)
+
 **Skyrim combat works on Minecraft mobs**
 - Skyrim melee, spells (Flames, bolts, beams), shouts and arrows hit Minecraft mobs, and fire
   sets them alight.
@@ -57,7 +75,8 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 
 **The Nether and the End**
 - Build portals and go; you come back out where you went in, even in Whiterun, a house or a cave.
-- Fight the Ender Dragon, with Skyrim's weapons and magic if you like.
+- Fight the Ender Dragon, with Skyrim's weapons and magic if you like. Killing it gives you a
+  Skyrim **dragon soul**, like one of Skyrim's own dragons (`bEnderDragonSoul`).
 - Skyrim enemies (Dremora, atronachs, vampires, skeletons, Dwarven machines) turn up in the
   Nether and among the End cities, and leave their loot when killed.
 
@@ -77,6 +96,13 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   modes. See [Controller](#controller).
 
 **And more**
+- **Skyrim's opening** (the cart ride and Helgen) plays all the way through.
+- **G activates what's in front of you** even when Skyrim's crosshair finds nothing
+  (`bActivateInView`), and G picks items up off floors and shelves.
+- **Ride Skyrim's horses as your Minecraft character:** in Skyrim's riding camera you see your
+  Minecraft player in the saddle (`bRideAsMinecraft`).
+- New players start empty-handed, as in Minecraft (`starterKit=true` in `skycraft.properties`
+  gives SkyCraft's starter kit back).
 - A pause-menu **world switcher**: make, delete and switch Minecraft worlds, independent of your
   Skyrim saves.
 - Each Skyrim interior keeps its own builds, animals and dropped items.
@@ -194,10 +220,9 @@ shared memory. Minecraft runs hidden in the background, and Skyrim draws everyth
 | [SKSE64](https://skse.silverlock.org/) | For your game version |
 | [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444) | The "All in one (Anniversary Edition)" file |
 
-> **Heavily recommended: [Alternate Start - Live Another Life](https://www.nexusmods.com/skyrimspecialedition/mods/272).**
-> Skyrim's opening (the cart ride and Helgen) is heavily scripted and may not work with SkyCraft,
-> so you can get stuck. Alternate Start skips it and lets you choose where your new character
-> begins. Otherwise, play from a save made after Helgen.
+> **Optional: [Alternate Start - Live Another Life](https://www.nexusmods.com/skyrimspecialedition/mods/272).**
+> SkyCraft+ plays Skyrim's opening (the cart ride and Helgen) all the way through. If you'd
+> rather skip it, Alternate Start lets you choose where your new character begins.
 
 **Minecraft**
 
@@ -317,10 +342,9 @@ Movement is on or off (no slow walk yet). In Skyrim mode the controller is Skyri
 
   You need to own Minecraft: Java Edition.
 
-- Skyrim's opening (cart ride and Helgen) may leave you stuck. Use
-  [Alternate Start](https://www.nexusmods.com/skyrimspecialedition/mods/272) or a save made after Helgen.
-- Skyrim and Minecraft inventories stay separate: Skyrim's items, magic and perks are in
-  Skyrim's menus (Tab, I, P), Minecraft's in Minecraft's (E).
+- Skyrim and Minecraft items stay separate (a Skyrim sword isn't a Minecraft one), but Skyrim's
+  items and magic are shown beside Minecraft's inventory (E), as shortcuts on your hotbar, and can
+  be stored in Minecraft's chests. Skyrim's own menus are still on Tab, I and P.
 - Sign text is drawn in Minecraft's plain font: letters outside it show as `?`.
 - Skyrim enemies in the Nether and the End leave a sack with their loot instead of a body (bodies
   fell through Minecraft's blocks).
