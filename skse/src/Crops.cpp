@@ -96,7 +96,7 @@ namespace skycraft::Crops
 			return;
 		}
 		plant->SetPosition(McToSky(a_x, a_y, a_z));
-		plant->data.angle.z = float(std::rand() % 628) / 100.0f;
+		plant->SetAngle(RE::NiPoint3{ 0.0f, 0.0f, float(std::rand() % 628) / 100.0f });  // upright (placed, it took the player's look down)
 		grown.insert(plant->GetFormID());
 		logger::info("crops: a {} grew on farmland", it->second->GetName());
 	}
