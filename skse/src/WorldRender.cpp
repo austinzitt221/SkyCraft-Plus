@@ -211,25 +211,28 @@ float SkyrimSunShadow(float3 rel, float3 n, float viewZ)
 // brightness option's curve and the faint floor that keeps a cave from going pitch black.
 // SkyCraft+ : how open to the sky a camera-relative point is, past Skyrim's own land: Minecraft can't
 // see Skyrim's ground over a tunnel dug into it, so its sky light there is full daylight. Looking
-// straight up the contact volume (Skyrim geometry, bit 1): any above, and the sky is shut out.
+// straight up the contact volume (Skyrim geometry, bit 1): any above, and the sky is shut out. Past
+// the volume's top (aoVolume.w 2: the camera deeper under Skyrim's land than the volume reaches),
+// shut out too.
 float SkyOpen(float3 rel)
 {
 	if (aoVolume.w < 0.5) {
 		return 1.0;
 	}
+	float  past = aoVolume.w > 1.5 ? 0.0 : 1.0;
 	float3 p = float3(rel.x, rel.z, -rel.y) / 70.0 - aoVolume.xyz;
 	uint   w, h, d;
 	contactVolume.GetDimensions(w, h, d);
 	int3 c = (int3)floor(p);
 	if (any(c < 0) || c.x >= (int)w || c.z >= (int)d || c.y >= (int)h) {
-		return 1.0;
+		return past;
 	}
 	[loop] for (int y = max(c.y + 1, 0); y < (int)h; ++y) {
 		if (contactVolume.Load(int4(c.x, y, c.z, 0)) & 2) {
 			return 0.0;
 		}
 	}
-	return 1.0;
+	return past;
 }
 
 float3 McLight(float2 l, float skyOpen)
@@ -1680,7 +1683,18 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 					logger::info("contact shadows: {} Minecraft blocks and {} blocks' worth of Skyrim geometry around the camera", blocks, boxes);
 				}
 			}
-			Set4(a_fc.aoVolume, float(aoOrigin[0] - a_cam.x), float(aoOrigin[1] - a_cam.y), float(aoOrigin[2] - a_cam.z), 1.0f);
+			// SkyCraft+ : Minecraft's light underground. Skyrim's land over the camera above the volume's
+			// top (a deep tunnel): SkyOpen shuts the sky out past it as well (w 2).
+			float deep = 1.0f;
+			if (auto* tes = RE::TES::GetSingleton(); tes && State().minecraftLightUnderground && State().playerUnderLand) {
+				auto  sky = McToSky(a_cam.x, a_cam.y, a_cam.z);
+				float land = 0.0f;
+				sky.z += 100000.0f;  // (asked from high above: the land's own height, whatever's dug)
+				if (tes->GetLandHeight(sky, land) && SkyToMc(RE::NiPoint3{ sky.x, sky.y, land }).y > double(aoOrigin[1] + kAoSize[1])) {
+					deep = 2.0f;
+				}
+			}
+			Set4(a_fc.aoVolume, float(aoOrigin[0] - a_cam.x), float(aoOrigin[1] - a_cam.y), float(aoOrigin[2] - a_cam.z), deep);
 			return true;
 		}
 
