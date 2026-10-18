@@ -25,6 +25,8 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.Mth;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.DoublePlantBlock;
@@ -38,14 +40,15 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Little bits of Minecraft in Skyrim's open country, so its plants and every kind of wood can be had
- * in survival. Here and there on flat, plain land one block of Skyrim's ground is cut out and made
- * a Minecraft block (grass, half a block at most above or below the land), with on it: in woods,
- * now and then a Minecraft tree (its kind after Skyrim's trees round it: spruce and pine by spruce
+ * in survival. On flat, plain land: in woods, now and then a Minecraft tree on a Minecraft grass
+ * block cut into Skyrim's ground (its kind after Skyrim's trees round it: spruce and pine by spruce
  * and in snow, birch, cherry and poplar by aspens and birches, oak, dark and pale oak, jungle,
- * acacia, mangrove and azalea by the rest) and leaf litter; on grass, grass (seeds), ferns, bushes
- * and flowers. Each chunk is decided once, the first time the host's Skyrim has sent its ground,
- * and kept with the world (skycraft-patches.txt); not in towns and settlements, nor with Skyrim
- * destruction off. Setting: skyrimPatches in config/skycraft.properties.
+ * acacia, mangrove and azalea by the rest; out in the open now and then an oak, birch, acacia or
+ * cherry), and leaf litter; on grass, grass (seeds), ferns, bushes and flowers. The plants stand
+ * straight on Skyrim's ground (VegetationBlockMixin). Each eight by eight blocks is decided once,
+ * as soon as the host's Skyrim has sent its ground (some forty blocks out), and kept with the world
+ * (skycraft-patches-8.txt); not in towns and settlements, nor with Skyrim destruction off. Setting:
+ * skyrimPatches in config/skycraft.properties.
  */
 public final class SkyPatches {
 	private SkyPatches() {
@@ -56,8 +59,11 @@ public final class SkyPatches {
 	private static @Nullable Path file;
 	private static int logged;
 
-	private static final int RADIUS = 2; // chunks round the host
-	private static final int TRIES = 40; // columns looked at per chunk
+	private static final int CELL = SkyCollision.REGION_SIZE; // blocks per side of an area (as Skyrim sends its ground)
+	private static final int RADIUS = 5; // areas round the host (Skyrim sends five regions round the player)
+	private static final int TRIES = 24; // columns looked at per area
+	private static final int PER_TICK = 4; // areas decided a tick at most
+	private static final long BUDGET = 3_000_000L; // nanoseconds a tick
 
 	private record Kind(Block sapling, TreeGrower grower, boolean twoByTwo, int weight) {
 	}
@@ -70,6 +76,8 @@ public final class SkyPatches {
 		new Kind(Blocks.MANGROVE_PROPAGULE, TreeGrower.MANGROVE, false, 1), new Kind(Blocks.PALE_OAK_SAPLING, TreeGrower.PALE_OAK, true, 1),
 		new Kind(Blocks.AZALEA, TreeGrower.AZALEA, false, 1), new Kind(Blocks.CHERRY_SAPLING, TreeGrower.CHERRY, false, 1),
 		new Kind(Blocks.POPLAR_SAPLING, TreeGrower.POPLAR, false, 1) };
+	private static final Kind[] IN_THE_OPEN = { new Kind(Blocks.OAK_SAPLING, TreeGrower.OAK, false, 5), new Kind(Blocks.BIRCH_SAPLING, TreeGrower.BIRCH, false, 3),
+		new Kind(Blocks.ACACIA_SAPLING, TreeGrower.ACACIA, false, 1), new Kind(Blocks.CHERRY_SAPLING, TreeGrower.CHERRY, false, 1) };
 
 	private static final Block[] FLOWERS = { Blocks.DANDELION, Blocks.POPPY, Blocks.CORNFLOWER, Blocks.OXEYE_DAISY, Blocks.AZURE_BLUET, Blocks.ALLIUM,
 		Blocks.RED_TULIP, Blocks.ORANGE_TULIP, Blocks.WHITE_TULIP, Blocks.PINK_TULIP, Blocks.BLUE_ORCHID, Blocks.LILY_OF_THE_VALLEY, Blocks.WILDFLOWERS,
@@ -93,7 +101,7 @@ public final class SkyPatches {
 		enabled = Boolean.parseBoolean(p.getProperty("skyrimPatches", "true").trim());
 		DONE.clear();
 		logged = 0;
-		file = server.getWorldPath(LevelResource.ROOT).resolve("skycraft-patches.txt");
+		file = server.getWorldPath(LevelResource.ROOT).resolve("skycraft-patches-8.txt");
 		if (Files.exists(file)) {
 			try {
 				for (String line : Files.readAllLines(file)) {
@@ -105,11 +113,11 @@ public final class SkyPatches {
 				SkyCraft.LOG.warn("SkyCraft: couldn't read {}: {}", file, e.toString());
 			}
 		}
-		SkyCraft.LOG.info("SkyCraft: Minecraft patches in Skyrim's ground {} ({} chunks done)", enabled ? "on" : "off", DONE.size());
+		SkyCraft.LOG.info("SkyCraft: Minecraft patches in Skyrim's ground {} ({} areas done)", enabled ? "on" : "off", DONE.size());
 	}
 
-	private static long key(int world, int cx, int cz) {
-		return ChunkPos.pack(cx, cz) ^ (world * 0x9E3779B97F4A7C15L);
+	private static long key(int world, int ax, int az) {
+		return ChunkPos.pack(ax, az) ^ (world * 0x9E3779B97F4A7C15L);
 	}
 
 	private static void done(long key) {
@@ -124,10 +132,13 @@ public final class SkyPatches {
 		}
 	}
 
-	/** Once a second: the next chunk round the host that Skyrim has sent and isn't decided yet. */
+	/**
+	 * Each tick: the nearest areas round the host that Skyrim has sent and aren't decided yet, as soon
+	 * as they're sent, far out, so they're there before the host comes (one chunk a second, close
+	 * by, popped in round them).
+	 */
 	private static void tick(MinecraftServer server) {
-		if (!enabled || server.getTickCount() % 20 != 11 || !SkyWorld.valid() || !SkyCollision.active() || !SkyDig.destruction || SkyWorld.interior()
-			|| SkyWorld.settlement() || SkyWorld.town()) {
+		if (!enabled || !SkyWorld.valid() || !SkyCollision.active() || !SkyDig.destruction || SkyWorld.interior() || SkyWorld.settlement() || SkyWorld.town()) {
 			return;
 		}
 		ServerPlayer host = null;
@@ -142,60 +153,64 @@ public final class SkyPatches {
 		}
 		ServerLevel level = host.level();
 		int world = SkyDig.worldFor(level);
-		int hx = host.getBlockX() >> 4, hz = host.getBlockZ() >> 4, hy = host.getBlockY();
+		int hx = Math.floorDiv(host.getBlockX(), CELL), hz = Math.floorDiv(host.getBlockZ(), CELL), hy = host.getBlockY();
+		long began = System.nanoTime();
+		int decided = 0;
 		for (int r = 0; r <= RADIUS; r++) {
 			for (int dx = -r; dx <= r; dx++) {
 				for (int dz = -r; dz <= r; dz++) {
 					if (Math.max(Math.abs(dx), Math.abs(dz)) != r) {
 						continue;
 					}
-					int cx = hx + dx, cz = hz + dz;
-					long key = key(world, cx, cz);
-					if (DONE.contains(key) || !sent(cx, hy, cz) || !level.hasChunk(cx, cz)) {
+					int ax = hx + dx, az = hz + dz;
+					long key = key(world, ax, az);
+					if (DONE.contains(key) || !sent(ax, hy, az) || !level.hasChunk((ax * CELL) >> 4, (az * CELL) >> 4)) {
 						continue;
 					}
 					done(key);
-					decide(level, world, cx, cz, hy);
-					return;
+					decide(level, world, ax, az, hy);
+					if (++decided >= PER_TICK || System.nanoTime() - began > BUDGET) {
+						return;
+					}
 				}
 			}
 		}
 	}
 
-	/** Skyrim has sent this chunk's ground round the host's height (its middle and corners). */
-	private static boolean sent(int cx, int y, int cz) {
-		int x = cx << 4, z = cz << 4;
-		return SkyCollision.isKnown(x + 8, y, z + 8) && SkyCollision.isKnown(x + 1, y, z + 1) && SkyCollision.isKnown(x + 14, y, z + 1)
-			&& SkyCollision.isKnown(x + 1, y, z + 14) && SkyCollision.isKnown(x + 14, y, z + 14);
+	/** Skyrim has sent this area's ground round the host's height (its region, and the ones over and under it). */
+	private static boolean sent(int ax, int y, int az) {
+		int x = ax * CELL, z = az * CELL;
+		return SkyCollision.isKnown(x, y, z) && SkyCollision.isKnown(x, y - CELL, z) && SkyCollision.isKnown(x, y + CELL, z);
 	}
 
-	private static void decide(ServerLevel level, int world, int cx, int cz, int hostY) {
-		RandomSource random = RandomSource.create(level.getSeed() ^ ChunkPos.pack(cx, cz) * 0x5DEECE66DL ^ world);
+	private static void decide(ServerLevel level, int world, int ax, int az, int hostY) {
+		RandomSource random = RandomSource.create(level.getSeed() ^ ChunkPos.pack(ax, az) * 0x5DEECE66DL ^ world ^ 0x8L);
 		int trees = 0, grass = 0, flowers = 0, litter = 0;
-		int wantGrass = random.nextInt(7), wantFlowers = random.nextInt(4) == 0 ? 1 + random.nextInt(2) : 0;
-		boolean treeHere = random.nextInt(100) < 40;
+		int wantGrass = 2 + random.nextInt(6), wantFlowers = random.nextBoolean() ? 1 + random.nextInt(3) : 0;
+		int treeRoll = random.nextInt(100);
 		int[] material = new int[1];
 		for (int i = 0; i < TRIES; i++) {
-			int x = (cx << 4) + random.nextInt(16), z = (cz << 4) + random.nextInt(16);
-			double h = land(x, z, hostY - 24, hostY + 24, material);
-			if (Double.isNaN(h) || !flat(x, z, h) || !SkyCollision.isKnown(x, Mth.floor(h), z)) {
+			int x = ax * CELL + random.nextInt(CELL), z = az * CELL + random.nextInt(CELL);
+			double h = land(x, z, hostY - 24, hostY + 16, material);
+			double rough = Double.isNaN(h) ? Double.NaN : roughness(x, z, h);
+			if (Double.isNaN(rough) || rough > 0.5 || !SkyCollision.isKnown(x, Mth.floor(h), z)) {
 				continue;
 			}
 			int ground = material[0];
 			int logs = logsNear(x, z, h);
 			boolean forest = logs != Proto.DIG_NONE;
-			if (forest && treeHere && trees == 0 && (ground == Proto.DIG_GRASS || ground == Proto.DIG_SNOW) && clearForTree(x, z, h)) {
+			if (trees == 0 && treeRoll < (forest ? 50 : 8) && (ground == Proto.DIG_GRASS || ground == Proto.DIG_SNOW) && clearForTree(x, z, h)) {
 				Kind kind = ground == Proto.DIG_SNOW || logs == Proto.DIG_SPRUCE_LOG ? pick(BY_SPRUCE, random)
-					: logs == Proto.DIG_BIRCH_LOG ? pick(BY_BIRCH, random) : pick(BY_OAK, random);
+					: !forest ? pick(IN_THE_OPEN, random) : logs == Proto.DIG_BIRCH_LOG ? pick(BY_BIRCH, random) : pick(BY_OAK, random);
 				if (tree(level, world, x, z, h, kind, random)) {
 					trees++;
 					continue;
 				}
 			}
-			if (forest && litter < 3 && (ground == Proto.DIG_GRASS || ground == Proto.DIG_DIRT) && random.nextInt(3) == 0) {
+			if (forest && litter < 3 && (ground == Proto.DIG_GRASS || ground == Proto.DIG_DIRT) && random.nextBoolean()) {
 				BlockState leaves = Blocks.LEAF_LITTER.defaultBlockState().trySetValue(SegmentableBlock.AMOUNT, 1 + random.nextInt(4))
 					.trySetValue(BlockStateProperties.HORIZONTAL_FACING, Direction.Plane.HORIZONTAL.getRandomDirection(random));
-				if (plant(level, world, x, z, h, leaves)) {
+				if (rough <= 0.2 && plant(level, x, z, h, leaves, true)) {
 					litter++;
 				}
 				continue;
@@ -204,17 +219,17 @@ public final class SkyPatches {
 				continue;
 			}
 			if (flowers < wantFlowers && random.nextInt(3) == 0) {
-				if (plant(level, world, x, z, h, flower(random))) {
+				if (plant(level, x, z, h, flower(random), false)) {
 					flowers++;
 				}
 			} else if (grass < wantGrass) {
-				if (plant(level, world, x, z, h, grassy(random, forest, logs))) {
+				if (plant(level, x, z, h, grassy(random, forest, logs), false)) {
 					grass++;
 				}
 			}
 		}
 		if (trees + grass + flowers + litter > 0 && logged++ < 40) {
-			SkyCraft.LOG.info("SkyCraft: Minecraft patches in chunk {} {}: {} tree(s), {} grass, {} flower(s), {} leaf litter", cx, cz, trees, grass, flowers, litter);
+			SkyCraft.LOG.info("SkyCraft: Minecraft patches at {} {}: {} tree(s), {} grass, {} flower(s), {} leaf litter", ax * CELL, az * CELL, trees, grass, flowers, litter);
 		}
 	}
 
@@ -278,17 +293,19 @@ public final class SkyPatches {
 		return best;
 	}
 
-	/** The land round the column within half a block of its height. */
-	private static boolean flat(int x, int z, double h) {
+	/** How far (blocks) the land round the column is above or below its height, the most; NaN if it isn't plain land round it. */
+	private static double roughness(int x, int z, double h) {
 		int[] unused = new int[1];
 		int[][] around = { { 1, 0 }, { -1, 0 }, { 0, 1 }, { 0, -1 } };
+		double most = 0.0;
 		for (int[] d : around) {
 			double n = land(x + d[0], z + d[1], h - 2.0, h + 2.0, unused);
-			if (Double.isNaN(n) || Math.abs(n - h) > 0.5) {
-				return false;
+			if (Double.isNaN(n)) {
+				return Double.NaN;
 			}
+			most = Math.max(most, Math.abs(n - h));
 		}
-		return true;
+		return most;
 	}
 
 	/** The kind of Skyrim's tree trunks within ten blocks (Proto.DIG_*_LOG, the most of), or DIG_NONE. */
@@ -311,10 +328,10 @@ public final class SkyPatches {
 		return spruce >= oak && spruce >= birch ? Proto.DIG_SPRUCE_LOG : birch >= oak ? Proto.DIG_BIRCH_LOG : Proto.DIG_OAK_LOG;
 	}
 
-	/** Room for a tree: nothing of Skyrim's (a trunk, a rock) within three blocks of it, ten up. */
+	/** Room for a tree: nothing of Skyrim's (a trunk, a rock) within two blocks of it, ten up. */
 	private static boolean clearForTree(int x, int z, double h) {
 		List<SkyTri> tris = new ArrayList<>();
-		SkyCollision.trianglesNear(new AABB(x - 3.0, h + 0.3, z - 3.0, x + 4.0, h + 10.0, z + 4.0), tris);
+		SkyCollision.trianglesNear(new AABB(x - 2.0, h + 0.3, z - 2.0, x + 3.0, h + 10.0, z + 3.0), tris);
 		for (SkyTri t : tris) {
 			if (!t.terrain) {
 				return false;
@@ -324,8 +341,8 @@ public final class SkyPatches {
 	}
 
 	/**
-	 * Where a patch's block goes in this column: the cell its top is within half a block of the land
-	 * in. Null if a Minecraft block or a dug hole is there already, or water.
+	 * Where a tree's grass block goes in this column: the cell its top is within half a block of the
+	 * land in. Null if a Minecraft block or a dug hole is there already, or water.
 	 */
 	private static @Nullable BlockPos base(ServerLevel level, int world, int x, int z, double h) {
 		int fy = Mth.floor(h);
@@ -347,15 +364,25 @@ public final class SkyPatches {
 		level.setBlock(base, ground, Block.UPDATE_ALL);
 	}
 
-	private static boolean plant(ServerLevel level, int world, int x, int z, double h, BlockState plant) {
-		BlockPos base = base(level, world, x, z, h);
-		if (base == null) {
+	/**
+	 * A plant straight on Skyrim's ground, in the cell the land's top is low in (sunk 0.4 of a block
+	 * at most, which the land hides) or just under (0.2 over it at most); leaf litter, flat, only
+	 * just in or over the land's top.
+	 */
+	private static boolean plant(ServerLevel level, int x, int z, double h, BlockState plant, boolean flat) {
+		int fy = Mth.floor(h);
+		double frac = h - fy;
+		BlockPos at;
+		if (frac <= (flat ? 0.04 : 0.4)) {
+			at = new BlockPos(x, fy, z);
+		} else if (frac >= (flat ? 0.88 : 0.8)) {
+			at = new BlockPos(x, fy + 1, z);
+		} else {
 			return false;
 		}
-		dig(level, world, base, h, Blocks.GRASS_BLOCK.defaultBlockState());
-		BlockPos at = base.above();
-		if (!plant.canSurvive(level, at)) {
-			return true;  // (the grass block alone)
+		if (!level.isLoaded(at) || !level.getBlockState(at).isAir() || !level.getBlockState(at.above()).isAir() || SkyWater.depthIn(at) > 0.0F
+			|| !plant.canSurvive(level, at)) {
+			return false;
 		}
 		if (plant.getBlock() instanceof DoublePlantBlock) {
 			DoublePlantBlock.placeAt(level, plant, at, Block.UPDATE_ALL);
@@ -363,6 +390,27 @@ public final class SkyPatches {
 			level.setBlock(at, plant, Block.UPDATE_ALL);
 		}
 		return true;
+	}
+
+	/**
+	 * Skyrim's grass, dirt or snow holds up a plant in this cell, with no Minecraft block under it:
+	 * the land's top from a quarter of a block under the cell to 0.45 up in it (as patches are
+	 * planted).
+	 */
+	public static boolean onSkyrimGround(LevelReader level, BlockPos pos) {
+		if (!enabled || !(level instanceof Level world) || !SkyCollision.active() || SkyDig.minecraftsOwnWorld(world) || !level.getBlockState(pos.below()).isAir()) {
+			return false;
+		}
+		List<SkyTri> tris = new ArrayList<>();
+		double px = pos.getX() + 0.5, pz = pos.getZ() + 0.5, lo = pos.getY() - 0.25, hi = pos.getY() + 0.45;
+		SkyCollision.trianglesNear(new AABB(px - 0.01, lo, pz - 0.01, px + 0.01, hi, pz + 0.01), tris);
+		for (SkyTri t : tris) {
+			double h = t.terrain ? t.heightAt(px, pz) : Double.NaN;
+			if (!Double.isNaN(h) && h >= lo && h <= hi && (t.material == Proto.DIG_GRASS || t.material == Proto.DIG_DIRT || t.material == Proto.DIG_SNOW)) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/** A Minecraft tree grown from its sapling on a patch (two by two for dark and pale oak); a sapling left if it couldn't grow. */
