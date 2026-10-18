@@ -315,6 +315,9 @@ namespace skycraft
 		void          SaveBabies(SKSE::SerializationInterface* a_intfc);
 		void          LoadBabies(SKSE::SerializationInterface* a_intfc);
 		void          ClearBabies();
+		void          SaveWalks(SKSE::SerializationInterface* a_intfc);
+		void          LoadWalks(SKSE::SerializationInterface* a_intfc);
+		void          ClearWalks();
 	}
 
 	// SkyCraft+ : Skyrim crops on Minecraft farmland.

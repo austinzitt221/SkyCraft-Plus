@@ -2242,6 +2242,7 @@ namespace skycraft
 		void OnSave(SKSE::SerializationInterface* a_intfc)
 		{
 			Animals::SaveBabies(a_intfc);  // SkyCraft+
+			Animals::SaveWalks(a_intfc);  // SkyCraft+
 			Crops::Save(a_intfc);  // SkyCraft+
 			if (!State().parked || mc.dimension < proto::kDimNether) {
 				return;
@@ -2269,6 +2270,10 @@ namespace skycraft
 					Animals::LoadBabies(a_intfc);  // SkyCraft+
 					continue;
 				}
+				if (type == 'WALK') {
+					Animals::LoadWalks(a_intfc);  // SkyCraft+
+					continue;
+				}
 				if (type == kWorldRecord && version == 1 && a_intfc->ReadRecordData(world) && a_intfc->ReadRecordData(x) && a_intfc->ReadRecordData(y) &&
 					a_intfc->ReadRecordData(z) && (world == proto::kDimNether || world == proto::kDimEnd)) {
 					savedWorld = world;
@@ -2282,6 +2287,7 @@ namespace skycraft
 		void OnRevert(SKSE::SerializationInterface*)
 		{
 			Animals::ClearBabies();  // SkyCraft+
+			Animals::ClearWalks();  // SkyCraft+
 			Crops::Clear();  // SkyCraft+
 			savedWorld = 0;
 			savedCheck = false;
