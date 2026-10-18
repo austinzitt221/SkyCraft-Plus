@@ -42,13 +42,15 @@ final class ProxySync {
 				proxy.zo = a.z();
 				proxy.setYRot(a.yaw());
 				proxy.yRotO = a.yaw();
+				proxy.getLeashHolder(); // SkyCraft+ : the client takes up a lead it's told of only when asked
 				logLead(proxy);
 			}
 		}
 	}
 
-	// SkyCraft+ : leads on Skyrim actors. When this client's copy of a stand-in gains or loses its lead
-	// (testing leads that weren't drawn at first).
+	// SkyCraft+ : leads on Skyrim actors. When this client's copy of a stand-in gains or loses its lead.
+	// (Minecraft's client links a lead it's told of on the next getLeashHolder, which only its own
+	// renderer and a right click nearby asked: the stand-ins' lead stayed undrawn until then.)
 	private static final Map<Integer, Boolean> LEASHED = new HashMap<>();
 
 	private static void logLead(SkyrimActorEntity proxy) {
