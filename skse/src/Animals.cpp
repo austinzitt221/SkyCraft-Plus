@@ -79,6 +79,73 @@ namespace skycraft::Animals
 			logger::info("animals: {} ({}) likes {:02X}", race->GetName() ? race->GetName() : "?", a_actor->GetName(), likes);
 			return likes;
 		}
+
+		// Walked the Minecraft way: Skyrim takes KeepOffsetFromActor on an animal and does nothing with
+		// it (its own packages win), so one that stands still while it should come is stepped there
+		// as a Minecraft mob is pulled, over Minecraft's blocks (a one-block step up) and up Skyrim's
+		// slopes, until it's within reach or walks on its own again.
+		struct Walk
+		{
+			RE::NiPoint3 last;
+			float        still = 0.0f;
+		};
+		std::unordered_map<RE::FormID, Walk>       walks;
+		std::unordered_map<RE::FormID, RE::FormID> approaching;  // breeding: to its partner
+
+		void Steer(RE::Actor* a_actor, const RE::NiPoint3& a_goal, double a_keepBlocks, float a_delta)
+		{
+			auto&       walk = walks[a_actor->GetFormID()];
+			const auto  pos = a_actor->GetPosition();
+			const float moved = walk.last.GetDistance(pos);
+			walk.last = pos;
+			walk.still = moved < 0.5f * float(proto::kUnitsPerBlock) * a_delta ? walk.still + a_delta : 0.0f;  // under half a block a second
+			const auto   here = SkyToMc(pos), goal = SkyToMc(a_goal);
+			const double dx = goal.x - here.x, dz = goal.z - here.z;
+			const double distance = std::sqrt(dx * dx + dz * dz);
+			if (distance <= a_keepBlocks || walk.still < 0.6f || distance < 0.01 || a_actor->IsInCombat()) {
+				return;
+			}
+			const double speed = distance > 8.0 ? 4.5 : 2.5;  // blocks a second: hurrying when far behind
+			const double step = std::min(speed * a_delta, distance - a_keepBlocks);
+			const double nx = here.x + dx / distance * step, nz = here.z + dz / distance * step;
+			const int    bx = int(std::floor(nx)), bz = int(std::floor(nz)), by = int(std::floor(here.y + 0.05));
+			double       ny = here.y;
+			if (NpcBlocks::BlocksBody(bx, by, bz) || NpcBlocks::BlocksBody(bx, by + 1, bz)) {
+				if (NpcBlocks::BlocksBody(bx, by + 1, bz) || NpcBlocks::BlocksBody(bx, by + 2, bz)) {
+					return;  // a wall: it waits
+				}
+				ny = by + 1.0;
+			}
+			auto to = McToSky(nx, ny, nz);
+			if (auto* tes = RE::TES::GetSingleton()) {
+				auto  above = to;
+				float land = 0.0f;
+				above.z += 100000.0f;
+				if (tes->GetLandHeight(above, land) && land > to.z && land - to.z < float(proto::kUnitsPerBlock)) {
+					to.z = land;  // up Skyrim's slope (not out of a tunnel: the land's far above that)
+				}
+			}
+			a_actor->SetPosition(to, true);
+			walk.last = a_actor->GetPosition();  // our step isn't its own walking
+			a_actor->data.angle.z = std::atan2(float(dx), float(-dz));
+			static int logged = 0;
+			if (walk.still < 0.6f + a_delta * 1.5f && logged++ < 20) {
+				logger::info("animals: {} stood still: walked the Minecraft way ({:.0f} blocks to go)", a_actor->GetName(), distance);
+			}
+		}
+
+		// Whether Skyrim ran a Papyrus call (CallActor), for the log.
+		class Ran final : public RE::BSScript::IStackCallbackFunctor
+		{
+		public:
+			explicit Ran(std::string a_what) :
+				what(std::move(a_what)) {}
+			void operator()(RE::BSScript::Variable) override { logger::info("animals: {} ran", what); }
+			void SetObject(const RE::BSTSmartPointer<RE::BSScript::Object>&) override {}
+
+		private:
+			std::string what;
+		};
 	}
 
 	// A Papyrus Actor method on this actor (Skyrim's own behaviour, as scripts use it). An actor with
@@ -105,6 +172,10 @@ namespace skycraft::Animals
 			bind->BindObject(object, handle);
 		}
 		RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback;
+		static int logged = 0;
+		if (logged++ < 10) {
+			callback.reset(new Ran(std::string(a_function) + " on " + a_actor->GetName()));
+		}
 		auto* arguments = RE::MakeFunctionArguments(std::forward<Args>(a_args)...);
 		return vm->DispatchMethodCall1(object, a_function, arguments, callback);
 	}
@@ -121,6 +192,8 @@ namespace skycraft::Animals
 
 	void LetGo(RE::Actor* a_actor)
 	{
+		walks.erase(a_actor->GetFormID());
+		approaching.erase(a_actor->GetFormID());
 		CallActor(a_actor, "ClearKeepOffsetFromActor");
 		a_actor->EvaluatePackage(true, false);
 	}
@@ -157,6 +230,7 @@ namespace skycraft::Animals
 		}
 		if (to) {
 			Follow(actor, to, 0.0f, 40.0f);
+			approaching[a_actor] = a_to;
 		} else {
 			LetGo(actor);
 		}
@@ -302,7 +376,12 @@ namespace skycraft::Animals
 				actor->MoveTo(a_player);
 				Follow(actor, a_player, 0.0f, -120.0f);
 				logger::info("leads: {} came through the door on the lead", actor->GetName());
-			} else if (lead.mode == 2 && lead.marker && (lead.pullTimer -= a_delta) <= 0.0f) {
+			} else if (lead.mode == 1 && !otherPlace) {
+				Steer(actor, a_player->GetPosition(), 3.0, a_delta);
+			} else if (lead.mode == 2 && lead.marker && actor->GetParentCell() == lead.marker->GetParentCell() && actor->GetPosition().GetDistance(lead.post) > kPostSlack) {
+				Steer(actor, lead.post, 2.0, a_delta);
+			}
+			if (lead.mode == 2 && lead.marker && (lead.pullTimer -= a_delta) <= 0.0f) {
 				lead.pullTimer = 3.0f;
 				if (actor->GetParentCell() == lead.marker->GetParentCell() && actor->GetPosition().GetDistance(lead.post) > kPostSlack) {
 					RE::TESObjectREFR* post = lead.marker.get();
@@ -318,6 +397,21 @@ namespace skycraft::Animals
 	{
 		TickLeads(a_player, a_delta);
 		TickBabies(a_delta);
+		for (const auto& [id, _] : following) {
+			if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(id)) {
+				Steer(actor, a_player->GetPosition(), 2.0, a_delta);
+			}
+		}
+		for (auto it = approaching.begin(); it != approaching.end();) {
+			auto* actor = RE::TESForm::LookupByID<RE::Actor>(it->first);
+			auto* to = RE::TESForm::LookupByID<RE::Actor>(it->second);
+			if (!actor || !to || actor->IsDead() || to->IsDead() || actor->GetPosition().GetDistance(to->GetPosition()) > 32.0f * float(proto::kUnitsPerBlock)) {
+				it = approaching.erase(it);
+				continue;
+			}
+			Steer(actor, to->GetPosition(), 1.0, a_delta);
+			++it;
+		}
 		timer -= a_delta;
 		if (timer > 0.0f) {
 			return;
