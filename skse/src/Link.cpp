@@ -180,6 +180,13 @@ namespace skycraft
 
 			// Same reset as the Windows path: rings and swap start from a known state.
 			auto* header = At<proto::Header>(proto::kOffHeader);
+			// SkyCraft+ : the file outlives both games (until a reboot), unlike Windows' mapping, so one
+			// left from an earlier session starts all over (its Skyrim storage rings, inventory, item
+			// list, loot spots...), as a new mapping would; not while Minecraft is still on it.
+			const bool mcAttached = existed && header->magic == proto::kMagic && header->mcPid != 0 && ::GetTickCount64() - header->mcHeartbeatMs < 10000;
+			if (existed && !mcAttached) {
+				std::memset(base_, 0, static_cast<std::size_t>(size));
+			}
 			std::memset(base_ + proto::kOffSkyState, 0, sizeof(proto::SkyState));
 			std::memset(base_ + proto::kOffOverlayCtl, 0, 0x100);
 			std::memset(base_ + proto::kOffInputRing, 0, proto::kInputRingDataOff);

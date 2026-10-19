@@ -22,6 +22,7 @@ public final class MirrorWorld {
 	// Linux bridge: Skyrim may not be running, so a fresh world is a normal overworld instead of the
 	// void mirror preset (the mod's own content is there; Skyrim's terrain simply never arrives).
 	private static boolean standalone;
+	private static final String STANDALONE_WORLD = "SkyCraft standalone";  // SkyCraft+ : its own world
 
 	public static void setStandalone(boolean value) {
 		standalone = value;
@@ -161,14 +162,17 @@ public final class MirrorWorld {
 				new net.minecraft.client.multiplayer.ServerData("SkyCraft", join, net.minecraft.client.multiplayer.ServerData.Type.OTHER), false, null);
 			return;
 		}
-		if (minecraft.getLevelSource().levelExists(WorldSwitcher.current())) {
+		// SkyCraft+ : the Linux standalone world is one of its own: made under the SkyCraft world's name, the
+		// normal world it is would have opened as the mirror once Skyrim came.
+		String name = standalone ? STANDALONE_WORLD : WorldSwitcher.current();
+		if (minecraft.getLevelSource().levelExists(name)) {
 			SkyCraft.LOG.info("SkyCraft: opening mirror world");
-			minecraft.createWorldOpenFlows().openWorld(WorldSwitcher.current(), () -> minecraft.gui.setScreen(title));
+			minecraft.createWorldOpenFlows().openWorld(name, () -> minecraft.gui.setScreen(title));
 			return;
 		}
 		SkyCraft.LOG.info("SkyCraft: creating mirror world");
 		LevelSettings settings = new LevelSettings(
-			WorldSwitcher.current(), // SkyCraft+ : world switcher
+			name, // SkyCraft+ : world switcher (or the standalone world)
 			GameType.SURVIVAL,
 			new LevelSettings.DifficultySettings(Difficulty.NORMAL, false, false),
 			true,
@@ -178,7 +182,7 @@ public final class MirrorWorld {
 		ResourceKey<WorldPreset> preset = standalone
 			? net.minecraft.world.level.levelgen.presets.WorldPresets.NORMAL : PRESET;
 		minecraft.createWorldOpenFlows().createFreshLevel(
-			WorldSwitcher.current(), // SkyCraft+ : world switcher
+			name, // SkyCraft+ : world switcher (or the standalone world)
 			settings,
 			new WorldOptions(0L, true, false), // SkyCraft+ : structures, for the underground, the Nether and the End
 			registries -> registries.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(preset).value().createWorldDimensions(),
