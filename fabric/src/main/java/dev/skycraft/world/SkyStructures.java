@@ -92,6 +92,21 @@ public final class SkyStructures {
 	private record Built(String structure, BoundingBox box) {
 	}
 
+	/**
+	 * SkyCraft+ : the woodland mansion off the mountain. A site that has moved since its structure was
+	 * built (a better spot picked by a newer SkyCraft) is built again where it is now; the old one stays.
+	 */
+	private static void forgetIfMoved(SkyrimMap.Site site) {
+		Built b = BUILT.get(site.name());
+		if (b == null || b.box.getXSpan() <= 1) {
+			return;  // (not built, or a placeholder: it couldn't be)
+		}
+		if (!b.box.inflatedBy(48).isInside(BlockPos.containing(site.x(), b.box.getCenter().getY(), site.z()))) {
+			SkyCraft.LOG.info("SkyCraft: {} has a new spot ({} {}, was by {}): built again there", site.name(), (int) site.x(), (int) site.z(), b.box.getCenter());
+			BUILT.remove(site.name());
+		}
+	}
+
 	/** A structure laid out and being placed a few chunks a tick (a village at once stalled the game a second). */
 	private record Pending(SkyrimMap.Site site, StructureStart start, FlatLevelSource ground, BoundingBox box, List<ChunkPos> chunks, long started) {
 	}
@@ -361,6 +376,9 @@ public final class SkyStructures {
 		}
 		if (host == null) {
 			return;
+		}
+		for (SkyrimMap.Site site : m.sites()) {
+			forgetIfMoved(site);
 		}
 		for (SkyrimMap.Site site : m.sites()) {
 			double dx = site.x() - host.getX(), dz = site.z() - host.getZ();

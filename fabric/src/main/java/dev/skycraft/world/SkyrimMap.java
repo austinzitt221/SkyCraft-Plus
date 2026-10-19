@@ -517,7 +517,9 @@ public final class SkyrimMap {
 		double sea = defaultWater;
 		List<Kind> kinds = List.of(
 			// Big and rare first.
-			new Kind("Woodland mansion", "minecraft:mansion", 32, 0, (g, x, y) -> flat(28, 4).of(g, x, y) + Math.min(g.nearTrees, 60) * 0.02),
+			// SkyCraft+ : the flattest wide ground there is (it stood half in a mountain): the slope counts
+			// for the most, the woods round it a little.
+			new Kind("Woodland mansion", "minecraft:mansion", 32, 0, (g, x, y) -> flat(28, 8).of(g, x, y) - (g.max - g.min) / UNITS * 0.3 + Math.min(g.nearTrees, 60) * 0.01),
 			new Kind("Ocean monument", "minecraft:monument", 32, 0, deep(32)),
 			new Kind("Snowy village", "minecraft:village_snowy", 24, 4, (g, x, y) -> g.mean > sea + 16000 ? flat(28, 4).of(g, x, y) : Double.NaN),
 			new Kind("Taiga village", "minecraft:village_taiga", 24, 4, (g, x, y) -> y < -12 * CELL_UNITS ? flat(28, 8).of(g, x, y) + Math.min(g.nearTrees, 80) * 0.02 : Double.NaN),  // the southern forests (Falkreath, the Rift)
@@ -574,7 +576,8 @@ public final class SkyrimMap {
 						if (g == null || (g.mountains > 0 && !onMountains && offMountains)) {
 							continue;
 						}
-						double score = kind.score.of(g, s[0], s[1]) - crowding(kind.structure, s[0] / UNITS, -s[1] / UNITS);
+						// (SkyCraft+ : the mansion on the mountains: as few of their pieces in it as can be.)
+						double score = kind.score.of(g, s[0], s[1]) - crowding(kind.structure, s[0] / UNITS, -s[1] / UNITS) - (onMountains && kind.structure.equals("minecraft:mansion") ? g.mountains * 3.0 : 0.0);
 						if (!Double.isNaN(score) && score > bestScore) {
 							bestScore = score;
 							best = s;
