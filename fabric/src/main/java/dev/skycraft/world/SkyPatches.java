@@ -155,6 +155,14 @@ public final class SkyPatches {
 		ServerLevel level = host.level();
 		int world = SkyDig.worldFor(level);
 		int hx = Math.floorDiv(host.getBlockX(), CELL), hz = Math.floorDiv(host.getBlockZ(), CELL), hy = host.getBlockY();
+		// SkyCraft+ : flying. Up in the air, the land under the host is where to look (Skyrim sends
+		// the ground round it then), not round the host's own height.
+		if (!host.onGround()) {
+			double ground = land(host.getBlockX(), host.getBlockZ(), hy - 96, hy + 1, new int[1]);
+			if (!Double.isNaN(ground) && hy - ground > CELL) {
+				hy = Mth.floor(ground);
+			}
+		}
 		long began = System.nanoTime();
 		int decided = 0;
 		for (int r = 0; r <= RADIUS; r++) {

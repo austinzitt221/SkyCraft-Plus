@@ -292,6 +292,9 @@ public final class WorldExporter {
 		var eye = minecraft.player.getEyePosition();
 		var look = minecraft.player.getViewVector(1.0F);
 		boolean inTheOpen = minecraft.level != null && minecraft.level.canSeeSky(minecraft.player.blockPosition().above());
+		// (Measured from the ground: flying, the land itself was "under" the player and waited.)
+		double groundY = minecraft.level == null ? eye.y
+			: Math.min(eye.y, minecraft.level.getHeight(net.minecraft.world.level.levelgen.Heightmap.Types.WORLD_SURFACE, minecraft.player.getBlockX(), minecraft.player.getBlockZ()) + 16.0);
 		// The nearest few: a max-heap of (score << 32 | index), its worst on top.
 		int k = Math.min(PICK_AT_MOST, keys.length);
 		long[] heap = new long[k];
@@ -305,7 +308,7 @@ public final class WorldExporter {
 			}
 			// SkyCraft+ : Minecraft patches. Out in the open, what's under the ground waits: the
 			// grass and trees round the player came long after the caves beneath them.
-			if (inTheOpen && dy < -12.0) {
+			if (inTheOpen && SectionPos.y(key) * 16 + 8 - groundY < -12.0) {
 				d2 *= 8.0;
 			}
 			long score = urgentSet.contains(key) ? 0L : Math.min((long) d2 + 1L, 0x7FFFFFFFL);

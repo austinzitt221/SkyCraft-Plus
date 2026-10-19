@@ -314,14 +314,34 @@ namespace skycraft
 			harvested_[RegionKey(r[0], r[1], r[2])] = now;
 			++done;
 		}
+		// SkyCraft+ : flying. Out over the land, its ground is what's wanted round the player (Minecraft's
+		// grass and trees go on it): sent around the player's height, the land some way under someone
+		// flying was "deep under them" and came last, and popped in only once they landed. So: the
+		// regions round the player first, then the rest round the land's height under them, then the
+		// rest round the player (treetops at their height).
+		int gry = pry;
+		if (auto* tes = RE::TES::GetSingleton(); tes && exterior) {
+			const auto at = player->GetPosition();
+			float      land = 0.0f;
+			if (tes->GetLandHeight(at, land)) {
+				gry = static_cast<int>(std::floor(SkyToMc(RE::NiPoint3{ at.x, at.y, land }).y / kRegionSize));
+			}
+		}
+		const int cry = pry > gry + 1 ? gry : pry;
+		bool      stop = false;
+		for (int pass = cry != pry ? 0 : 1; pass < (cry != pry ? 3 : 2) && !stop; ++pass) {
+		const int cy = pass == 1 ? cry : pry;
 		for (const auto& o : offsets_) {
-			const int rx = prx + o[0], ry = pry + o[1], rz = prz + o[2];
-			const auto key = RegionKey(rx, ry, rz);
-			const auto it = harvested_.find(key);
 			// SkyCraft+ : opened doors. And the regions above: a door or drawbridge reaching up into
 			// one stayed shut there, at head height, an invisible wall in the open doorway.
 			const bool isNear = std::abs(o[0]) <= 1 && std::abs(o[2]) <= 1 && o[1] >= -1 && o[1] <= 1;
-			if (it != harvested_.end() && !(isNear && now - it->second > kRefreshNear)) {
+			if (pass == 0 && !isNear) {
+				continue;
+			}
+			const int rx = prx + o[0], ry = cy + o[1], rz = prz + o[2];
+			const auto key = RegionKey(rx, ry, rz);
+			const auto it = harvested_.find(key);
+			if (it != harvested_.end() && !(isNear && cy == pry && now - it->second > kRefreshNear)) {
 				continue;
 			}
 			if (!gathered) {
@@ -334,6 +354,7 @@ namespace skycraft
 			// held only where it's unknown (SkyHold) fell out of the world, a tamed dog among them.
 			if (exterior && !LandUnder(rx, rz)) {
 				if (++landless > 64) {
+					stop = true;
 					break;
 				}
 				continue;
@@ -344,8 +365,10 @@ namespace skycraft
 			}
 			harvested_[key] = now;
 			if (++done >= kMaxHarvestsPerFrame || Clock::now() - start > kFrameBudget) {
+				stop = true;
 				break;
 			}
+		}
 		}
 
 		// Bound memory: drop bookkeeping for far-away regions.
