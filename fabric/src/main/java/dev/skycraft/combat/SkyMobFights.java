@@ -41,10 +41,15 @@ public final class SkyMobFights {
 	private static final int LAND_TICKS = 6; // the blow lands this long after the swing starts
 	private static final int GO_TICKS = 20; // a follower out of reach is sent again this often
 	private static final int GRUDGE_TICKS = 200; // a mob that hurt it is fought this long after
+	private static final double BOW_RANGE = 16.0; // a bow or crossbow shoots from this far
+	private static final int SHOT_TICKS = 50; // a shot every two and a half seconds
+	private static final int DRAW_TICKS = 22; // drawn this long before it's let go
 
 	private static final class Fight {
 		@Nullable Mob target;
 		long nextSwing, landAt = -1L, nextGo;
+		int outOfReach;
+		boolean ranged;
 	}
 
 	private static final Map<Integer, Fight> FIGHTS = new HashMap<>();
@@ -92,31 +97,55 @@ public final class SkyMobFights {
 			seen.add(proxy.formId());
 			Fight fight = FIGHTS.computeIfAbsent(proxy.formId(), id -> new Fight());
 			if (fight.target != target) {
-				fight.target = target;
-				fight.landAt = -1L;
+				fight.target = target; // (a drawn bow is let go at the new one)
 				if (logged++ < 30) {
 					SkyCraft.LOG.info("SkyCraft: {} fights a {}", proxy.getName().getString(), target.getType().getDescription().getString());
 				}
 			}
-			double reach = 1.4 + (proxy.getBbWidth() + target.getBbWidth()) / 2.0;
+			// A bow from afar, with a clear line to it (drawn, then let go: Skyrim plays both, the
+			// shot lands when it's let go); a blade close up (Skyrim's reach is some two blocks).
+			boolean ranged = (actor.flags() & Proto.ACTOR_RANGED) != 0;
+			fight.ranged = ranged;
+			double reach = ranged ? BOW_RANGE : 2.0 + (proxy.getBbWidth() + target.getBbWidth()) / 2.0;
 			double dx = target.getX() - proxy.getX(), dz = target.getZ() - proxy.getZ();
-			boolean inReach = dx * dx + dz * dz <= reach * reach && Math.abs(target.getY() - proxy.getY()) < 2.5;
+			boolean inReach = dx * dx + dz * dz <= reach * reach && (ranged ? proxy.hasLineOfSight(target) : Math.abs(target.getY() - proxy.getY()) < 2.5);
+			float aimY = (float) (target.getY() + target.getBbHeight() * 0.6);
 			if (fight.landAt >= 0L && now >= fight.landAt) {
 				fight.landAt = -1L;
-				if (dx * dx + dz * dz <= (reach + 1.0) * (reach + 1.0)) {
+				if (ranged) {
+					SkyLink.pushEvent(Proto.EV_MOB_FIGHT, proxy.formId(), (float) target.getX(), aimY, (float) target.getZ(), 0.0F, 2);
+				}
+				if (ranged ? inReach : dx * dx + dz * dz <= (reach + 1.0) * (reach + 1.0)) {
 					target.hurtServer(level, level.damageSources().mobAttack(proxy), damage(actor));
 				}
 			}
 			if (inReach && now >= fight.nextSwing) {
-				fight.nextSwing = now + SWING_TICKS;
-				fight.landAt = now + LAND_TICKS;
-				SkyLink.pushEvent(Proto.EV_MOB_FIGHT, proxy.formId(), (float) target.getX(), (float) target.getY(), (float) target.getZ(), 0.0F, 1);
-			} else if (!inReach && (actor.flags() & Proto.ACTOR_TEAMMATE) != 0 && now >= fight.nextGo) {
-				fight.nextGo = now + GO_TICKS;
-				SkyLink.pushEvent(Proto.EV_MOB_FIGHT, proxy.formId(), (float) target.getX(), (float) target.getY(), (float) target.getZ(), 0.0F, 0);
+				fight.nextSwing = now + (ranged ? SHOT_TICKS : SWING_TICKS);
+				fight.landAt = now + (ranged ? DRAW_TICKS : LAND_TICKS);
+				SkyLink.pushEvent(Proto.EV_MOB_FIGHT, proxy.formId(), (float) target.getX(), aimY, (float) target.getZ(), 0.0F, 1);
+			} else if (!inReach && fight.landAt < 0L && now >= fight.nextSwing - SWING_TICKS / 2 && (actor.flags() & Proto.ACTOR_TEAMMATE) != 0) {
+				// (Not while a swing or draw plays: sending it on its way broke the attack off.)
+				fight.outOfReach++;
+				if (fight.outOfReach >= 10 && now >= fight.nextGo) {
+					fight.nextGo = now + GO_TICKS;
+					SkyLink.pushEvent(Proto.EV_MOB_FIGHT, proxy.formId(), (float) target.getX(), (float) target.getY(), (float) target.getZ(), 0.0F, 0);
+				}
+			}
+			if (inReach) {
+				fight.outOfReach = 0;
 			}
 		}
-		FIGHTS.keySet().retainAll(seen);
+		// A bow left drawn is let go.
+		FIGHTS.entrySet().removeIf(e -> {
+			Fight fight = e.getValue();
+			if (seen.contains(e.getKey())) {
+				return false;
+			}
+			if (fight.ranged && fight.landAt >= 0L && fight.target != null) {
+				SkyLink.pushEvent(Proto.EV_MOB_FIGHT, e.getKey(), (float) fight.target.getX(), (float) fight.target.getY(), (float) fight.target.getZ(), 0.0F, 2);
+			}
+			return true;
+		});
 	}
 
 	/** Who this actor fights: a mob that hurt it lately, or (a follower) the nearest monster near it and the player. */

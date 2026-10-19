@@ -360,7 +360,7 @@ namespace skycraft
 				          (actor->IsEssential() ? proto::kActorEssential : 0u) | (actor->IsInCombat() ? proto::kActorInCombat : 0u) |
 				          (Animals::InQuest(actor) ? proto::kActorQuest : 0u) | (Animals::OnPlayersLead(actor->GetFormID()) ? proto::kActorLeashed : 0u) |  // SkyCraft+
 				          (Animals::IsBaby(actor->GetFormID()) ? proto::kActorBaby : 0u) | (Animals::Species(actor) << proto::kActorSpeciesShift) |
-				          (actor->IsPlayerTeammate() ? proto::kActorTeammate : 0u);  // SkyCraft+ : fights Minecraft's monsters with the player
+				          (actor->IsPlayerTeammate() ? proto::kActorTeammate : 0u) | (MobFights::Ranged(actor) ? proto::kActorRanged : 0u);  // SkyCraft+ : fights Minecraft's monsters with the player
 				const auto mc = SkyToMc(pos);
 				r.x = static_cast<float>(mc.x);
 				r.y = static_cast<float>(mc.y);

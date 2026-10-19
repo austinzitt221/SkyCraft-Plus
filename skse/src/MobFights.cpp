@@ -25,11 +25,16 @@ namespace skycraft::MobFights
 		if (!actor->AsActorState()->IsWeaponDrawn()) {
 			actor->DrawWeaponMagicHands(true);
 		}
-		if (a_flags == 1) {
+		if (a_flags == 1 || a_flags == 2) {
 			actor->SetHeading(std::atan2(at.x - pos.x, at.y - pos.y));  // (Skyrim's heading: 0 north, clockwise)
-			actor->NotifyAnimationGraph("attackStart");
+			// A bow is drawn by its attackStart and only shot by attackRelease (without it the draw
+			// was all that played); aimed at the mob's middle (Skyrim's pitch: positive looks down).
+			const auto eye = actor->GetLookingAtLocation();
+			const auto flat = std::sqrt((at.x - eye.x) * (at.x - eye.x) + (at.y - eye.y) * (at.y - eye.y));
+			actor->data.angle.x = -std::atan2(at.z - eye.z, std::max(flat, 1.0f));
+			actor->NotifyAnimationGraph(a_flags == 1 ? "attackStart" : "attackRelease");
 			if (logged++ < 30) {
-				logger::info("mob fights: {} strikes at a Minecraft mob", actor->GetName());
+				logger::info("mob fights: {} {} a Minecraft mob", actor->GetName(), a_flags == 2 ? "shoots at" : Ranged(actor) ? "draws on" : "strikes at");
 			}
 			return;
 		}
@@ -52,5 +57,12 @@ namespace skycraft::MobFights
 	void Clear()
 	{
 		markers.clear();
+	}
+
+	bool Ranged(RE::Actor* a_actor)
+	{
+		auto* form = a_actor ? a_actor->GetEquippedObject(false) : nullptr;
+		auto* weapon = form ? form->As<RE::TESObjectWEAP>() : nullptr;
+		return weapon && (weapon->IsBow() || weapon->IsCrossbow());
 	}
 }
