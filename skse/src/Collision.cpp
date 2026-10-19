@@ -251,7 +251,10 @@ namespace skycraft
 				}
 			}
 		}
-		std::ranges::sort(offsets_, {}, [](const auto& o) { return o[0] * o[0] + o[2] * o[2] + o[1] * o[1] * 2; });
+		// SkyCraft+ : Minecraft patches. The ground at the player's own height, out to the edge, before
+		// what's deep under or high over them: moving fast, the land ahead came late (and the grass and
+		// trees on it with it), waiting on regions far underground.
+		std::ranges::sort(offsets_, {}, [](const auto& o) { return o[0] * o[0] + o[2] * o[2] + o[1] * o[1] * (std::abs(o[1]) > 1 ? 16 : 2); });
 		worker_ = std::thread([this] { WorkerLoop(); });
 		worker_.detach();
 	}
@@ -285,6 +288,8 @@ namespace skycraft
 		const auto now = Clock::now();
 
 		WatchMovers(player);  // SkyCraft+ : opened doors
+		const bool exterior = cell->IsExteriorCell() && !State().parked;
+		int        landless = 0;
 
 		int  done = 0;
 		bool gathered = false;
@@ -323,6 +328,15 @@ namespace skycraft
 				RE::BSReadLockGuard lock(bhk->worldLock);
 				GatherBodies(world);
 				gathered = true;
+			}
+			// SkyCraft+ : out in the open, a region whose land isn't in Havok yet (just after a load or
+			// a cell coming in) waits for it: sent empty, it was known ground with nothing there, and mobs
+			// held only where it's unknown (SkyHold) fell out of the world, a tamed dog among them.
+			if (exterior && !LandUnder(rx, rz)) {
+				if (++landless > 64) {
+					break;
+				}
+				continue;
 			}
 			{
 				RE::BSReadLockGuard lock(bhk->worldLock);
@@ -485,6 +499,7 @@ namespace skycraft
 				}
 				Body body{ shape, xf, {}, {}, IsStairHelper(collidable.GetCollisionLayer()) };
 				HkAabbToMc(box, k, body.lo, body.hi);
+				body.land = a_fixed && !RE::TESHavokUtilities::FindCollidableRef(collidable) && body.hi[0] - body.lo[0] >= kRegionSize && body.hi[2] - body.lo[2] >= kRegionSize;
 				if (a_fixed && Dig::IsDiggableCollidable(&collidable)) {
 					body.diggable = true;
 					body.ref = RE::TESHavokUtilities::FindCollidableRef(collidable);
@@ -504,6 +519,12 @@ namespace skycraft
 		for (std::int32_t i = 0; i < a_world->inactiveSimulationIslands.size(); ++i) {
 			addIsland(a_world->inactiveSimulationIslands.data()[i], false);
 		}
+	}
+
+	bool Collision::LandUnder(int a_rx, int a_rz) const
+	{
+		const float x = (float(a_rx) + 0.5f) * kRegionSize, z = (float(a_rz) + 0.5f) * kRegionSize;
+		return std::ranges::any_of(bodies_, [&](const Body& a_body) { return a_body.land && a_body.lo[0] <= x && x <= a_body.hi[0] && a_body.lo[2] <= z && z <= a_body.hi[2]; });
 	}
 
 	void Collision::Harvest(int a_rx, int a_ry, int a_rz)

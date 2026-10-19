@@ -88,10 +88,12 @@ namespace skycraft
 			bool                    diggable{ false };
 			bool                    terrain{ false };
 			bool                    tree{ false };
+			bool                    land{ false };  // SkyCraft+ : Skyrim's land (fixed, no reference)
 			RE::TESObjectREFR*      ref{ nullptr };
 		};
 
 		void GatherBodies(RE::hkpWorld* a_world);
+		bool LandUnder(int a_rx, int a_rz) const;
 		void Harvest(int a_rx, int a_ry, int a_rz);
 		void Collect(const RE::hkpShape* a_shape, const float* a_xf, const float a_lo[3], const float a_hi[3], Job& a_job, int a_depth, RE::hkpShapeKey a_key);
 		void EmitAabbFallback(const RE::hkpShape* a_shape, const float* a_xf, Job& a_job, RE::hkpShapeKey a_key);
