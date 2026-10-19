@@ -444,172 +444,98 @@ namespace skycraft
 			hud->uiMovie->SetVariable("_root.HUDMovieBaseInstance.StealthMeterInstance._visible", RE::GFxValue(!a_hide || a_sneaking));
 		}
 
+		// SkyCraft+ : Whirlwind Sprint. Skyrim never shouts it while Minecraft drives the player (no
+		// shout came, not even with Skyrim's own controls: tested), and its dash would be Skyrim moving
+		// the player, which Minecraft undoes: the Greybeards' gate couldn't be passed in time. Here
+		// the Shout key with it the voice's does it, as Skyrim would: held, a word more as each
+		// charges, up to the words unlocked; let go (or all of them charged), the shout's spell is
+		// cast, its recovery starts, and Minecraft dashes the player the way they look (kInDash).
+		struct Whirlwind
+		{
+			std::uint64_t pressAt = 0;  // GetTickCount64; 0: not held
+			int           words = 0;    // unlocked
+		} whirlwind;
+
+		RE::TESShout* WhirlwindSprint(RE::PlayerCharacter* a_player)
+		{
+			constexpr RE::FormID kWhirlwindSprint = 0x2F7BA;  // Skyrim.esm's shout
+			auto*                voice = a_player->GetActorRuntimeData().selectedPower;
+			auto*                shout = voice ? voice->As<RE::TESShout>() : nullptr;
+			const char*          name = shout ? shout->GetName() : nullptr;
+			return shout && (shout->GetFormID() == kWhirlwindSprint || (name && std::string_view(name).find("Whirlwind") != std::string_view::npos)) ? shout : nullptr;
+		}
+
+		void ShoutWhirlwind(RE::PlayerCharacter* a_player, RE::TESShout* a_shout, int a_words)
+		{
+			whirlwind.pressAt = 0;
+			const auto& variation = a_shout->variations[a_words - 1];
+			if (variation.spell) {
+				if (auto* caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant)) {
+					caster->CastSpellImmediate(variation.spell, false, a_player, 1.0f, false, 0.0f, a_player);
+				}
+			}
+			a_player->GetActorRuntimeData().voiceTimer = variation.recoveryTime;
+			// (Skyrim's dash: some eight blocks for one word, twenty for all three, in a blink.)
+			constexpr int kBlocks[3] = { 8, 13, 20 };
+			constexpr int kTicks[3] = { 5, 7, 9 };
+			Link::Get().PushInput(proto::kInDash, static_cast<std::uint16_t>(a_words), kBlocks[a_words - 1] * 100, kTicks[a_words - 1]);
+			logger::info("Whirlwind Sprint ({} word{}): Minecraft dashes the player {} blocks (recovery {:.0f} s)", a_words, a_words > 1 ? "s" : "", kBlocks[a_words - 1],
+				variation.recoveryTime);
+		}
+
+		int WhirlwindCharged(std::uint64_t a_held) { return a_held < 300 ? 1 : a_held < 700 ? 2 : 3; }
+
+		// The Shout key went down or up (Input.cpp).
+		void WhirlwindKey(bool a_down)
+		{
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			auto* shout = player && State().puppeting ? WhirlwindSprint(player) : nullptr;
+			const auto now = GetTickCount64();
+			if (!a_down) {
+				if (whirlwind.pressAt != 0 && shout) {
+					ShoutWhirlwind(player, shout, std::min(whirlwind.words, WhirlwindCharged(now - whirlwind.pressAt)));
+				}
+				whirlwind.pressAt = 0;
+				return;
+			}
+			if (!shout || whirlwind.pressAt != 0) {
+				return;
+			}
+			int words = 0;
+			for (const auto& variation : shout->variations) {
+				words += variation.word && (variation.word->formFlags & RE::TESForm::RecordFlags::kUnlocked) != 0 ? 1 : 0;
+			}
+			const float recovering = player->GetActorRuntimeData().voiceTimer;
+			if (words == 0 || recovering > 0.0f) {
+				logger::info("Whirlwind Sprint: {}", words == 0 ? "no word of it unlocked yet (Skyrim wouldn't shout it either)" : std::format("still recovering ({:.0f} s)", recovering));
+				return;
+			}
+			whirlwind = { now, words };
+		}
+
+		// Each frame: charged to the last word unlocked while held, it goes (as Skyrim's does).
+		void WhirlwindCharge(RE::PlayerCharacter* a_player)
+		{
+			if (whirlwind.pressAt == 0) {
+				return;
+			}
+			auto* shout = State().puppeting ? WhirlwindSprint(a_player) : nullptr;
+			if (!shout) {
+				whirlwind.pressAt = 0;
+			} else if (WhirlwindCharged(GetTickCount64() - whirlwind.pressAt) >= whirlwind.words) {
+				ShoutWhirlwind(a_player, shout, whirlwind.words);
+			}
+		}
+
 		// Skyrim takes the player for its own animations: sitting, crafting stations, beds, pull-bar
 		// levers and other furniture (it walks the player into place, plays the animation and uses its
 		// furniture camera), riding a horse, kill moves, and scripted scenes that drive the player.
 		// Minecraft lets go meanwhile (Skyrim gets the controls and the camera) and picks the player
 		// up again from wherever Skyrim leaves them.
-		// SkyCraft+ : Whirlwind Sprint. Its dash is Skyrim moving the player, which Minecraft (placing
-		// the player every frame) undid: the Greybeards' gate couldn't be passed in time. When the
-		// player shouts it, Skyrim has the player for the dash: from the Shout key going down with it
-		// the voice's (Skyrim's own controls do the shout; tested, no cast was seen while Minecraft
-		// drove), or from its cast.
-		bool IsWhirlwindSprint(const RE::TESForm* a_form)
-		{
-			constexpr RE::FormID kWhirlwindSprint = 0x2F7BA;  // Skyrim.esm's shout
-			const char*          name = a_form ? a_form->GetName() : nullptr;
-			return a_form && (a_form->GetFormID() == kWhirlwindSprint || (name && std::string_view(name).find("Whirlwind") != std::string_view::npos));
-		}
-
-		struct SprintSink : RE::BSTEventSink<RE::TESSpellCastEvent>, RE::BSTEventSink<RE::BSAnimationGraphEvent>
-		{
-			static SprintSink* Get()
-			{
-				static SprintSink sink;
-				return &sink;
-			}
-			std::atomic<std::uint64_t> castAt{ 0 };  // GetTickCount64
-			std::atomic<int>           words{ 0 };
-			// The Shout key, down with Whirlwind Sprint the voice's: when, and when it went up (0: held).
-			std::atomic<std::uint64_t> pressAt{ 0 }, releaseAt{ 0 };
-			std::atomic<bool>          fast{ false };  // the dash got going
-			std::atomic<int>           graphLogged{ 0 };
-			// (Diagnostics: what the player's animation graph does from the press, in case the shout
-			// still doesn't come out.)
-			RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent* a_event, RE::BSTEventSource<RE::BSAnimationGraphEvent>*) override
-			{
-				if (a_event && a_event->holder && a_event->holder->IsPlayerRef() && pressAt != 0 && graphLogged < 40) {
-					++graphLogged;
-					logger::info("Whirlwind Sprint: the player's animation: {}", a_event->tag.c_str());
-				}
-				return RE::BSEventNotifyControl::kContinue;
-			}
-			RE::BSEventNotifyControl   ProcessEvent(const RE::TESSpellCastEvent* a_event, RE::BSTEventSource<RE::TESSpellCastEvent>*) override
-			{
-				if (!a_event || !a_event->object || !a_event->object->IsPlayerRef()) {
-					return RE::BSEventNotifyControl::kContinue;
-				}
-				constexpr RE::FormID kWhirlwindSprint = 0x2F7BA;  // Skyrim.esm's shout
-				int                  found = 0;
-				if (auto* shout = RE::TESForm::LookupByID<RE::TESShout>(kWhirlwindSprint)) {
-					for (int i = 0; i < 3; ++i) {
-						if (shout->variations[i].spell && shout->variations[i].spell->GetFormID() == a_event->spell) {
-							found = i + 1;
-						}
-					}
-				}
-				if (!found) {
-					auto*       spell = RE::TESForm::LookupByID<RE::SpellItem>(a_event->spell);
-					const char* name = spell ? spell->GetName() : nullptr;
-					if (name && std::string_view(name).find("Whirlwind") != std::string_view::npos) {
-						found = 2;  // (a mod's own)
-					}
-				}
-				if (found) {
-					words = found;
-					castAt = GetTickCount64();
-					logger::info("Whirlwind Sprint ({} word{}): Skyrim has the player for the dash", found, found > 1 ? "s" : "");
-				}
-				return RE::BSEventNotifyControl::kContinue;
-			}
-		};
-
-		// The Shout key went down or up (Input.cpp): down with Whirlwind Sprint the voice's, Skyrim
-		// has the player from now, for its own controls to shout it.
-		void WhirlwindKey(bool a_down)
-		{
-			auto*               sink = SprintSink::Get();
-			const std::uint64_t now = GetTickCount64();
-			if (!a_down) {
-				if (sink->pressAt != 0 && sink->releaseAt == 0) {
-					sink->releaseAt = now;
-				}
-				return;
-			}
-			auto* player = RE::PlayerCharacter::GetSingleton();
-			if (!player || sink->pressAt != 0 || !IsWhirlwindSprint(player->GetActorRuntimeData().selectedPower)) {
-				return;
-			}
-			sink->pressAt = now;
-			sink->releaseAt = 0;
-			sink->fast = false;
-			sink->graphLogged = 0;
-			RE::BSAnimationGraphManagerPtr graphs;
-			player->GetAnimationGraphManager(graphs);
-			if (graphs) {
-				for (const auto& graph : graphs->graphs) {
-					if (graph) {
-						graph->GetEventSource<RE::BSAnimationGraphEvent>()->AddEventSink(sink);
-					}
-				}
-			}
-			logger::info("Whirlwind Sprint: the Shout key with it the voice's (voice timer {:.1f} s): Skyrim has the player", player->GetActorRuntimeData().voiceTimer);
-		}
-
-		// While the dash lasts: from the Shout key (or the shout) until the player's slowed to a run
-		// after it, or, with no dash, a moment after the key is let go.
-		bool Sprinting(RE::PlayerCharacter* a_player)
-		{
-			static bool watching = false;
-			if (!watching) {
-				if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
-					events->AddEventSink<RE::TESSpellCastEvent>(SprintSink::Get());
-					watching = true;
-				}
-			}
-			auto*               sink = SprintSink::Get();
-			const std::uint64_t now = GetTickCount64();
-			float               speed = 0.0f;
-			if (auto* controller = a_player->GetCharController()) {
-				RE::hkVector4 velocity;
-				controller->GetLinearVelocityImpl(velocity);
-				alignas(16) float v[4];
-				_mm_store_ps(v, velocity.quad);
-				// (Havok's metres in game units: a run is some 400 a second, the dash several times that.)
-				speed = std::sqrt(v[0] * v[0] + v[1] * v[1]) * RE::bhkWorld::GetWorldScaleInverse();
-			}
-			const bool fastNow = speed >= 600.0f;
-			if (fastNow) {
-				sink->fast = true;
-			}
-			if (sink->pressAt != 0) {
-				const std::uint64_t released = sink->releaseAt;
-				const char*         done = nullptr;
-				if (released == 0) {
-					done = now - sink->pressAt > 8000 ? "the key held too long" : nullptr;
-				} else if (sink->fast && !fastNow && now - released > 300 && (sink->castAt == 0 || now - sink->castAt > 400)) {
-					done = "dashed";
-				} else if (!sink->fast && now - released > (sink->castAt != 0 ? 2000u : 1500u)) {
-					done = sink->castAt != 0 ? "shouted, no dash seen" : "no shout came";
-				}
-				if (!done) {
-					return true;
-				}
-				logger::info("Whirlwind Sprint: {} (voice timer {:.1f} s)", done, a_player->GetActorRuntimeData().voiceTimer);
-				sink->pressAt = 0;
-				sink->releaseAt = 0;
-				sink->castAt = 0;
-				return false;
-			}
-			const std::uint64_t at = sink->castAt;
-			if (at == 0) {
-				return false;
-			}
-			const std::uint64_t since = now - at;
-			if (since > (sink->words >= 3 ? 2000u : 1500u) || (since > 400 && !fastNow)) {
-				sink->castAt = 0;
-				return false;
-			}
-			return true;
-		}
-
 		const char* SkyrimTakeover(RE::PlayerCharacter* a_player)
 		{
 			if (State().skyrimMode) {
 				return "Skyrim mode";
-			}
-			if (Sprinting(a_player)) {
-				return "Whirlwind Sprint";
 			}
 			if (a_player->AsActorState()->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal) {
 				return "furniture";
@@ -1791,6 +1717,8 @@ namespace skycraft
 				HideFirstPersonMeshes(a_player, !skyrimHand || detached);
 				Footsteps::PerFrame(a_player, mc, true);  // SkyCraft+
 				Animals::PerFrame(a_player, mc.heldFood, !st.skyrimMenuOpen, a_delta);  // SkyCraft+
+				WhirlwindCharge(a_player);  // SkyCraft+
+				MobFights::PerFrame();  // SkyCraft+
 
 				const float bobRollDeg = std::sin(phase) * bob * 3.0f;
 				idealRotNoRoll = BuildCameraRotation(camHeading, camPitchDeg * kDegToRad, 0.0f);
@@ -1875,6 +1803,7 @@ namespace skycraft
 				HideFirstPersonMeshes(a_player, false);
 				Footsteps::PerFrame(a_player, mc, false);  // SkyCraft+
 				Animals::PerFrame(a_player, 0, false, a_delta);  // SkyCraft+
+				MobFights::PerFrame();  // SkyCraft+
 
 				RestoreFov(RE::PlayerCamera::GetSingleton());
 				if (auto* controller = a_player->GetCharController(); controller && savedGravity >= 0.0f) {
@@ -2388,6 +2317,7 @@ namespace skycraft
 		{
 			MapMarkers::OnGameLoaded();
 			MinecraftEnemies::OnGameLoaded();
+			MobFights::OnGameLoaded();  // SkyCraft+
 			teleportPending = true;
 			homeCheck = true;
 			bringingBack = 0.0f;

@@ -257,6 +257,11 @@ namespace skycraft::Animals
 		return sent;
 	}
 
+	void HoldStill(RE::Actor* a_actor, bool a_hold)
+	{
+		CallActor(a_actor, "SetDontMove", std::move(a_hold));
+	}
+
 	void LetGo(RE::Actor* a_actor)
 	{
 		Unwalk(a_actor);

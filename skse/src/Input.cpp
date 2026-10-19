@@ -734,7 +734,7 @@ namespace skycraft
 						}
 						continue;
 					}
-					// SkyCraft+ : Whirlwind Sprint (Game::ShoutKey), in both modes. (A controller's RB
+					// SkyCraft+ : Whirlwind Sprint (Game::ShoutKey, Minecraft mode). (A controller's RB
 					// alone is Minecraft's hotbar in Minecraft mode: LB+RB is told in PlayerControlsHook.)
 					if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && !menuOpen && !st.mcScreenOpen) {
 						auto*       button = e->AsButtonEvent();

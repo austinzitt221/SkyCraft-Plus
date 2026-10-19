@@ -12,6 +12,27 @@ namespace skycraft::MobFights
 	{
 		std::unordered_map<RE::FormID, RE::NiPointer<RE::TESObjectREFR>> markers;  // a follower's: where its mob is
 		int                                                             logged = 0;
+		// Held still through an attack (its follow and travel packages ran it off mid-swing, the draw
+		// broken off for a run): until when (GetTickCount64).
+		std::unordered_map<RE::FormID, std::uint64_t> held;
+
+		void Hold(RE::Actor* a_actor, std::uint64_t a_ms)
+		{
+			auto [it, added] = held.try_emplace(a_actor->GetFormID(), 0);
+			it->second = GetTickCount64() + a_ms;
+			if (added) {
+				Animals::HoldStill(a_actor, true);
+			}
+		}
+
+		void Free(RE::FormID a_actor)
+		{
+			if (held.erase(a_actor)) {
+				if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_actor)) {
+					Animals::HoldStill(actor, false);
+				}
+			}
+		}
 	}
 
 	void OnFight(RE::PlayerCharacter* a_player, RE::FormID a_actor, std::uint32_t a_flags, double a_x, double a_y, double a_z)
@@ -33,11 +54,13 @@ namespace skycraft::MobFights
 			const auto flat = std::sqrt((at.x - eye.x) * (at.x - eye.x) + (at.y - eye.y) * (at.y - eye.y));
 			actor->data.angle.x = -std::atan2(at.z - eye.z, std::max(flat, 1.0f));
 			actor->NotifyAnimationGraph(a_flags == 1 ? "attackStart" : "attackRelease");
+			Hold(actor, a_flags == 2 ? 600 : Ranged(actor) ? 2500 : 1100);
 			if (logged++ < 30) {
 				logger::info("mob fights: {} {} a Minecraft mob", actor->GetName(), a_flags == 2 ? "shoots at" : Ranged(actor) ? "draws on" : "strikes at");
 			}
 			return;
 		}
+		Free(a_actor);
 		auto& marker = markers[a_actor];
 		if (!marker) {
 			if (auto* xmarker = RE::TESForm::LookupByID<RE::TESBoundObject>(0x3B)) {
@@ -54,9 +77,41 @@ namespace skycraft::MobFights
 		}
 	}
 
+	void PerFrame()
+	{
+		const auto now = GetTickCount64();
+		std::vector<RE::FormID> done;
+		for (const auto& [id, until] : held) {
+			if (now >= until) {
+				done.push_back(id);
+			}
+		}
+		for (const auto id : done) {
+			Free(id);
+		}
+	}
+
+	void OnGameLoaded()
+	{
+		held.clear();
+		auto* lists = RE::ProcessLists::GetSingleton();
+		if (!lists) {
+			return;
+		}
+		for (auto& handle : lists->highActorHandles) {
+			auto actor = handle.get();
+			if (actor && actor->IsPlayerTeammate()) {
+				Animals::HoldStill(actor.get(), false);
+			}
+		}
+	}
+
 	void Clear()
 	{
 		markers.clear();
+		while (!held.empty()) {
+			Free(held.begin()->first);
+		}
 	}
 
 	bool Ranged(RE::Actor* a_actor)

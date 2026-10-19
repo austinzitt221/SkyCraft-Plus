@@ -19,6 +19,7 @@ public final class SkyCraftClient implements ClientModInitializer {
 		SkyStorageClient.register(); // SkyCraft+ : Skyrim items in Minecraft's containers
 		ClientTickEvents.END_CLIENT_TICK.register(SkyStorageClient::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(SkyArmorClient::tick); // SkyCraft+ : Skyrim armor in Minecraft's armor slots
+		ClientTickEvents.END_CLIENT_TICK.register(SkyDash::tick); // SkyCraft+ : Whirlwind Sprint
 		// Multiplayer without editing files: the host opens their world to LAN (O, Open to LAN) and
 		// e4mc gives them a link; friends type /join <link> in chat, and /leave to come back.
 		net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback.EVENT.register((dispatcher, context) -> {

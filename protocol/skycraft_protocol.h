@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 46;
+	inline constexpr std::uint32_t kVersion = 47;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -322,6 +322,8 @@ namespace skycraft::proto
 		kInHeal = 11,        // a Skyrim healing effect healed the player: a = share of max health * 10000
 		kInSlotJump = 12,    // SkyCraft+ : v34. In a screen with slots, the cursor jumps to the next slot that way:
 		                     // a = x step (-1, 0, 1), b = y step (down is +1)
+		kInDash = 13,        // SkyCraft+ : v47. Whirlwind Sprint: dash the player the way they look, a = blocks * 100
+		                     // over b ticks (code = words shouted)
 	};
 
 	enum HurtKind : std::uint16_t

@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 46;
+	public static final int VERSION = 47;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -88,6 +88,7 @@ public final class Proto {
 	public static final int IN_SKYRIM_HIT = 10;
 	public static final int IN_HEAL = 11;
 	public static final int IN_SLOT_JUMP = 12; // SkyCraft+ : v34, a, b = x, y step to the next slot
+	public static final int IN_DASH = 13; // SkyCraft+ : v47, Whirlwind Sprint: a = blocks * 100 the way the player looks, over b ticks
 	public static final int SKYRIM_HIT_POWER = 1, SKYRIM_HIT_BASH = 1 << 1, SKYRIM_HIT_LEFT = 1 << 2;
 	public static final int HURT_MELEE = 0;
 	public static final int HURT_PROJECTILE = 1;

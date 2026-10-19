@@ -133,7 +133,7 @@ namespace skycraft
 		// SkyCraft+ : from Present (which runs while the game is paused, unlike the player update):
 		// while a Skyrim menu pauses the game, Minecraft is told to pause too.
 		void ReportPause();
-		// SkyCraft+ : Whirlwind Sprint. Skyrim's Shout key went down or up (in either mode).
+		// SkyCraft+ : Whirlwind Sprint. Skyrim's Shout key went down or up (acted on in Minecraft mode).
 		void ShoutKey(bool a_down);
 		// Called from Present: logs rendered camera vs Minecraft eye when a check is due.
 		void CheckRenderedCamera();
@@ -305,12 +305,18 @@ namespace skycraft
 		void Clear();
 		// Holds a bow or crossbow (fights from afar: kActorRanged).
 		bool Ranged(RE::Actor* a_actor);
+		// Lets go of attackers held still (each frame: once their attack is over; a game loaded: a
+		// follower saved while held).
+		void PerFrame();
+		void OnGameLoaded();
 	}
 
 	namespace Animals
 	{
 		// SkyCraft+ : Papyrus PathToReference (a follower sent to a Minecraft mob).
 		bool PathTo(RE::Actor* a_actor, RE::TESObjectREFR* a_to);
+		// SkyCraft+ : Papyrus SetDontMove (a follower held still through its attack on a Minecraft mob).
+		void HoldStill(RE::Actor* a_actor, bool a_hold);
 		// Main thread, every frame: Skyrim's animals that like the food held follow (McState::heldFood).
 		void PerFrame(RE::PlayerCharacter* a_player, std::uint32_t a_heldFood, bool a_driving, float a_delta);
 		// Skyrim's own KeepOffsetFromActor / ClearKeepOffsetFromActor on an actor.
