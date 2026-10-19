@@ -3,13 +3,15 @@
 #include "Dig.h"
 #include "Game.h"
 
+#include <SimpleIni.h>
+
 namespace skycraft
 {
 	namespace
 	{
 		using Clock = std::chrono::steady_clock;
 
-		constexpr int   kRadius = 5;          // regions around the player horizontally (arrows fly far)
+		int             regionRadius = 7;         // regions around the player horizontally (arrows fly far; iGroundRegions)
 		constexpr int   kBelow = 3;           // regions below the player
 		constexpr int   kAbove = 2;           // regions above the player
 		constexpr int   kGrid = Collision::kRegionSize * 8;  // voxels per region edge (64)
@@ -235,8 +237,15 @@ namespace skycraft
 
 	void Collision::Start()
 	{
-		for (int dx = -kRadius; dx <= kRadius; ++dx) {
-			for (int dz = -kRadius; dz <= kRadius; ++dz) {
+		// SkyCraft+ : Minecraft patches. Further out, Minecraft has the ground to put its grass, flowers and
+		// trees on before the player comes near (iGroundRegions; upstream's was 5).
+		CSimpleIniA ini;
+		ini.SetUnicode();
+		ini.LoadFile("Data/SKSE/Plugins/SkyCraft.ini");
+		regionRadius = std::clamp(static_cast<int>(ini.GetLongValue("Worlds", "iGroundRegions", 7)), 3, 10);
+		logger::info("collision: Skyrim's ground sent {} blocks round the player", regionRadius * kRegionSize);
+		for (int dx = -regionRadius; dx <= regionRadius; ++dx) {
+			for (int dz = -regionRadius; dz <= regionRadius; ++dz) {
 				for (int dy = -kBelow; dy <= kAbove; ++dy) {
 					offsets_.push_back({ dx, dy, dz });
 				}
@@ -284,7 +293,7 @@ namespace skycraft
 		while (!urgent_.empty() && done < kMaxHarvestsPerFrame * 2) {
 			const auto r = urgent_.back();
 			urgent_.pop_back();
-			if (std::abs(r[0] - prx) > kRadius + 1 || std::abs(r[2] - prz) > kRadius + 1 || r[1] - pry < -kBelow - 1 || r[1] - pry > kAbove + 1) {
+			if (std::abs(r[0] - prx) > regionRadius + 1 || std::abs(r[2] - prz) > regionRadius + 1 || r[1] - pry < -kBelow - 1 || r[1] - pry > kAbove + 1) {
 				harvested_.erase(RegionKey(r[0], r[1], r[2]));  // far away: sent again whenever it's needed
 				continue;
 			}

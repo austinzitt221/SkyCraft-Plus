@@ -46,7 +46,7 @@ import org.jspecify.annotations.Nullable;
  * acacia, mangrove and azalea by the rest; out in the open now and then an oak, birch, acacia or
  * cherry), and leaf litter; on grass, grass (seeds), ferns, bushes and flowers. The plants stand
  * straight on Skyrim's ground (VegetationBlockMixin). Each eight by eight blocks is decided once,
- * as soon as the host's Skyrim has sent its ground (some forty blocks out), and kept with the world
+ * as soon as the host's Skyrim has sent its ground (some fifty blocks out: iGroundRegions), and kept with the world
  * (skycraft-patches-8.txt); not in towns and settlements, nor with Skyrim destruction off. Setting:
  * skyrimPatches in config/skycraft.properties.
  */
@@ -60,9 +60,9 @@ public final class SkyPatches {
 	private static int logged;
 
 	private static final int CELL = SkyCollision.REGION_SIZE; // blocks per side of an area (as Skyrim sends its ground)
-	private static final int RADIUS = 5; // areas round the host (Skyrim sends five regions round the player)
+	private static final int RADIUS = 10; // areas round the host (as far as Skyrim sends its ground: iGroundRegions, at most ten)
 	private static final int TRIES = 24; // columns looked at per area
-	private static final int PER_TICK = 4; // areas decided a tick at most
+	private static final int PER_TICK = 8; // areas decided a tick at most
 	private static final long BUDGET = 3_000_000L; // nanoseconds a tick
 
 	private record Kind(Block sapling, TreeGrower grower, boolean twoByTwo, int weight) {
@@ -199,7 +199,7 @@ public final class SkyPatches {
 			int ground = material[0];
 			int logs = logsNear(x, z, h);
 			boolean forest = logs != Proto.DIG_NONE;
-			if (trees == 0 && treeRoll < (forest ? 50 : 8) && (ground == Proto.DIG_GRASS || ground == Proto.DIG_SNOW) && clearForTree(x, z, h)) {
+			if (trees == 0 && treeRoll < (forest ? 25 : 3) && (ground == Proto.DIG_GRASS || ground == Proto.DIG_SNOW) && clearForTree(x, z, h)) {
 				Kind kind = ground == Proto.DIG_SNOW || logs == Proto.DIG_SPRUCE_LOG ? pick(BY_SPRUCE, random)
 					: !forest ? pick(IN_THE_OPEN, random) : logs == Proto.DIG_BIRCH_LOG ? pick(BY_BIRCH, random) : pick(BY_OAK, random);
 				if (tree(level, world, x, z, h, kind, random)) {
