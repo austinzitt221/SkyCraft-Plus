@@ -56,6 +56,7 @@ public final class SkyPatches {
 
 	private static boolean enabled = true;
 	private static final Set<Long> DONE = new HashSet<>();
+	private static final java.util.Map<Long, Integer> LANDLESS = new java.util.HashMap<>(); // areas with no land in reach: the host's height then
 	private static @Nullable Path file;
 	private static int logged;
 
@@ -167,8 +168,21 @@ public final class SkyPatches {
 					if (DONE.contains(key) || !sent(ax, hy, az) || !level.hasChunk((ax * CELL) >> 4, (az * CELL) >> 4)) {
 						continue;
 					}
-					done(key);
-					decide(level, world, ax, az, hy);
+					Integer tried = LANDLESS.get(key);
+					if (tried != null && Math.abs(tried - hy) < CELL) {
+						continue;
+					}
+					// (No land in reach of the host's height, flying over it say: tried again when there is,
+					// not left bare for good.)
+					if (decide(level, world, ax, az, hy)) {
+						done(key);
+						LANDLESS.remove(key);
+					} else {
+						if (LANDLESS.size() > 20000) {
+							LANDLESS.clear();
+						}
+						LANDLESS.put(key, hy);
+					}
 					if (++decided >= PER_TICK || System.nanoTime() - began > BUDGET) {
 						return;
 					}
@@ -183,15 +197,18 @@ public final class SkyPatches {
 		return SkyCollision.isKnown(x, y, z) && SkyCollision.isKnown(x, y - CELL, z) && SkyCollision.isKnown(x, y + CELL, z);
 	}
 
-	private static void decide(ServerLevel level, int world, int ax, int az, int hostY) {
+	/** Decides an area's patches; false if none of its land was in reach (nothing decided). */
+	private static boolean decide(ServerLevel level, int world, int ax, int az, int hostY) {
 		RandomSource random = RandomSource.create(level.getSeed() ^ ChunkPos.pack(ax, az) * 0x5DEECE66DL ^ world ^ 0x8L);
 		int trees = 0, grass = 0, flowers = 0, litter = 0;
 		int wantGrass = 2 + random.nextInt(6), wantFlowers = random.nextBoolean() ? 1 + random.nextInt(3) : 0;
 		int treeRoll = random.nextInt(100);
+		boolean anyLand = false;
 		int[] material = new int[1];
 		for (int i = 0; i < TRIES; i++) {
 			int x = ax * CELL + random.nextInt(CELL), z = az * CELL + random.nextInt(CELL);
 			double h = land(x, z, hostY - 24, hostY + 16, material);
+			anyLand |= !Double.isNaN(h);
 			double rough = Double.isNaN(h) ? Double.NaN : roughness(x, z, h);
 			if (Double.isNaN(rough) || rough > 0.5 || !SkyCollision.isKnown(x, Mth.floor(h), z)) {
 				continue;
@@ -223,7 +240,11 @@ public final class SkyPatches {
 					flowers++;
 				}
 			} else if (grass < wantGrass) {
-				if (plant(level, x, z, h, grassy(random, forest, logs), false)) {
+				// Plain grass, short and tall, a third as thick as the rest (it was everywhere).
+				BlockState plant = grassy(random, forest, logs);
+				if ((plant.is(Blocks.SHORT_GRASS) || plant.is(Blocks.TALL_GRASS)) && random.nextInt(3) != 0) {
+					grass++;
+				} else if (plant(level, x, z, h, plant, false)) {
 					grass++;
 				}
 			}
@@ -231,6 +252,7 @@ public final class SkyPatches {
 		if (trees + grass + flowers + litter > 0 && logged++ < 40) {
 			SkyCraft.LOG.info("SkyCraft: Minecraft patches at {} {}: {} tree(s), {} grass, {} flower(s), {} leaf litter", ax * CELL, az * CELL, trees, grass, flowers, litter);
 		}
+		return anyLand;
 	}
 
 	private static Kind pick(Kind[] kinds, RandomSource random) {

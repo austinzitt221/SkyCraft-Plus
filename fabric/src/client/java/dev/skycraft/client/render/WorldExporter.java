@@ -290,6 +290,7 @@ public final class WorldExporter {
 		}
 		var eye = minecraft.player.getEyePosition();
 		var look = minecraft.player.getViewVector(1.0F);
+		boolean inTheOpen = minecraft.level != null && minecraft.level.canSeeSky(minecraft.player.blockPosition().above());
 		long[] packed = new long[keys.length];
 		for (int i = 0; i < keys.length; i++) {
 			long key = keys[i];
@@ -297,6 +298,11 @@ public final class WorldExporter {
 			double d2 = dx * dx + dy * dy + dz * dz;
 			if (dx * look.x + dy * look.y + dz * look.z < -16.0) {
 				d2 *= 4.0;
+			}
+			// SkyCraft+ : Minecraft patches. Out in the open, what's under the ground waits: the
+			// grass and trees round the player came long after the caves beneath them.
+			if (inTheOpen && dy < -12.0) {
+				d2 *= 8.0;
 			}
 			boolean urgent;
 			synchronized (DIRTY) {
