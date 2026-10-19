@@ -20,6 +20,7 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
+import net.minecraft.client.gui.screens.inventory.CreativeModeInventoryScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.entity.player.Inventory;
@@ -361,7 +362,7 @@ public final class SkyInventoryPanels {
 
 	/** True while Skyrim should keep its inventory list current (SkyClient's MC_WANTS_SKY_INVENTORY). */
 	public static boolean wantsSkyInventory(@Nullable Screen screen) {
-		return screen instanceof InventoryScreen || SkyStorageClient.storageScreen(screen);  // SkyCraft+ : and beside chests
+		return screen instanceof InventoryScreen || screen instanceof CreativeModeInventoryScreen || SkyStorageClient.storageScreen(screen);  // SkyCraft+ : and beside chests, and in creative
 	}
 
 	private static final java.util.Map<Screen, State> STATES = new java.util.WeakHashMap<>();
@@ -413,14 +414,17 @@ public final class SkyInventoryPanels {
 			// SkyCraft+ : Skyrim items in Minecraft's containers. Beside a chest (shulker box, hopper...)
 			// the items panel too, to drag Skyrim items into it and back.
 			boolean full = screen instanceof InventoryScreen;
-			if (!(screen instanceof AbstractContainerScreen<?> inventory) || !(full || SkyStorageClient.storageScreen(screen)) || minecraft.player == null
+			// SkyCraft+ : and in creative, both panels beside it (its own width; no Skills and Map buttons: its tabs are there).
+			boolean creative = screen instanceof CreativeModeInventoryScreen;
+			if (!(screen instanceof AbstractContainerScreen<?> inventory) || !(full || creative || SkyStorageClient.storageScreen(screen)) || minecraft.player == null
 				|| !SkyLink.active()) {
 				return;
 			}
 			var accessor = (ContainerScreenAccessor) inventory;
 			State state = new State();
 			STATES.put(screen, state);
-			int center = (width - 176) / 2;
+			int imageWidth = accessor.skycraft$imageWidth();
+			int center = (width - imageWidth) / 2;
 			List<Button> buttons = new ArrayList<>();
 			int top = accessor.skycraft$topPos();
 			if (full && top >= 22) {
@@ -445,12 +449,12 @@ public final class SkyInventoryPanels {
 				}
 				// Beside the inventory where there's room; the magic one makes way for the recipe book.
 				state.magic.x = leftPos - GAP - WIDTH;
-				state.items.x = leftPos + 176 + GAP;
+				state.items.x = leftPos + imageWidth + GAP;
 				state.magic.y = state.items.y = topPos;
 				state.full = full;
 				state.left = leftPos;
 				state.top = topPos;
-				state.magic.visible = full && state.magic.x >= 2 && leftPos == center;
+				state.magic.visible = (full || creative) && state.magic.x >= 2 && leftPos == center;
 				state.items.visible = state.items.x + WIDTH <= width - 2;
 				for (Panel panel : state.panels()) {
 					panel.refresh();

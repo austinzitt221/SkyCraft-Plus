@@ -283,6 +283,8 @@ namespace skycraft
 		void PerFrame(RE::PlayerCharacter* a_player, bool a_wanted, float a_delta);
 		// Main thread: a click in one of Minecraft's Skyrim item screens (kEvSkyItem).
 		void Apply(RE::PlayerCharacter* a_player, const proto::McEvent& a_event);
+		// SkyCraft+ : a Skyrim spawn egg used in Minecraft: one of this actor base (a person or creature) there.
+		void Spawn(RE::PlayerCharacter* a_player, RE::FormID a_base, double a_x, double a_y, double a_z);
 	}
 
 	// SkyCraft+ : Skyrim's item pictures (IconRender.cpp).

@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 47;
+	public static final int VERSION = 48;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -51,7 +51,12 @@ public final class Proto {
 	// SkyCraft+ : v41, Skyrim items in Minecraft's containers (both ways), see SkyStoreRequest
 	public static final long OFF_SKY_STORE = OFF_SKY_ICONS + SKY_ICONS_BYTES;
 	public static final long SKY_STORE_BYTES = 64L << 10;
-	public static final long MAPPING_BYTES = OFF_SKY_STORE + SKY_STORE_BYTES;
+	// SkyCraft+ : v48, every Skyrim thing, for the creative menu (Skyrim -> MC, seqlock), see SkyCatalog
+	public static final long OFF_SKY_CATALOG = OFF_SKY_STORE + SKY_STORE_BYTES;
+	public static final long SKY_CATALOG_BYTES = 8L << 20;
+	public static final int MAX_CATALOG = 40000;
+	public static final long CAT_SEQ = 0x0, CAT_COUNT = 0x4, CAT_GENERATION = 0x8, CAT_ITEMS = 0x40;
+	public static final long MAPPING_BYTES = OFF_SKY_CATALOG + SKY_CATALOG_BYTES;
 	public static final int STORE_REQUESTS = 32, STORE_RESULTS = 64, STORE_REQUEST_BYTES = 96, STORE_RESULT_BYTES = 224;
 	public static final long STORE_REQ_HEAD = 0x00, STORE_REQ_TAIL = 0x40, STORE_RES_HEAD = 0x80, STORE_RES_TAIL = 0xC0, STORE_REQ_DATA = 0x100,
 		STORE_RES_DATA = STORE_REQ_DATA + STORE_REQUESTS * STORE_REQUEST_BYTES;
@@ -68,7 +73,7 @@ public final class Proto {
 	public static final long INV_SEQ = 0x0, INV_COUNT = 0x4, INV_GENERATION = 0x8, INV_GOLD = 0xC, INV_CARRIED = 0x10, INV_CARRY_MAX = 0x14, INV_ITEMS = 0x40;
 	// SkyItem: formId 0, kind 4, sub 5, material 6, count 8, flags 12, weight 16, value 20, stat 24, stat2 28, name 32, localId 128, plugin 132 (v36)
 	public static final int SKY_WEAPON = 1, SKY_APPAREL = 2, SKY_POTION = 3, SKY_FOOD = 4, SKY_INGREDIENT = 5, SKY_BOOK = 6, SKY_KEY = 7, SKY_MISC = 8, SKY_AMMO = 9,
-		SKY_SCROLL = 10, SKY_SPELL = 20, SKY_SHOUT = 21, SKY_POWER = 22;
+		SKY_SCROLL = 10, SKY_SPELL = 20, SKY_SHOUT = 21, SKY_POWER = 22, SKY_ACTOR = 30; // SkyCraft+ : v48, SKY_ACTOR (the catalog only: sub 0 person, 1 creature)
 	public static final int W_HAND = 0, W_SWORD = 1, W_DAGGER = 2, W_WAR_AXE = 3, W_MACE = 4, W_GREATSWORD = 5, W_BATTLEAXE = 6, W_WARHAMMER = 7, W_BOW = 8, W_STAFF = 9,
 		W_CROSSBOW = 10, W_PICKAXE = 11, W_WOOD_AXE = 12;
 	public static final int A_BODY = 0, A_HEAD = 1, A_HANDS = 2, A_FEET = 3, A_SHIELD = 4, A_RING = 5, A_AMULET = 6, A_CIRCLET = 7;
@@ -130,6 +135,7 @@ public final class Proto {
 	public static final int EV_CROP_GROWN = 13; // SkyCraft+ : v44, formId the Skyrim thing planted, a/b/c where its plant stands
 	public static final int EV_MINED_ORE = 9; // SkyCraft+ : v44, a/b/c = the mined block's centre: the Skyrim ore vein's ore
 	public static final int EV_MOB_FIGHT = 14; // SkyCraft+ : v45, formId fights a mob at a/b/c: flags 1 strikes now, 0 goes to it; v46: 2 lets a drawn bow go
+	public static final int EV_SPAWN_ACTOR = 15; // SkyCraft+ : v48, a Skyrim spawn egg: formId (an actor base) appears at a/b/c
 	public static final int EV_DRAGON_SOUL = 8; // SkyCraft+ : v39, the Ender Dragon died near this player: a Skyrim dragon soul
 	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,
 		SKY_ACT_EQUIP_RIGHT = 6, SKY_ACT_EQUIP_LEFT = 7, SKY_ACT_DROP = 8, // SkyCraft+ : v36, shortcuts

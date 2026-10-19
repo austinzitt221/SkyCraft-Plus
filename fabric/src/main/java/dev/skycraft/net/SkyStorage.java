@@ -339,7 +339,8 @@ public final class SkyStorage {
 				}
 				giveBack(player, stored, stack.getCount());
 				ItemStack shortcut = null;
-				if ((i < 36 || i == 40) && !hasShortcut(inventory, stored)) {
+				// (SkyCraft+ : a dragon soul from the creative menu is absorbed: nothing to keep a shortcut for.)
+				if ((i < 36 || i == 40) && !hasShortcut(inventory, stored) && !SkyCreative.SOUL_PLUGIN.equals(stored.plugin())) {
 					shortcut = SkyShortcuts.make(new SkyShortcuts.Make(i, stored.plugin(), stored.localId(), stored.kind(), stored.model(), stored.color(), stored.glint(),
 						stored.name()));
 				}

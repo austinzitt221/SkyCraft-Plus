@@ -375,6 +375,125 @@ namespace skycraft::SkyInventory
 			}
 		}
 
+		// SkyCraft+ : Skyrim's creatures as one of Minecraft's spawn eggs' looks (SkyItem::material of a
+		// kSkyActor), from its race: 0 a person's (a villager's) or none matched.
+		std::uint8_t EggLook(RE::TESRace* a_race)
+		{
+			if (!a_race) {
+				return 0;
+			}
+			const std::string id = std::string(a_race->GetFormEditorID()) + " " + (a_race->GetName() ? a_race->GetName() : "");
+			static constexpr std::pair<std::string_view, std::uint8_t> kLooks[] = {
+				{ "Werewolf", 14 }, { "Wolf", 1 }, { "Dog", 1 }, { "Husky", 1 }, { "Bear", 2 }, { "Spider", 3 }, { "Draugr", 4 }, { "Skeleton", 5 },
+				{ "Chicken", 6 }, { "Cow", 7 }, { "Goat", 8 }, { "Deer", 9 }, { "Elk", 9 }, { "Horse", 10 }, { "Fox", 11 }, { "Hare", 12 },
+				{ "Rabbit", 12 }, { "Mudcrab", 13 }, { "Troll", 14 }, { "Giant", 15 }, { "Mammoth", 15 }, { "Atronach", 16 }, { "Dragon", 17 },
+				{ "Skeever", 18 }, { "Slaughterfish", 19 }, { "Horker", 20 }, { "Sabre", 21 }, { "Cat", 21 }, { "Spriggan", 22 }, { "Wisp", 23 },
+				{ "Falmer", 24 }, { "Chaurus", 25 }, { "Vampire", 26 }, { "Dwarven", 27 }, { "Sphere", 27 }, { "Centurion", 27 }, { "Hagraven", 28 },
+				{ "Ghost", 23 }, { "Wraith", 23 }, { "Netch", 29 }, { "Riekling", 24 }, { "Ash", 4 }, { "Gargoyle", 15 }, { "Seeker", 23 },
+			};
+			for (const auto& [part, look] : kLooks) {
+				if (Contains(id, part)) {
+					return look;
+				}
+			}
+			return 0;
+		}
+
+		// SkyCraft+ : every Skyrim thing, for Minecraft's creative menu (proto::SkyCatalog). Once per
+		// session, a game first loaded: everything a player could carry (by name: one of each), every
+		// spell a tome teaches, every shout, and every named person and creature.
+		void WriteCatalog(RE::PlayerCharacter* a_player)
+		{
+			auto* handler = RE::TESDataHandler::GetSingleton();
+			if (!handler) {
+				return;
+			}
+			std::vector<proto::SkyItem> mine;
+			mine.swap(items);  // (AddItem and the rest fill items)
+			std::set<std::pair<std::uint8_t, std::string>> named;
+			std::int32_t gold = 0;
+			auto object = [&](RE::TESBoundObject* a_object) {
+				const char* name = a_object ? a_object->GetName() : nullptr;
+				if (!name || !*name || !a_object->GetPlayable() || items.size() >= proto::kMaxCatalog) {
+					return;
+				}
+				const auto before = items.size();
+				AddItem(a_player, a_object, 1, nullptr, gold);
+				if (items.size() > before && !named.insert({ items.back().kind, items.back().name }).second) {
+					items.pop_back();  // (a copy by another name in the plugins: the same thing)
+				}
+			};
+			auto all = [&]<class T>(std::type_identity<T>) {
+				for (auto* form : handler->GetFormArray<T>()) {
+					object(form);
+				}
+			};
+			all(std::type_identity<RE::TESObjectWEAP>{});
+			all(std::type_identity<RE::TESObjectARMO>{});
+			all(std::type_identity<RE::TESAmmo>{});
+			all(std::type_identity<RE::AlchemyItem>{});
+			all(std::type_identity<RE::IngredientItem>{});
+			all(std::type_identity<RE::TESObjectBOOK>{});
+			all(std::type_identity<RE::ScrollItem>{});
+			all(std::type_identity<RE::TESKey>{});
+			all(std::type_identity<RE::TESSoulGem>{});
+			all(std::type_identity<RE::TESObjectMISC>{});
+			for (auto* light : handler->GetFormArray<RE::TESObjectLIGH>()) {
+				if (light && light->data.flags.any(RE::TES_LIGHT_FLAGS::kCanCarry)) {
+					object(light);
+				}
+			}
+			if (auto* coin = RE::TESForm::LookupByID<RE::TESObjectMISC>(0xF)) {  // Gold (AddItem counts it apart)
+				proto::SkyItem item{};
+				item.formId = coin->GetFormID();
+				item.kind = proto::kSkyMisc;
+				item.count = 1;
+				item.value = 1;
+				SetName(item, coin->GetName());
+				SetSource(item, coin);
+				items.push_back(item);
+			}
+			std::unordered_set<RE::FormID> seen;
+			for (auto* book : handler->GetFormArray<RE::TESObjectBOOK>()) {
+				if (book && book->TeachesSpell() && items.size() < proto::kMaxCatalog) {
+					AddSpell(a_player, book->GetSpell(), seen);
+				}
+			}
+			for (auto* shout : handler->GetFormArray<RE::TESShout>()) {
+				const char* name = shout ? shout->GetName() : nullptr;
+				if (name && *name && shout->variations[0].word && named.insert({ proto::kSkyShout, name }).second && items.size() < proto::kMaxCatalog) {
+					AddShout(a_player, shout, seen);
+					items.back().count = 3;
+					items.back().flags = 0;
+				}
+			}
+			for (auto& item : items) {
+				item.flags &= ~(proto::kSkyItemRightHand | proto::kSkyItemLeftHand | proto::kSkyItemVoice | proto::kSkyItemWorn);
+			}
+			int people = 0, creatures = 0;
+			for (auto* npc : handler->GetFormArray<RE::TESNPC>()) {
+				const char* name = npc ? npc->GetName() : nullptr;
+				if (!name || !*name || npc->GetFormID() == 0x7 || items.size() >= proto::kMaxCatalog || !named.insert({ proto::kSkyActor, name }).second) {
+					continue;
+				}
+				auto*           race = npc->GetRace();
+				const bool      person = race && race->data.flags.any(RE::RACE_DATA::Flag::kPlayable);
+				proto::SkyItem item{};
+				item.formId = npc->GetFormID();
+				item.kind = proto::kSkyActor;
+				item.sub = person ? 0 : 1;
+				item.material = person ? 0 : EggLook(race);
+				item.count = 1;
+				SetName(item, name);
+				SetSource(item, npc);
+				items.push_back(item);
+				++(person ? people : creatures);
+			}
+			Link::Get().WriteSkyCatalog(items.data(), static_cast<std::uint32_t>(items.size()), 1);
+			logger::info("Skyrim catalog: {} things for Minecraft's creative menu ({} people, {} creatures)", items.size(), people, creatures);
+			items.swap(mine);
+		}
+
 		void Write(RE::PlayerCharacter* a_player)
 		{
 			items.clear();
@@ -620,7 +739,39 @@ namespace skycraft::SkyInventory
 		{
 			const std::string_view plugin(a_request.plugin, strnlen(a_request.plugin, sizeof(a_request.plugin)));
 			auto*                  handler = RE::TESDataHandler::GetSingleton();
+			// SkyCraft+ : from Minecraft's creative menu, things that aren't items: a dragon soul, a spell
+			// (learned), a shout (learned, every word of it unlocked).
+			if (plugin == "SkyCraft" && a_request.localId == 1) {
+				a_player->AsActorValueOwner()->ModActorValue(RE::ACTOR_VALUE_MODIFIER::kPermanent, RE::ActorValue::kDragonSouls, static_cast<float>(a_request.count));
+				logger::info("Skyrim items: {} dragon soul(s) from Minecraft's creative menu (now {:.0f})", a_request.count, a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kDragonSouls));
+				Notify(a_request.count > 1 ? "Dragon souls absorbed." : "Dragon soul absorbed.");
+				proto::SkyStoreResult result = Refusal(a_request.id, proto::kStoreOk);
+				result.count = a_request.count;
+				unsent.push_back(result);
+				return;
+			}
 			RE::TESForm*           form = plugin.empty() ? RE::TESForm::LookupByID(a_request.localId) : handler ? handler->LookupForm(a_request.localId, plugin) : nullptr;
+			if (auto* spell = form ? form->As<RE::SpellItem>() : nullptr; spell || (form && form->Is(RE::FormType::Shout))) {
+				auto* shout = spell ? nullptr : form->As<RE::TESShout>();
+				if (spell) {
+					a_player->AddSpell(spell);
+				} else {
+					a_player->AddShout(shout);
+					for (auto& variation : shout->variations) {
+						if (variation.word) {
+							variation.word->formFlags |= RE::TESForm::RecordFlags::kKnown | RE::TESForm::RecordFlags::kUnlocked;
+							variation.word->AddChange(RE::TESForm::ChangeFlags::kFlags);  // (kept in the save)
+						}
+					}
+				}
+				logger::info("Skyrim items: learned {} from Minecraft's creative menu", form->GetName());
+				Notify(std::format("{} learned.", form->GetName()).c_str());
+				proto::SkyStoreResult result = Refusal(a_request.id, proto::kStoreOk);
+				result.count = 1;
+				result.formId = form->GetFormID();
+				unsent.push_back(result);
+				return;
+			}
 			auto*                  object = form ? form->As<RE::TESBoundObject>() : nullptr;
 			if (!object || a_request.count <= 0) {
 				Notify("A Skyrim item from a Minecraft container couldn't be found (is its mod still loaded?).");
@@ -699,6 +850,23 @@ namespace skycraft::SkyInventory
 				unsent.pop_front();
 			}
 		}
+	}
+
+	void Spawn(RE::PlayerCharacter* a_player, RE::FormID a_base, double a_x, double a_y, double a_z)
+	{
+		auto* npc = RE::TESForm::LookupByID<RE::TESNPC>(a_base);
+		if (!npc) {
+			logger::warn("Skyrim catalog: spawn egg for {:08X}: no such actor", a_base);
+			return;
+		}
+		auto ref = a_player->PlaceObjectAtMe(npc, false);
+		if (!ref) {
+			return;
+		}
+		auto at = McToSky(a_x, a_y, a_z);
+		ref->SetPosition(at);
+		ref->data.angle.z = a_player->data.angle.z + RE::NI_PI;  // facing the player
+		logger::info("Skyrim catalog: a spawn egg brought {} ({:08X})", npc->GetName(), ref->GetFormID());
 	}
 
 	void Apply(RE::PlayerCharacter* a_player, const proto::McEvent& a_event)
@@ -873,6 +1041,11 @@ namespace skycraft::SkyInventory
 
 	void PerFrame(RE::PlayerCharacter* a_player, bool a_wanted, float a_delta)
 	{
+		static bool catalogued = false;  // SkyCraft+ : the creative menu's Skyrim things, once
+		if (!catalogued) {
+			catalogued = true;
+			WriteCatalog(a_player);
+		}
 		ProcessStore(a_player);  // SkyCraft+
 		timer -= a_delta;
 		if (!a_wanted) {

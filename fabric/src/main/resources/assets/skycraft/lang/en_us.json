@@ -2,5 +2,6 @@
   "block.skycraft.skyrim_crop": "Skyrim Crop",
   "block.skycraft.skyrim_ore_vein": "Skyrim Ore Vein",
   "entity.skycraft.skyrim_actor": "Skyrim NPC",
-  "item.skycraft.skyrim_item": "Skyrim item"
+  "item.skycraft.skyrim_item": "Skyrim item",
+  "item.skycraft.skyrim_spawn_egg": "Skyrim Spawn Egg"
 }

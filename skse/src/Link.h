@@ -40,6 +40,8 @@ namespace skycraft
 		void WriteSkyInventory(const proto::SkyItem* a_items, std::uint32_t a_count, std::uint32_t a_generation, std::int32_t a_gold, float a_carried, float a_carryMax);
 		// SkyCraft+ : Skyrim's item pictures. One picture (kSkyIconSize square, RGBA) into a slot.
 		void WriteSkyIcon(std::uint32_t a_slot, std::uint32_t a_key, const std::uint8_t* a_rgba);
+		// SkyCraft+ : every Skyrim thing, for Minecraft's creative menu (main thread, once a game is loaded).
+		void WriteSkyCatalog(const proto::SkyItem* a_items, std::uint32_t a_count, std::uint32_t a_generation);
 		// SkyCraft+ : Skyrim items in Minecraft's containers (main thread). A request from Minecraft
 		// (false when none), and a result back (false when the ring is full: try again later).
 		bool PopStoreRequest(proto::SkyStoreRequest& a_out);

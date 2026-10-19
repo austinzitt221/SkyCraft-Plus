@@ -567,6 +567,42 @@ public final class SkyLink {
 		return null;
 	}
 
+	/** SkyCraft+ : SkyCatalog::generation (0: not written yet; -1 if the link is down). */
+	public static int skyCatalogGeneration() {
+		MemorySegment s = shm;
+		return s == null ? -1 : (int) INT.getAcquire(s, OFF_SKY_CATALOG + CAT_GENERATION);
+	}
+
+	/** SkyCraft+ : seqlock read of every Skyrim thing, for the creative menu; null if the link is down or Skyrim kept writing. */
+	public static java.util.@org.jspecify.annotations.Nullable List<SkyItem> readSkyCatalog() {
+		MemorySegment s = shm;
+		if (s == null) {
+			return null;
+		}
+		long b = OFF_SKY_CATALOG;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + CAT_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			int count = Math.clamp(s.get(JAVA_INT, b + CAT_COUNT), 0, MAX_CATALOG);
+			java.util.List<SkyItem> items = new java.util.ArrayList<>(count);
+			for (int i = 0; i < count; i++) {
+				long r = b + CAT_ITEMS + (long) i * SKY_ITEM_BYTES;
+				items.add(new SkyItem(s.get(JAVA_INT, r), Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 4)), Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 5)),
+					Byte.toUnsignedInt(s.get(JAVA_BYTE, r + 6)), s.get(JAVA_INT, r + 8), s.get(JAVA_INT, r + 12), s.get(JAVA_FLOAT, r + 16), s.get(JAVA_INT, r + 20),
+					s.get(JAVA_FLOAT, r + 24), s.get(JAVA_FLOAT, r + 28), readName(s, r + 32, SKY_ITEM_NAME_BYTES),
+					s.get(JAVA_INT, r + 128), readName(s, r + 132, SKY_ITEM_PLUGIN_BYTES)));
+			}
+			VarHandle.loadLoadFence();
+			if ((int) INT.getAcquire(s, b + CAT_SEQ) == seq1) {
+				return items;
+			}
+		}
+		return null;
+	}
+
 	/** SkyCraft+ : SkyIcons::generation, to see whether any picture changed (-1 if the link is down). */
 	public static int skyIconsGeneration() {
 		MemorySegment s = shm;

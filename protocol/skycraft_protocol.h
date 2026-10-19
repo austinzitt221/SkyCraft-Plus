@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 47;
+	inline constexpr std::uint32_t kVersion = 48;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -46,7 +46,9 @@ namespace skycraft::proto
 	inline constexpr std::uint64_t kSkyIconsBytes = 17ull << 20;
 	inline constexpr std::uint64_t kOffSkyStore = kOffSkyIcons + kSkyIconsBytes;  // SkyCraft+ : v41, both ways, see SkyStoreRequest
 	inline constexpr std::uint64_t kSkyStoreBytes = 64ull << 10;
-	inline constexpr std::uint64_t kMappingBytes = kOffSkyStore + kSkyStoreBytes;
+	inline constexpr std::uint64_t kOffSkyCatalog = kOffSkyStore + kSkyStoreBytes;  // SkyCraft+ : v48, Skyrim -> MC, see SkyCatalog
+	inline constexpr std::uint64_t kSkyCatalogBytes = 8ull << 20;
+	inline constexpr std::uint64_t kMappingBytes = kOffSkyCatalog + kSkyCatalogBytes;
 
 	// ---- header @0x0 ------------------------------------------------------------------------
 	struct Header
@@ -417,6 +419,7 @@ namespace skycraft::proto
 		kEvMobFight = 14,   // SkyCraft+ (v45): formId fights a Minecraft mob at a/b/c (MC coords): flags 1 strikes it now
 		                    // (an attack played facing it; Minecraft deals the damage), 0 goes to it (a follower, out of reach)
 		                    // (v46) 2 lets the drawn bow go at it (a ranged actor: 1 draws)
+		kEvSpawnActor = 15,  // SkyCraft+ (v48): a Skyrim spawn egg: formId (an actor base, from the SkyCatalog) appears at a/b/c (MC coords)
 	};
 
 	// SkyCraft+ : what a click on a Skyrim item does (McEvent::flags of kEvSkyItem).
@@ -870,6 +873,7 @@ namespace skycraft::proto
 		kSkySpell = 20,      // sub: SkySchool; element: SkyElement
 		kSkyShout = 21,
 		kSkyPower = 22,      // sub: 1 lesser power
+		kSkyActor = 30,      // SkyCraft+ (v48), the SkyCatalog only: a person or creature (sub: 0 person, 1 creature) for a spawn egg
 	};
 
 	enum SkyWeaponType : std::uint8_t
@@ -982,6 +986,23 @@ namespace skycraft::proto
 		SkyIconSlot   slots[kMaxSkyIcons];
 	};
 	static_assert(sizeof(SkyIcons) <= kSkyIconsBytes);
+
+	// ---- SkyCraft+ : every Skyrim thing @kOffSkyCatalog (Skyrim -> MC, seqlock), v48 -------------
+	// For Minecraft's creative menu: every playable item, every spell a tome teaches, every shout,
+	// and every named person and creature (for spawn eggs), as SkyItems (count 1; a shout's: its
+	// words). Written once a game is first loaded. A Skyrim item taken from it into the inventory
+	// goes into Skyrim's as a stored one does (kStoreGive; spells and shouts are learned).
+	inline constexpr std::uint32_t kMaxCatalog = 40000;
+
+	struct SkyCatalog
+	{
+		std::uint32_t seq;
+		std::uint32_t count;
+		std::uint32_t generation;
+		std::uint32_t pad[13];
+		SkyItem       items[kMaxCatalog];
+	};
+	static_assert(sizeof(SkyCatalog) <= kSkyCatalogBytes);
 
 	// ---- SkyCraft+ : Skyrim items in Minecraft's containers @kOffSkyStore, v41 ---------------------
 	// A Skyrim item put in a Minecraft chest (shulker box, hopper, bundle...) leaves Skyrim's inventory

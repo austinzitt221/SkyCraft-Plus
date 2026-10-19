@@ -1187,6 +1187,9 @@ namespace skycraft
 				case proto::kEvMobFight:
 					MobFights::OnFight(a_player, ev.formId, ev.flags, ev.a, ev.b, ev.c);  // SkyCraft+
 					break;
+				case proto::kEvSpawnActor:
+					SkyInventory::Spawn(a_player, ev.formId, ev.a, ev.b, ev.c);  // SkyCraft+ : a Skyrim spawn egg
+					break;
 				case proto::kEvMinedOre:
 					Dig::GiveMinedOre(a_player, ev.a, ev.b, ev.c);  // SkyCraft+
 					break;

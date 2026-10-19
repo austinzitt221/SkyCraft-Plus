@@ -278,6 +278,26 @@ namespace skycraft
 		seq.store(s + 2, std::memory_order_release);
 	}
 
+	// SkyCraft+ : every Skyrim thing, for Minecraft's creative menu.
+	void Link::WriteSkyCatalog(const proto::SkyItem* a_items, std::uint32_t a_count, std::uint32_t a_generation)
+	{
+		if (!base_) {
+			return;
+		}
+		auto*      table = At<proto::SkyCatalog>(proto::kOffSkyCatalog);
+		auto       seq = Atomic(table->seq);
+		const auto s = seq.load(std::memory_order_relaxed);
+		seq.store(s + 1, std::memory_order_relaxed);
+		std::atomic_thread_fence(std::memory_order_release);
+		const auto count = std::min(a_count, proto::kMaxCatalog);
+		table->count = count;
+		if (count) {
+			std::memcpy(table->items, a_items, sizeof(proto::SkyItem) * count);
+		}
+		Atomic(table->generation).store(a_generation, std::memory_order_relaxed);
+		seq.store(s + 2, std::memory_order_release);
+	}
+
 	void Link::WriteSkyIcon(std::uint32_t a_slot, std::uint32_t a_key, const std::uint8_t* a_rgba)
 	{
 		if (!base_ || a_slot >= proto::kMaxSkyIcons) {
