@@ -37,6 +37,7 @@ public class SkyrimActorEntity extends LivingEntity implements net.minecraft.wor
 	private float pendingDamage;
 	private int pendingFlags;
 	private int pendingWeapon;
+	private boolean byPlayer, byMob; // SkyCraft+ : Skyrim's people and Minecraft's mobs (who landed this tick's hits)
 	private double pushX, pushZ;
 	private float pushStrength;
 	private boolean hitThisTick;
@@ -133,6 +134,11 @@ public class SkyrimActorEntity extends LivingEntity implements net.minecraft.wor
 			this.pendingFlags |= Proto.HIT_PROJECTILE;
 		}
 		this.pendingWeapon = weaponClass(source);
+		if (source.getEntity() instanceof net.minecraft.world.entity.player.Player) {
+			this.byPlayer = true;
+		} else if (source.getEntity() instanceof net.minecraft.world.entity.Mob) {
+			this.byMob = true;
+		}
 		if (source.is(net.minecraft.tags.DamageTypeTags.IS_FIRE)) {
 			this.pendingFlags |= Proto.HIT_FIRE;
 		}
@@ -190,10 +196,11 @@ public class SkyrimActorEntity extends LivingEntity implements net.minecraft.wor
 		if (!this.hitThisTick) {
 			return null;
 		}
-		float[] hit = { this.pendingDamage, (float) this.pushX, (float) this.pushZ, this.pushStrength, Float.intBitsToFloat(this.pendingFlags),
+		float[] hit = { this.pendingDamage, (float) this.pushX, (float) this.pushZ, this.pushStrength, Float.intBitsToFloat(this.pendingFlags | (this.byMob && !this.byPlayer ? Proto.HIT_BY_MOB : 0)),
 			Float.intBitsToFloat(this.pendingWeapon) };
 		this.pendingDamage = 0.0F;
 		this.pendingFlags = 0;
+		this.byPlayer = this.byMob = false;
 		this.pushX = this.pushZ = 0.0;
 		this.pushStrength = 0.0F;
 		this.hitThisTick = false;

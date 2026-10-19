@@ -295,8 +295,18 @@ namespace skycraft
 	}
 
 	// SkyCraft+ : Skyrim animals and Minecraft's ways with animals.
+	// SkyCraft+ : Skyrim's people fight Minecraft's mobs. kEvMobFight: flags 1 an attack played facing
+	// the mob at (x, y, z) (MC coords; Minecraft deals the damage), 0 a follower sent to it.
+	namespace MobFights
+	{
+		void OnFight(RE::PlayerCharacter* a_player, RE::FormID a_actor, std::uint32_t a_flags, double a_x, double a_y, double a_z);
+		void Clear();
+	}
+
 	namespace Animals
 	{
+		// SkyCraft+ : Papyrus PathToReference (a follower sent to a Minecraft mob).
+		bool PathTo(RE::Actor* a_actor, RE::TESObjectREFR* a_to);
 		// Main thread, every frame: Skyrim's animals that like the food held follow (McState::heldFood).
 		void PerFrame(RE::PlayerCharacter* a_player, std::uint32_t a_heldFood, bool a_driving, float a_delta);
 		// Skyrim's own KeepOffsetFromActor / ClearKeepOffsetFromActor on an actor.

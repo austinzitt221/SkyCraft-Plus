@@ -250,6 +250,13 @@ namespace skycraft::Animals
 		}
 	}
 
+	bool PathTo(RE::Actor* a_actor, RE::TESObjectREFR* a_to)
+	{
+		const bool sent = CallActor(a_actor, "PathToReference", std::move(a_to), 1.0f);
+		a_actor->EvaluatePackage(true, false);
+		return sent;
+	}
+
 	void LetGo(RE::Actor* a_actor)
 	{
 		Unwalk(a_actor);

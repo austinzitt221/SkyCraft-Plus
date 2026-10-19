@@ -2370,6 +2370,7 @@ namespace skycraft
 		{
 			Animals::ClearBabies();  // SkyCraft+
 			Animals::ClearWalks();  // SkyCraft+
+			MobFights::Clear();  // SkyCraft+
 			Crops::Clear();  // SkyCraft+
 			savedWorld = 0;
 			savedCheck = false;

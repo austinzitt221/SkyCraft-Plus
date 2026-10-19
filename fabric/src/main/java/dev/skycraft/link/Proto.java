@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 44;
+	public static final int VERSION = 45;
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -108,6 +108,7 @@ public final class Proto {
 	public static final int ACTOR_IN_COMBAT = 1 << 3;
 	public static final int ACTOR_QUEST = 1 << 4, ACTOR_LEASHED = 1 << 5; // SkyCraft+ : v44, leads on Skyrim actors
 	public static final int ACTOR_BABY = 1 << 6, ACTOR_SPECIES_SHIFT = 8; // SkyCraft+ : v44, breeding (SkyBreeding's kinds)
+	public static final int ACTOR_TEAMMATE = 1 << 7; // SkyCraft+ : v45, the player's follower (fights Minecraft's monsters with them)
 
 	// Event ring (relative to OFF_EVENT_RING)
 	public static final int EVENT_RING_ENTRIES = 512;
@@ -126,6 +127,7 @@ public final class Proto {
 	public static final int EV_BREED = 11, EV_APPROACH = 12; // SkyCraft+ : v44, breeding
 	public static final int EV_CROP_GROWN = 13; // SkyCraft+ : v44, formId the Skyrim thing planted, a/b/c where its plant stands
 	public static final int EV_MINED_ORE = 9; // SkyCraft+ : v44, a/b/c = the mined block's centre: the Skyrim ore vein's ore
+	public static final int EV_MOB_FIGHT = 14; // SkyCraft+ : v45, formId fights a mob at a/b/c: flags 1 strikes now, 0 goes to it
 	public static final int EV_DRAGON_SOUL = 8; // SkyCraft+ : v39, the Ender Dragon died near this player: a Skyrim dragon soul
 	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,
 		SKY_ACT_EQUIP_RIGHT = 6, SKY_ACT_EQUIP_LEFT = 7, SKY_ACT_DROP = 8, // SkyCraft+ : v36, shortcuts
@@ -140,6 +142,7 @@ public final class Proto {
 	public static final int HIT_PROJECTILE = 1 << 1;
 	public static final int HIT_SWEEP = 1 << 2;
 	public static final int HIT_FIRE = 1 << 3;
+	public static final int HIT_BY_MOB = 1 << 4; // SkyCraft+ : v45, a Minecraft mob landed it, not the player
 	public static final int WEAPON_UNARMED = 0;
 	public static final int WEAPON_BLADE = 1;
 	public static final int WEAPON_AXE = 2;

@@ -359,7 +359,8 @@ namespace skycraft
 				r.flags = (actor->IsHostileToActor(a_player) ? proto::kActorHostile : 0u) | (actor->IsDead() ? proto::kActorDead : 0u) |
 				          (actor->IsEssential() ? proto::kActorEssential : 0u) | (actor->IsInCombat() ? proto::kActorInCombat : 0u) |
 				          (Animals::InQuest(actor) ? proto::kActorQuest : 0u) | (Animals::OnPlayersLead(actor->GetFormID()) ? proto::kActorLeashed : 0u) |  // SkyCraft+
-				          (Animals::IsBaby(actor->GetFormID()) ? proto::kActorBaby : 0u) | (Animals::Species(actor) << proto::kActorSpeciesShift);
+				          (Animals::IsBaby(actor->GetFormID()) ? proto::kActorBaby : 0u) | (Animals::Species(actor) << proto::kActorSpeciesShift) |
+				          (actor->IsPlayerTeammate() ? proto::kActorTeammate : 0u);  // SkyCraft+ : fights Minecraft's monsters with the player
 				const auto mc = SkyToMc(pos);
 				r.x = static_cast<float>(mc.x);
 				r.y = static_cast<float>(mc.y);
@@ -501,6 +502,7 @@ namespace skycraft
 			const float damage = a_ev.a * scale;
 			const bool  crit = (a_ev.flags & proto::kHitCritical) != 0;
 			const bool  projectile = (a_ev.flags & proto::kHitProjectile) != 0;
+			const bool  byMob = (a_ev.flags & proto::kHitByMob) != 0;  // SkyCraft+ : a wolf, a zombie: not the player's doing
 			// Sprint hits, knockback enchantments and crits stagger; ordinary swings don't
 			// (Minecraft's attack rate would otherwise stun-lock everything).
 			const float push = a_ev.d;
@@ -512,7 +514,7 @@ namespace skycraft
 			dir.z = 0.0f;
 			dir = dir.Length() > 1e-3f ? dir / dir.Length() : RE::NiPoint3{ 0.0f, 1.0f, 0.0f };
 
-			if (processHit && damage > 0.0f) {
+			if (processHit && damage > 0.0f && !byMob) {
 				alignas(16) std::array<std::byte, sizeof(RE::HitData)> storage{};
 				auto* hit = reinterpret_cast<RE::HitData*>(storage.data());
 				hitDataCtor(hit);
@@ -541,7 +543,7 @@ namespace skycraft
 				}
 				processHit(actor, *hit);
 			} else if (damage > 0.0f) {
-				actor->DoDamage(damage, a_player, true);
+				actor->DoDamage(damage, byMob ? nullptr : a_player, true);
 				if (stagger > 0.0f && !actor->IsDead()) {
 					const float pushHeading = std::atan2(a_ev.b, -a_ev.c);  // MC (x, z) -> Skyrim heading
 					float       sdir = (pushHeading - actor->GetAngleZ()) / (2.0f * kPi) + 0.5f;
@@ -556,14 +558,14 @@ namespace skycraft
 				RE::NiPoint3 pick = dir;
 				impacts->PlayImpactEffect(actor, weapon->impactDataSet, node->name.c_str(), pick, 128.0f, false, false);
 			}
-			if (damage > 0.0f) {
+			if (damage > 0.0f && !byMob) {
 				TrainSkill(a_player, HitSkill(a_ev), a_ev.a);
 			}
-			if (!actor->IsDead() && !actor->IsPlayerTeammate() && !actor->IsInCombat()) {
+			if (!byMob && !actor->IsDead() && !actor->IsPlayerTeammate() && !actor->IsInCombat()) {
 				actor->StartCombat(a_player);
 			}
-			logger::info("hit {} ({:08X}, level {}) for {:.1f} Minecraft -> {:.0f} Skyrim damage{}{}{}", actor->GetDisplayFullName(), a_ev.formId,
-				actor->GetLevel(), a_ev.a, damage, crit ? ", critical" : "", projectile ? ", projectile" : "", stagger > 0.0f ? ", stagger" : "");
+			logger::info("hit {} ({:08X}, level {}) for {:.1f} Minecraft -> {:.0f} Skyrim damage{}{}{}{}", actor->GetDisplayFullName(), a_ev.formId,
+				actor->GetLevel(), a_ev.a, damage, crit ? ", critical" : "", projectile ? ", projectile" : "", stagger > 0.0f ? ", stagger" : "", byMob ? ", by a Minecraft mob" : "");
 		}
 
 		void KillPlayer(RE::PlayerCharacter* a_player, const proto::McEvent& a_ev)
@@ -1181,6 +1183,9 @@ namespace skycraft
 					break;
 				case proto::kEvCropGrown:
 					Crops::OnGrown(a_player, ev.formId, ev.a, ev.b, ev.c);  // SkyCraft+
+					break;
+				case proto::kEvMobFight:
+					MobFights::OnFight(a_player, ev.formId, ev.flags, ev.a, ev.b, ev.c);  // SkyCraft+
 					break;
 				case proto::kEvMinedOre:
 					Dig::GiveMinedOre(a_player, ev.a, ev.b, ev.c);  // SkyCraft+

@@ -292,6 +292,7 @@ public final class SkyCombat {
 		}
 		syncLeads(level);  // SkyCraft+
 		SkyBreeding.tick(level, PROXIES.values(), SkyCombat::actorById);  // SkyCraft+
+		SkyMobFights.tick(level, PROXIES.values(), SkyCombat::actorById);  // SkyCraft+ : Skyrim's people fight Minecraft's mobs
 		if (PROXIES.size() != before && (PROXIES.size() % 5 == 0 || PROXIES.size() < 5)) {
 			SkyCraft.LOG.info("SkyCraft: {} Skyrim actors mirrored as hittable stand-ins", PROXIES.size());
 		}

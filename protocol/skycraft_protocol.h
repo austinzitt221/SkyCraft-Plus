@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 44;
+	inline constexpr std::uint32_t kVersion = 45;
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -351,6 +351,7 @@ namespace skycraft::proto
 		kActorQuest = 1u << 4,     // SkyCraft+ (v44): in a quest (an alias), essential or protected: leading it can break quests
 		kActorLeashed = 1u << 5,   // SkyCraft+ (v44): on the player's Minecraft lead (kEvLeash), kept across doors
 		kActorBaby = 1u << 6,      // SkyCraft+ (v44): a baby bred the Minecraft way, still growing
+		kActorTeammate = 1u << 7,  // SkyCraft+ (v45): the player's follower (it fights Minecraft's monsters with them)
 		// SkyCraft+ (v44): bits 8-15: which kind of animal it is, for Minecraft's breeding (0 none): 1 chicken,
 		// 2 cow, 3 goat, 4 deer, 5 elk, 6 hare, 7 horse, 8 fox, 9 dog, 10 mudcrab, 11 boar.
 	};
@@ -410,6 +411,8 @@ namespace skycraft::proto
 		                    // where its plant stands (MC coords, on the farmland's top)
 		kEvMinedOre = 9,    // SkyCraft+ (v44): the player mined a block of a Skyrim ore vein (kDigOreVein): a/b/c = the
 		                    // block's centre (MC coords); the vein's ore goes into Skyrim's inventory
+		kEvMobFight = 14,   // SkyCraft+ (v45): formId fights a Minecraft mob at a/b/c (MC coords): flags 1 strikes it now
+		                    // (an attack played facing it; Minecraft deals the damage), 0 goes to it (a follower, out of reach)
 	};
 
 	// SkyCraft+ : what a click on a Skyrim item does (McEvent::flags of kEvSkyItem).
@@ -445,6 +448,7 @@ namespace skycraft::proto
 		kHitProjectile = 1u << 1,
 		kHitSweep = 1u << 2,
 		kHitFire = 1u << 3,
+		kHitByMob = 1u << 4,  // SkyCraft+ (v45): a Minecraft mob landed it (a wolf, a zombie), not the player
 	};
 
 	// What landed a kEvHitActor (Skyrim plays that weapon class's impact effect and sounds).
