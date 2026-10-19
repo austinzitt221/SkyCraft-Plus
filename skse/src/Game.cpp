@@ -454,6 +454,7 @@ namespace skycraft
 		{
 			std::uint64_t pressAt = 0;  // GetTickCount64; 0: not held
 			int           words = 0;    // unlocked
+			float         cooldown = 0.0f;  // the recovery it started (for the compass's shout meter)
 		} whirlwind;
 
 		RE::TESShout* WhirlwindSprint(RE::PlayerCharacter* a_player)
@@ -505,6 +506,7 @@ namespace skycraft
 				}
 			}
 			a_player->GetActorRuntimeData().voiceTimer = variation.recoveryTime * std::max(0.0f, a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kShoutRecoveryMult));
+			whirlwind.cooldown = a_player->GetActorRuntimeData().voiceTimer;
 			// The compass's shout meter fills over the recovery it's told of (Skyrim tells it when it
 			// shouts itself; without it the meter showed nothing).
 			if (auto* ui = RE::UI::GetSingleton()) {
@@ -561,6 +563,31 @@ namespace skycraft
 				timer = std::max(0.0f, timer - a_delta);
 			}
 			lastTimer = timer;
+			// The compass's shout meter: told the recovery alone, it still showed nothing (Skyrim
+			// fills it as its own shout recovers), so it's set to how far the recovery has come, as
+			// Skyrim's meter does it (its own ActionScript call), until it's full.
+			static bool metering = false;
+			static int  meterLogged = 0;
+			if (whirlwind.cooldown > 0.0f && (timer > 0.0f || metering)) {
+				const double pct = 100.0 * (1.0 - std::clamp(timer / whirlwind.cooldown, 0.0f, 1.0f));
+				if (auto* ui = RE::UI::GetSingleton()) {
+					if (auto hud = ui->GetMenu<RE::HUDMenu>(); hud && hud->uiMovie && hud->GetRuntimeData().shout) {
+						auto* meter = hud->GetRuntimeData().shout;
+						if (meterLogged++ < 3) {
+							logger::info("Whirlwind Sprint: compass meter {} at {:.0f}% (Skyrim's own reckoning {:.0f}%, cooldown {:.1f} s)", meter->setPctName.c_str(), pct,
+								meter->GetFillPct(), meter->cooldown);
+						}
+						meter->fillPct = static_cast<float>(pct);
+						const RE::GFxValue arg(pct);
+						hud->uiMovie->Invoke(meter->setPctName.c_str(), nullptr, &arg, 1);
+					}
+				}
+				metering = timer > 0.0f;
+				if (!metering) {
+					whirlwind.cooldown = 0.0f;
+					meterLogged = 0;
+				}
+			}
 			if (whirlwind.pressAt == 0) {
 				return;
 			}
