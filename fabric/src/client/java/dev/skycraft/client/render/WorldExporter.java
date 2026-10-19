@@ -791,13 +791,52 @@ public final class WorldExporter {
 			Direction normal = override == Direction.UP && quad.direction() != Direction.UP ? null : override != null ? override : quad.direction();
 			float shade = this.cardinal.byFace(override != null ? override : quad.direction());
 			int flags = flags(translucent, normal);
+			float[] nudge = nudge(quad);
 			for (int k : new int[] { 0, 1, 2, 0, 2, 3 }) {
 				var p = quad.position(k);
 				long uv = quad.packedUV(k);
 				float u = atlas.u(sprite, UVPair.unpackU(uv));
 				float v = atlas.v(sprite, UVPair.unpackV(uv));
-				this.vertex(p.x() + x, p.y() + y, p.z() + z, u, v, unshade(instance.getColor(k), shade), instance.getLightCoordsWithEmission(k, emission), flags);
+				this.vertex(p.x() + x + nudge[0], p.y() + y + nudge[1], p.z() + z + nudge[2], u, v, unshade(instance.getColor(k), shade),
+					instance.getLightCoordsWithEmission(k, emission), flags);
 			}
+		}
+
+		private static final float[] NO_NUDGE = new float[3];
+		private static final float NUDGE = 1.0F / 256.0F;
+
+		/**
+		 * SkyCraft+ : plants on Skyrim's ground. Skyrim draws blocks with both sides of a face, so a
+		 * plant's two faces back to back in one place (a flower's cross, a sunflower's yellow front
+		 * and green back) fought over which showed, flickering as the camera moved. A face inside its
+		 * block is moved a hair toward the side it faces; faces on the block's edges stay put (they'd
+		 * open cracks between blocks).
+		 */
+		private static float[] nudge(BakedQuad quad) {
+			var p0 = quad.position(0);
+			var p1 = quad.position(1);
+			var p2 = quad.position(2);
+			float ax = p1.x() - p0.x(), ay = p1.y() - p0.y(), az = p1.z() - p0.z();
+			float bx = p2.x() - p0.x(), by = p2.y() - p0.y(), bz = p2.z() - p0.z();
+			float nx = ay * bz - az * by, ny = az * bx - ax * bz, nz = ax * by - ay * bx;
+			float length = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+			if (length < 1.0E-6F) {
+				return NO_NUDGE;
+			}
+			nx /= length;
+			ny /= length;
+			nz /= length;
+			var facing = quad.direction().getUnitVec3i();
+			if (nx * facing.getX() + ny * facing.getY() + nz * facing.getZ() < 0.0F) { // (the side it's seen from)
+				nx = -nx;
+				ny = -ny;
+				nz = -nz;
+			}
+			float along = Math.abs(nx) > 0.999F ? p0.x() : Math.abs(ny) > 0.999F ? p0.y() : Math.abs(nz) > 0.999F ? p0.z() : 0.5F;
+			if (along < 0.001F || along > 0.999F) {
+				return NO_NUDGE;
+			}
+			return new float[] { nx * NUDGE, ny * NUDGE, nz * NUDGE };
 		}
 
 		// ---- fluids (FluidRenderer.Output + VertexConsumer) ----
