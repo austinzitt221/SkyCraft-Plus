@@ -505,16 +505,22 @@ namespace skycraft
 				}
 			}
 			a_player->GetActorRuntimeData().voiceTimer = variation.recoveryTime * std::max(0.0f, a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kShoutRecoveryMult));
+			// The compass's shout meter fills over the recovery it's told of (Skyrim tells it when it
+			// shouts itself; without it the meter showed nothing).
+			if (auto* ui = RE::UI::GetSingleton()) {
+				if (auto hud = ui->GetMenu<RE::HUDMenu>(); hud && hud->GetRuntimeData().shout) {
+					hud->GetRuntimeData().shout->cooldown = a_player->GetActorRuntimeData().voiceTimer;
+				}
+			}
 			logger::info("Whirlwind Sprint: {} sound(s), {} screen effect(s)", sounds, screens);
-			// (Skyrim's dash: some eight blocks for one word, twenty for all three, in a blink.)
-			constexpr int kBlocks[3] = { 8, 13, 20 };
-			constexpr int kTicks[3] = { 5, 7, 9 };
-			Link::Get().PushInput(proto::kInDash, static_cast<std::uint16_t>(a_words), kBlocks[a_words - 1] * 100, kTicks[a_words - 1]);
-			logger::info("Whirlwind Sprint ({} word{}): Minecraft dashes the player {} blocks (recovery {:.0f} s)", a_words, a_words > 1 ? "s" : "", kBlocks[a_words - 1],
-				variation.recoveryTime);
+			// (Minecraft plays Skyrim's own dash for the words, SkyDash: its root motion, 7, 14, 21 or 29
+			// blocks in 0.567 s.)
+			Link::Get().PushInput(proto::kInDash, static_cast<std::uint16_t>(a_words));
+			logger::info("Whirlwind Sprint ({} word{}): Minecraft dashes the player (recovery {:.0f} s)", a_words, a_words > 1 ? "s" : "", variation.recoveryTime);
 		}
 
-		int WhirlwindCharged(std::uint64_t a_held) { return a_held < 300 ? 1 : a_held < 700 ? 2 : 3; }
+		// (Skyrim's fShoutTime1 and fShoutTime2: a word more held this long.)
+		int WhirlwindCharged(std::uint64_t a_held) { return a_held < 200 ? 1 : a_held < 900 ? 2 : 3; }
 
 		// The Shout key went down or up (Input.cpp).
 		void WhirlwindKey(bool a_down)

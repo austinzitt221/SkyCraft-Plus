@@ -57,7 +57,7 @@ public final class InputBridge {
 				minecraft.mouseHandler.onMove(handle, a, b, dx, dy);
 			}
 			case Proto.IN_SLOT_JUMP -> slotJump(minecraft, handle, a, b);  // SkyCraft+ : controller inventory snapping
-			case Proto.IN_DASH -> SkyDash.start(a / 100.0, b); // SkyCraft+ : Whirlwind Sprint
+			case Proto.IN_DASH -> SkyDash.start(code); // SkyCraft+ : Whirlwind Sprint (code: words)
 			case Proto.IN_TEXT -> {
 				if (minecraft.gui.screen() != null) {
 					minecraft.keyboardHandler.textInput(handle, new String(Character.toChars(a)));
