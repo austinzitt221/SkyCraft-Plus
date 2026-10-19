@@ -474,7 +474,38 @@ namespace skycraft
 					caster->CastSpellImmediate(variation.spell, false, a_player, 1.0f, false, 0.0f, a_player);
 				}
 			}
-			a_player->GetActorRuntimeData().voiceTimer = variation.recoveryTime;
+			// What Skyrim's shout shows and sounds like (its effects' release sounds, their screen effect
+			// and their glow on the player), as casting it alone showed and sounded nothing.
+			int sounds = 0, screens = 0;
+			for (std::uint32_t i = 0; variation.spell && i < variation.spell->effects.size(); ++i) {
+				auto* effect = variation.spell->effects[i];
+				auto* base = effect ? effect->baseEffect : nullptr;
+				if (!base) {
+					continue;
+				}
+				for (const auto& pair : base->effectSounds) {
+					auto* descriptor = pair.sound ? pair.sound->soundDescriptor : nullptr;
+					RE::BSSoundHandle sound;
+					if ((pair.id == RE::MagicSystem::SoundID::kRelease || pair.id == RE::MagicSystem::SoundID::kCharge) && descriptor) {
+						if (auto* audio = RE::BSAudioManager::GetSingleton(); audio && audio->GetSoundHandle(sound, descriptor, 0x10)) {
+							sound.SetPosition(a_player->GetPosition());
+							if (auto* body = a_player->Get3D(false)) {
+								sound.SetObjectToFollow(body);
+							}
+							sounds += sound.Play() ? 1 : 0;
+						}
+					}
+				}
+				if (base->data.imageSpaceMod) {
+					RE::ImageSpaceModifierInstanceForm::Trigger(base->data.imageSpaceMod, 1.0f, nullptr);
+					++screens;
+				}
+				if (base->data.effectShader) {
+					a_player->ApplyEffectShader(base->data.effectShader, 1.0f);
+				}
+			}
+			a_player->GetActorRuntimeData().voiceTimer = variation.recoveryTime * std::max(0.0f, a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kShoutRecoveryMult));
+			logger::info("Whirlwind Sprint: {} sound(s), {} screen effect(s)", sounds, screens);
 			// (Skyrim's dash: some eight blocks for one word, twenty for all three, in a blink.)
 			constexpr int kBlocks[3] = { 8, 13, 20 };
 			constexpr int kTicks[3] = { 5, 7, 9 };
@@ -514,8 +545,16 @@ namespace skycraft
 		}
 
 		// Each frame: charged to the last word unlocked while held, it goes (as Skyrim's does).
-		void WhirlwindCharge(RE::PlayerCharacter* a_player)
+		// And the shout's recovery runs down: Skyrim doesn't count it down while Minecraft drives the
+		// player (any shout's: Whirlwind Sprint could be shouted once, then never again).
+		void WhirlwindCharge(RE::PlayerCharacter* a_player, float a_delta)
 		{
+			static float lastTimer = 0.0f;
+			float&       timer = a_player->GetActorRuntimeData().voiceTimer;
+			if (timer > 0.0f && timer == lastTimer) {
+				timer = std::max(0.0f, timer - a_delta);
+			}
+			lastTimer = timer;
 			if (whirlwind.pressAt == 0) {
 				return;
 			}
@@ -1717,7 +1756,7 @@ namespace skycraft
 				HideFirstPersonMeshes(a_player, !skyrimHand || detached);
 				Footsteps::PerFrame(a_player, mc, true);  // SkyCraft+
 				Animals::PerFrame(a_player, mc.heldFood, !st.skyrimMenuOpen, a_delta);  // SkyCraft+
-				WhirlwindCharge(a_player);  // SkyCraft+
+				WhirlwindCharge(a_player, a_delta);  // SkyCraft+
 				MobFights::PerFrame();  // SkyCraft+
 
 				const float bobRollDeg = std::sin(phase) * bob * 3.0f;
