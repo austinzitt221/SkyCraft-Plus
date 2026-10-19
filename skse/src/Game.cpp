@@ -450,6 +450,21 @@ namespace skycraft
 		// the Shout key with it the voice's does it, as Skyrim would: held, a word more as each
 		// charges, up to the words unlocked; let go (or all of them charged), the shout's spell is
 		// cast, its recovery starts, and Minecraft dashes the player the way they look (kInDash).
+		// The compass's shout meter shows Skyrim's own reckoning of the shout's recovery, which knows
+		// nothing of one shouted this way (told the recovery, or set by its own ActionScript call,
+		// the next frame it was full again): while one recovers, it's asked how full it is and says.
+		std::atomic<float> shoutMeterPct{ -1.0f };  // 0-100, or < 0: Skyrim's own
+
+		struct ShoutMeterFillHook
+		{
+			static float thunk(RE::ShoutMeter* a_this)
+			{
+				const float pct = shoutMeterPct.load();
+				return pct >= 0.0f ? pct : func(a_this);
+			}
+			static inline REL::Relocation<decltype(thunk)> func;
+		};
+
 		struct Whirlwind
 		{
 			std::uint64_t pressAt = 0;  // GetTickCount64; 0: not held
@@ -507,13 +522,6 @@ namespace skycraft
 			}
 			a_player->GetActorRuntimeData().voiceTimer = variation.recoveryTime * std::max(0.0f, a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kShoutRecoveryMult));
 			whirlwind.cooldown = a_player->GetActorRuntimeData().voiceTimer;
-			// The compass's shout meter fills over the recovery it's told of (Skyrim tells it when it
-			// shouts itself; without it the meter showed nothing).
-			if (auto* ui = RE::UI::GetSingleton()) {
-				if (auto hud = ui->GetMenu<RE::HUDMenu>(); hud && hud->GetRuntimeData().shout) {
-					hud->GetRuntimeData().shout->cooldown = a_player->GetActorRuntimeData().voiceTimer;
-				}
-			}
 			logger::info("Whirlwind Sprint: {} sound(s), {} screen effect(s)", sounds, screens);
 			// (Minecraft plays Skyrim's own dash for the words, SkyDash: its root motion, 7, 14, 21 or 29
 			// blocks in 0.567 s.)
@@ -563,30 +571,12 @@ namespace skycraft
 				timer = std::max(0.0f, timer - a_delta);
 			}
 			lastTimer = timer;
-			// The compass's shout meter: told the recovery alone, it still showed nothing (Skyrim
-			// fills it as its own shout recovers), so it's set to how far the recovery has come, as
-			// Skyrim's meter does it (its own ActionScript call), until it's full.
-			static bool metering = false;
-			static int  meterLogged = 0;
-			if (whirlwind.cooldown > 0.0f && (timer > 0.0f || metering)) {
-				const double pct = 100.0 * (1.0 - std::clamp(timer / whirlwind.cooldown, 0.0f, 1.0f));
-				if (auto* ui = RE::UI::GetSingleton()) {
-					if (auto hud = ui->GetMenu<RE::HUDMenu>(); hud && hud->uiMovie && hud->GetRuntimeData().shout) {
-						auto* meter = hud->GetRuntimeData().shout;
-						if (meterLogged++ < 3) {
-							logger::info("Whirlwind Sprint: compass meter {} at {:.0f}% (Skyrim's own reckoning {:.0f}%, cooldown {:.1f} s)", meter->setPctName.c_str(), pct,
-								meter->GetFillPct(), meter->cooldown);
-						}
-						meter->fillPct = static_cast<float>(pct);
-						const RE::GFxValue arg(pct);
-						hud->uiMovie->Invoke(meter->setPctName.c_str(), nullptr, &arg, 1);
-					}
-				}
-				metering = timer > 0.0f;
-				if (!metering) {
-					whirlwind.cooldown = 0.0f;
-					meterLogged = 0;
-				}
+			// The compass's shout meter (ShoutMeterFillHook): how far the recovery has come, until full.
+			if (whirlwind.cooldown > 0.0f && timer > 0.0f) {
+				shoutMeterPct = 100.0f * (1.0f - std::clamp(timer / whirlwind.cooldown, 0.0f, 1.0f));
+			} else if (shoutMeterPct >= 0.0f) {
+				shoutMeterPct = -1.0f;
+				whirlwind.cooldown = 0.0f;
 			}
 			if (whirlwind.pressAt == 0) {
 				return;
@@ -2293,6 +2283,10 @@ namespace skycraft
 
 			REL::Relocation<std::uintptr_t> fpVtbl{ RE::VTABLE_FirstPersonState[0] };
 			FirstPersonTranslationHook::func = fpVtbl.write_vfunc(0x5, FirstPersonTranslationHook::thunk);
+
+			// SkyCraft+ : Whirlwind Sprint's recovery on the compass's shout meter.
+			REL::Relocation<std::uintptr_t> shoutMeterVtbl{ RE::VTABLE_ShoutMeter[0] };
+			ShoutMeterFillHook::func = shoutMeterVtbl.write_vfunc(0x5, ShoutMeterFillHook::thunk);
 
 			Collision::Get().Start();
 			Combat::Install();
