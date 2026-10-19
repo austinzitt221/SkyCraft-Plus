@@ -451,8 +451,17 @@ namespace skycraft
 		// up again from wherever Skyrim leaves them.
 		// SkyCraft+ : Whirlwind Sprint. Its dash is Skyrim moving the player, which Minecraft (placing
 		// the player every frame) undid: the Greybeards' gate couldn't be passed in time. When the
-		// player shouts it, Skyrim has the player for the dash.
-		struct SprintSink : RE::BSTEventSink<RE::TESSpellCastEvent>
+		// player shouts it, Skyrim has the player for the dash: from the Shout key going down with it
+		// the voice's (Skyrim's own controls do the shout; tested, no cast was seen while Minecraft
+		// drove), or from its cast.
+		bool IsWhirlwindSprint(const RE::TESForm* a_form)
+		{
+			constexpr RE::FormID kWhirlwindSprint = 0x2F7BA;  // Skyrim.esm's shout
+			const char*          name = a_form ? a_form->GetName() : nullptr;
+			return a_form && (a_form->GetFormID() == kWhirlwindSprint || (name && std::string_view(name).find("Whirlwind") != std::string_view::npos));
+		}
+
+		struct SprintSink : RE::BSTEventSink<RE::TESSpellCastEvent>, RE::BSTEventSink<RE::BSAnimationGraphEvent>
 		{
 			static SprintSink* Get()
 			{
@@ -461,6 +470,20 @@ namespace skycraft
 			}
 			std::atomic<std::uint64_t> castAt{ 0 };  // GetTickCount64
 			std::atomic<int>           words{ 0 };
+			// The Shout key, down with Whirlwind Sprint the voice's: when, and when it went up (0: held).
+			std::atomic<std::uint64_t> pressAt{ 0 }, releaseAt{ 0 };
+			std::atomic<bool>          fast{ false };  // the dash got going
+			std::atomic<int>           graphLogged{ 0 };
+			// (Diagnostics: what the player's animation graph does from the press, in case the shout
+			// still doesn't come out.)
+			RE::BSEventNotifyControl ProcessEvent(const RE::BSAnimationGraphEvent* a_event, RE::BSTEventSource<RE::BSAnimationGraphEvent>*) override
+			{
+				if (a_event && a_event->holder && a_event->holder->IsPlayerRef() && pressAt != 0 && graphLogged < 40) {
+					++graphLogged;
+					logger::info("Whirlwind Sprint: the player's animation: {}", a_event->tag.c_str());
+				}
+				return RE::BSEventNotifyControl::kContinue;
+			}
 			RE::BSEventNotifyControl   ProcessEvent(const RE::TESSpellCastEvent* a_event, RE::BSTEventSource<RE::TESSpellCastEvent>*) override
 			{
 				if (!a_event || !a_event->object || !a_event->object->IsPlayerRef()) {
@@ -491,8 +514,40 @@ namespace skycraft
 			}
 		};
 
-		// While the dash lasts: from the shout until the player's slowed to a run (at most a second
-		// and a half, two with all three words).
+		// The Shout key went down or up (Input.cpp): down with Whirlwind Sprint the voice's, Skyrim
+		// has the player from now, for its own controls to shout it.
+		void WhirlwindKey(bool a_down)
+		{
+			auto*               sink = SprintSink::Get();
+			const std::uint64_t now = GetTickCount64();
+			if (!a_down) {
+				if (sink->pressAt != 0 && sink->releaseAt == 0) {
+					sink->releaseAt = now;
+				}
+				return;
+			}
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!player || sink->pressAt != 0 || !IsWhirlwindSprint(player->GetActorRuntimeData().selectedPower)) {
+				return;
+			}
+			sink->pressAt = now;
+			sink->releaseAt = 0;
+			sink->fast = false;
+			sink->graphLogged = 0;
+			RE::BSAnimationGraphManagerPtr graphs;
+			player->GetAnimationGraphManager(graphs);
+			if (graphs) {
+				for (const auto& graph : graphs->graphs) {
+					if (graph) {
+						graph->GetEventSource<RE::BSAnimationGraphEvent>()->AddEventSink(sink);
+					}
+				}
+			}
+			logger::info("Whirlwind Sprint: the Shout key with it the voice's (voice timer {:.1f} s): Skyrim has the player", player->GetActorRuntimeData().voiceTimer);
+		}
+
+		// While the dash lasts: from the Shout key (or the shout) until the player's slowed to a run
+		// after it, or, with no dash, a moment after the key is let go.
 		bool Sprinting(RE::PlayerCharacter* a_player)
 		{
 			static bool watching = false;
@@ -503,27 +558,47 @@ namespace skycraft
 				}
 			}
 			auto*               sink = SprintSink::Get();
+			const std::uint64_t now = GetTickCount64();
+			float               speed = 0.0f;
+			if (auto* controller = a_player->GetCharController()) {
+				RE::hkVector4 velocity;
+				controller->GetLinearVelocityImpl(velocity);
+				alignas(16) float v[4];
+				_mm_store_ps(v, velocity.quad);
+				// (Havok's metres in game units: a run is some 400 a second, the dash several times that.)
+				speed = std::sqrt(v[0] * v[0] + v[1] * v[1]) * RE::bhkWorld::GetWorldScaleInverse();
+			}
+			const bool fastNow = speed >= 600.0f;
+			if (fastNow) {
+				sink->fast = true;
+			}
+			if (sink->pressAt != 0) {
+				const std::uint64_t released = sink->releaseAt;
+				const char*         done = nullptr;
+				if (released == 0) {
+					done = now - sink->pressAt > 8000 ? "the key held too long" : nullptr;
+				} else if (sink->fast && !fastNow && now - released > 300 && (sink->castAt == 0 || now - sink->castAt > 400)) {
+					done = "dashed";
+				} else if (!sink->fast && now - released > (sink->castAt != 0 ? 2000u : 1500u)) {
+					done = sink->castAt != 0 ? "shouted, no dash seen" : "no shout came";
+				}
+				if (!done) {
+					return true;
+				}
+				logger::info("Whirlwind Sprint: {} (voice timer {:.1f} s)", done, a_player->GetActorRuntimeData().voiceTimer);
+				sink->pressAt = 0;
+				sink->releaseAt = 0;
+				sink->castAt = 0;
+				return false;
+			}
 			const std::uint64_t at = sink->castAt;
 			if (at == 0) {
 				return false;
 			}
-			const std::uint64_t since = GetTickCount64() - at;
-			if (since > (sink->words >= 3 ? 2000u : 1500u)) {
+			const std::uint64_t since = now - at;
+			if (since > (sink->words >= 3 ? 2000u : 1500u) || (since > 400 && !fastNow)) {
 				sink->castAt = 0;
 				return false;
-			}
-			if (since > 400) {
-				if (auto* controller = a_player->GetCharController()) {
-					RE::hkVector4 velocity;
-					controller->GetLinearVelocityImpl(velocity);
-					alignas(16) float v[4];
-					_mm_store_ps(v, velocity.quad);
-					// (Havok's metres in game units: a run is some 400 a second, the dash several times that.)
-					if (std::sqrt(v[0] * v[0] + v[1] * v[1]) * RE::bhkWorld::GetWorldScaleInverse() < 600.0f) {
-						sink->castAt = 0;
-						return false;
-					}
-				}
 			}
 			return true;
 		}
@@ -2271,6 +2346,9 @@ namespace skycraft
 				bone->Update(update);
 			}
 		}
+
+		// SkyCraft+ : Whirlwind Sprint (see WhirlwindKey).
+		void ShoutKey(bool a_down) { WhirlwindKey(a_down); }
 
 		void ReportPause()
 		{

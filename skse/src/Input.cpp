@@ -734,6 +734,16 @@ namespace skycraft
 						}
 						continue;
 					}
+					// SkyCraft+ : Whirlwind Sprint (Game::ShoutKey), in both modes. (A controller's RB
+					// alone is Minecraft's hotbar in Minecraft mode: LB+RB is told in PlayerControlsHook.)
+					if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && !menuOpen && !st.mcScreenOpen) {
+						auto*       button = e->AsButtonEvent();
+						const auto* events = RE::UserEvents::GetSingleton();
+						if (events && button->QUserEvent() == events->shout && (button->IsDown() || button->IsUp()) &&
+							(button->GetDevice() != RE::INPUT_DEVICE::kGamepad || !route)) {
+							Game::ShoutKey(button->IsDown());
+						}
+					}
 					switch (e->GetEventType()) {
 					case RE::INPUT_EVENT_TYPE::kMouseMove:
 						{
@@ -954,6 +964,9 @@ namespace skycraft
 							auto* button = e->AsButtonEvent();
 							renamed.emplace_back(button, button->userEvent);
 							button->userEvent = events->shout;
+							if (button->IsDown() || button->IsUp()) {
+								Game::ShoutKey(button->IsDown());  // SkyCraft+ : Whirlwind Sprint
+							}
 							keep.push_back(e);
 							continue;
 						}

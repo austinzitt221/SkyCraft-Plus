@@ -133,6 +133,8 @@ namespace skycraft
 		// SkyCraft+ : from Present (which runs while the game is paused, unlike the player update):
 		// while a Skyrim menu pauses the game, Minecraft is told to pause too.
 		void ReportPause();
+		// SkyCraft+ : Whirlwind Sprint. Skyrim's Shout key went down or up (in either mode).
+		void ShoutKey(bool a_down);
 		// Called from Present: logs rendered camera vs Minecraft eye when a check is due.
 		void CheckRenderedCamera();
 		// Third-person diagnostics, from where the blocks are drawn: the camera Skyrim renders this
@@ -301,6 +303,8 @@ namespace skycraft
 	{
 		void OnFight(RE::PlayerCharacter* a_player, RE::FormID a_actor, std::uint32_t a_flags, double a_x, double a_y, double a_z);
 		void Clear();
+		// Holds a bow or crossbow (fights from afar: kActorRanged).
+		bool Ranged(RE::Actor* a_actor);
 	}
 
 	namespace Animals
