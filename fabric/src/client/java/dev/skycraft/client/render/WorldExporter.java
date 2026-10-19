@@ -48,6 +48,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.RenderShape;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
@@ -77,6 +78,10 @@ public final class WorldExporter {
 	// SkyCraft+ : exact block shapes. Sections Skyrim holds collision boxes for (blocks that aren't
 	// full cubes: stairs, slabs, doors, fences...), and this section's boxes (RenShapeBox).
 	private static final LongOpenHashSet SHAPED = new LongOpenHashSet();
+	// What the solids and shapes of each section were when last sent: a section sent again with the same collision does not make Skyrim rebuild its collision model.
+	// Doors, trapdoors, fence gates and the like (anything with an "open" state), per section, with the state each had when the section was
+	// last sent. Checked every frame (watchOpenable): whatever way a change reaches the client, Skyrim hears of it.
+	private static final it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<Openables> OPENABLES = new it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap<>();
 	private static final int SHAPE_STEP = 1 << 14;     // RenShapeBox cell flags (see the protocol)
 	private static final int SHAPE_PASSABLE = 1 << 15;
 	private static ByteBuffer shapeBoxes = ByteBuffer.allocate(64 * 1024).order(ByteOrder.LITTLE_ENDIAN);
@@ -105,6 +110,88 @@ public final class WorldExporter {
 	private static final RandomSource RANDOM = RandomSource.create();
 
 	private WorldExporter() {
+	}
+
+	/** The openable blocks of one section and the state each was in when the section was sent. */
+	private static final class Openables {
+		final BlockPos[] pos;
+		final BlockState[] state;
+
+		Openables(List<BlockPos> a_pos, List<BlockState> a_state) {
+			this.pos = a_pos.toArray(new BlockPos[0]);
+			this.state = a_state.toArray(new BlockState[0]);
+		}
+	}
+
+	/** Sixteenths of a block left without collision at the bottom of a whole block sitting directly on top of a door. */
+	public static final int DOOR_HEADROOM = 4;
+
+	private static boolean sitsOnDoor(ClientLevel level, BlockPos pos) {
+		BlockState below = level.getBlockState(pos.below());
+		return below.getBlock() instanceof net.minecraft.world.level.block.DoorBlock
+			&& below.hasProperty(BlockStateProperties.DOUBLE_BLOCK_HALF)
+			&& below.getValue(BlockStateProperties.DOUBLE_BLOCK_HALF) == net.minecraft.world.level.block.state.properties.DoubleBlockHalf.UPPER;
+	}
+
+	private static boolean isOpenable(BlockState state) {
+		// Not just anything with an "open" state: a barrel has one too (while someone is looking inside), and it must stay solid.
+		Block block = state.getBlock();
+		return state.hasProperty(BlockStateProperties.OPEN)
+			&& (block instanceof net.minecraft.world.level.block.DoorBlock || block instanceof net.minecraft.world.level.block.TrapDoorBlock
+				|| block instanceof net.minecraft.world.level.block.FenceGateBlock);
+	}
+
+	/** Any block change on this client (ClientLevelDigMixin): its section, and the one next door if it is on the edge, is sent again at once. */
+	public static void blockChanged(BlockPos pos, BlockState before, BlockState after) {
+		if (before == after) {
+			return;
+		}
+		int sx = pos.getX() >> 4, sy = pos.getY() >> 4, sz = pos.getZ() >> 4;
+		markDirtyNow(sx, sy, sz);
+		int lx = pos.getX() & 15, ly = pos.getY() & 15, lz = pos.getZ() & 15;
+		if (lx == 0) {
+			markDirtyNow(sx - 1, sy, sz);
+		} else if (lx == 15) {
+			markDirtyNow(sx + 1, sy, sz);
+		}
+		if (ly == 0) {
+			markDirtyNow(sx, sy - 1, sz);
+		} else if (ly == 15) {
+			markDirtyNow(sx, sy + 1, sz);
+		}
+		if (lz == 0) {
+			markDirtyNow(sx, sy, sz - 1);
+		} else if (lz == 15) {
+			markDirtyNow(sx, sy, sz + 1);
+		}
+	}
+
+	/**
+	 * Opening or closing a door, trapdoor or fence gate changes its collision shape and its model, but it can reach the client in ways that
+	 * don't mark the section for Skyrim. So every openable block in the sections sent is looked at each frame; one that is not in the state
+	 * it was sent in sends its section again, ahead of everything else (the mesh for the picture, and the solid and shape lists, which
+	 * rebuild Skyrim's collision model of the section).
+	 */
+	private static void watchOpenable(ClientLevel level) {
+		if (OPENABLES.isEmpty()) {
+			return;
+		}
+		for (it.unimi.dsi.fastutil.longs.Long2ObjectMap.Entry<Openables> entry : OPENABLES.long2ObjectEntrySet()) {
+			Openables o = entry.getValue();
+			boolean changed = false;
+			for (int i = 0; i < o.pos.length; i++) {
+				BlockState now = level.getBlockState(o.pos[i]);
+				if (now != o.state[i]) {
+					SkyCraft.LOG.info("SkyCraft: {} at {} is now {}; its section goes to Skyrim again", now.getBlock().getDescriptionId(), o.pos[i], now.getValue(BlockStateProperties.OPEN) ? "open" : "closed");
+					o.state[i] = now;
+					changed = true;
+				}
+			}
+			if (changed) {
+				long key = entry.getLongKey();
+				markDirtyNow(SectionPos.x(key), SectionPos.y(key), SectionPos.z(key));
+			}
+		}
 	}
 
 	public static void markDirty(int sx, int sy, int sz) {
@@ -143,6 +230,7 @@ public final class WorldExporter {
 		}
 		long t1 = System.nanoTime();
 		int meshedBefore = meshedTotal;
+		watchOpenable(level);
 		meshDirtySections(level);
 		long t2 = System.nanoTime();
 		forgetFar(minecraft);
@@ -245,6 +333,7 @@ public final class WorldExporter {
 		SOLID_SENT.clear();
 		SHAPE_SENT.clear();
 		DUG_SENT.clear();
+		OPENABLES.clear();
 		dev.skycraft.client.SkyDigClient.resendAll();
 		// Everything already loaded needs meshing again; later chunk loads mark themselves dirty.
 		int radius = minecraft.options.getEffectiveRenderDistance() + 1;
@@ -418,6 +507,9 @@ public final class WorldExporter {
 		}
 		LevelChunkSection section = sectionAt(level, chunk, sy);
 		boolean empty = section == null || section.hasOnlyAir();
+		if (empty) {
+			OPENABLES.remove(key);
+		}
 		long[] dug = dev.skycraft.client.SkyDigClient.dugBits(chunk, sy);
 		int dugCount = 0;
 		if (dug != null) {
@@ -436,6 +528,8 @@ public final class WorldExporter {
 		shapeBoxes.clear();
 		int shapeCount = 0;
 		MESH.cardinal = level.cardinalLighting();
+		List<BlockPos> openPos = null;
+		List<BlockState> openState = null;
 		boolean underground = level.dimension() == net.minecraft.world.level.Level.OVERWORLD && dev.skycraft.world.SkyUnderground.enabled();
 		for (int c = 0; c < 324; c++) {
 			int cx = c % 18 - 1, cz = c / 18 - 1;
@@ -458,12 +552,25 @@ public final class WorldExporter {
 						if (state.isAir()) {
 							continue;
 						}
+						if (isOpenable(state)) {
+							if (openPos == null) {
+								openPos = new ArrayList<>();
+								openState = new ArrayList<>();
+							}
+							openPos.add(pos.immutable());
+							openState.add(state);
+						}
 						// Blocks Skyrim's NPCs can't walk through (anything with a collision shape).
 						VoxelShape collision = state.getCollisionShape(level, pos);
 						if (!collision.isEmpty()) {
 							int bit = x + 16 * z + 256 * y;
 							SOLID_BITS[bit >> 6] |= 1L << (bit & 63);
 							solidCount++;
+							// A whole block right above a door: a small gap at its bottom has no collision, so Skyrim's taller player fits through the doorway.
+							if (Block.isShapeFullBlock(collision) && sitsOnDoor(level, pos)) {
+								putShapeBox(bit, new AABB(0.0, DOOR_HEADROOM / 16.0, 0.0, 1.0, 1.0, 1.0));
+								shapeCount++;
+							}
 							// Not a whole block: its real boxes, so characters fit through open doors
 							// and walk up stairs and slabs.
 							if (!Block.isShapeFullBlock(collision)) {
@@ -515,6 +622,11 @@ public final class WorldExporter {
 					}
 				}
 			}
+		}
+		if (openPos != null) {
+			OPENABLES.put(key, new Openables(openPos, openState));
+		} else {
+			OPENABLES.remove(key);
 		}
 		// Holes dug into Skyrim's ground: Minecraft walls where its surface still runs above them.
 		var digLookup = dev.skycraft.world.SkyDig.clientDug;
@@ -621,8 +733,33 @@ public final class WorldExporter {
 		return true;
 	}
 
+	/** Mobs Skyrim's player can lock on to (True Directional Movement's virtual targets): every living thing but the player, hostile or not. */
+	private static final int MAX_LOCKABLE_MOBS = 24;
+
+	private static boolean isLockable(Minecraft minecraft, net.minecraft.world.entity.LivingEntity living) {
+		return living != minecraft.player && !living.isDeadOrDying() && !living.isRemoved();
+	}
+
+	/** A mob's name as the 8 floats the entity record's uv holds, which Skyrim reads back as 32 bytes of zero-ended UTF-8. */
+	private static float[] nameBits(String name) {
+		byte[] raw = name.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+		int length = Math.min(raw.length, Proto.MOB_NAME_BYTES - 1);
+		while (length > 0 && length < raw.length && (raw[length] & 0xC0) == 0x80) {
+			--length; // don't cut a multi-byte character in half
+		}
+		byte[] padded = new byte[Proto.MOB_NAME_BYTES];
+		System.arraycopy(raw, 0, padded, 0, length);
+		float[] out = new float[Proto.MOB_NAME_BYTES / 4];
+		ByteBuffer buffer = ByteBuffer.wrap(padded).order(ByteOrder.LITTLE_ENDIAN);
+		for (int i = 0; i < out.length; i++) {
+			out[i] = Float.intBitsToFloat(buffer.getInt());
+		}
+		return out;
+	}
+
 	private static void exportEntities(Minecraft minecraft, ClientLevel level, float partialTick) {
 		ENTITIES.clear();
+		int lockableMobs = 0;
 		Vec3 eye = minecraft.player.getEyePosition(partialTick);
 		for (Entity e : level.entitiesForRendering()) {
 			if (ENTITIES.size() >= Proto.MAX_WORLD_ENTITIES || e.distanceToSqr(eye) > ENTITY_RANGE * ENTITY_RANGE) {
@@ -656,6 +793,14 @@ public final class WorldExporter {
 				&& (e != minecraft.player || minecraft.gameRenderer.mainCamera().isDetached())) {
 				// Players and mobs: Skyrim darkens the ground softly under their feet.
 				ENTITIES.add(new SkyLink.WorldEntity(Proto.WE_SHADOW, e.getId(), (float) p.x, (float) p.y, (float) p.z, 0.0F, 0.0F, e.getBbWidth(), null, null, 0));
+				if (e != minecraft.player && lockableMobs < MAX_LOCKABLE_MOBS && ENTITIES.size() < Proto.MAX_WORLD_ENTITIES && isLockable(minecraft, (net.minecraft.world.entity.LivingEntity) e)) {
+					net.minecraft.world.entity.LivingEntity living = (net.minecraft.world.entity.LivingEntity) e;
+					float max = living.getMaxHealth();
+					float health = max > 0.0F ? Mth.clamp(living.getHealth() / max, 0.0F, 1.0F) : -1.0F;
+					ENTITIES.add(new SkyLink.WorldEntity(Proto.WE_MOB, e.getId(), (float) p.x, (float) p.y, (float) p.z, 0.0F, 0.0F, e.getBbHeight(),
+						new float[] { health, e.getBbWidth(), 0.0F }, nameBits(e.getName().getString()), 0));
+					++lockableMobs;
+				}
 			}
 		}
 		addCracks(level);

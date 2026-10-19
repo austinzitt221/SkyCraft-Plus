@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 50; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk)
+	public static final int VERSION = 51; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl)
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -179,6 +179,8 @@ public final class Proto {
 	public static final int WE_BLOCK = 4;
 	public static final int WE_CRACK = 5;
 	public static final int WE_SHADOW = 6;
+	public static final int WE_MOB = 7;
+	public static final int MOB_NAME_BYTES = 32;
 
 	// Render ring (relative to OFF_RENDER_RING)
 	public static final long RR_HEAD = 0x00;

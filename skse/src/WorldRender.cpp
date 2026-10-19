@@ -1357,8 +1357,8 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 				const auto& e = entities.entities[i];
 				const float px = float(e.x - a_o[0]), py = float(e.y - a_o[1]), pz = float(e.z - a_o[2]);
 				quadLight = (e.light & 0x80000000u) ? (e.light & 0x0F0Fu) : kFullSkyLight;
-				if (e.kind == proto::kWeShadow) {
-					continue;  // not geometry: see GatherContactShadows
+				if (e.kind == proto::kWeShadow || e.kind == proto::kWeMob) {
+					continue;  // not geometry: see GatherContactShadows; a mob for lock-on (LockOn.cpp), which Minecraft draws
 				}
 				if (e.kind == proto::kWeBlock) {
 					// A dropped block: a small cube spinning about its centre, like in Minecraft.
@@ -1403,7 +1403,9 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 
 		void BuildOutline(const double a_o[3])
 		{
-			if (!entities.hasSelection) {
+			// (Not in Skyrim's mode: Minecraft's crosshair isn't aimed anywhere there, so it would outline some
+			// block that has nothing to do with where Skyrim's player is looking.)
+			if (!entities.hasSelection || State().skyrimMode) {
 				return;
 			}
 			constexpr float g = 0.002f;
@@ -2108,7 +2110,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 		void CaptureSunShadows(RE::BSShadowLight* a_sun)
 		{
 			auto* renderer = RE::BSGraphics::Renderer::GetSingleton();
-			if (!device || !renderer || !a_sun || !(State().puppeting || State().skyrimDrives)) {
+			if (!device || !renderer || !a_sun || !(State().worldVisible || State().puppeting || State().skyrimDrives)) {
 				return;
 			}
 			auto& descs = a_sun->GetRuntimeData().shadowmapDescriptors;
@@ -3051,6 +3053,25 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			passTimer.Finish(a_context);
 		}
 
+		// Whether Skyrim is showing something other than its world right now (a loading screen, the main menu, the map): then
+		// nothing of Minecraft's is drawn. Any other menu (inventory, favorites, magic, containers, dialogue...) has the world
+		// behind it, and Minecraft's blocks and mobs are part of that world: they're drawn into it inside Skyrim's frame, so the
+		// menu is drawn over them as it is over its own NPCs. (Only this in-frame drawing may do it: the drawing on the finished
+		// frame, further down, would cover the menu.)
+		bool WorldHiddenBySkyrim()
+		{
+			auto* ui = RE::UI::GetSingleton();
+			if (!ui) {
+				return State().skyrimMenuOpen;
+			}
+			if (ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME) || ui->IsMenuOpen(RE::MainMenu::MENU_NAME) || ui->IsMenuOpen(RE::MapMenu::MENU_NAME) ||
+				ui->IsMenuOpen(RE::LoadWaitSpinner::MENU_NAME)) {
+				return true;
+			}
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			return !player || !player->GetParentCell() || !player->Is3DLoaded();
+		}
+
 		// Right after Skyrim renders its 3D scene, before its post-processing: the blocks go into
 		// the HDR scene and Skyrim's depth, so its fog, tone mapping, eye adaptation, bloom, depth
 		// of field, colour grading and TAA treat them like any Skyrim object.
@@ -3063,7 +3084,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 				Game::NoteFrameStep('D');
 				Game::NoteRenderedCamera(camera->world.translate, camera->world.rotate);
 			}
-			if (!device || !atlasSrv || !inFrameEnabled || !camera || !renderer || !(st.puppeting || st.skyrimDrives) || st.skyrimMenuOpen || (!st.parked && !st.playerUnderLand && (!depthKnown || !depthUsable))) {
+			if (!device || !atlasSrv || !inFrameEnabled || !camera || !renderer || !(st.worldVisible || st.puppeting || st.skyrimDrives) || WorldHiddenBySkyrim() || (!st.parked && !st.playerUnderLand && (!depthKnown || !depthUsable))) {
 				return;
 			}
 			if (!st.parked && st.playerUnderLand) {
@@ -3293,7 +3314,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			static void thunk(void* a_1, void* a_2, void* a_3, std::uint32_t a_4)
 			{
 				static int logged = 0;
-				if (logged < 1 && State().puppeting && device) {
+				if (logged < 1 && State().worldVisible && device) {
 					++logged;
 					if (auto* renderer = RE::BSGraphics::Renderer::GetSingleton()) {
 						auto&                   rd = renderer->GetRuntimeData();
@@ -3462,7 +3483,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 
 			auto& st = State();
 			auto* camera = RE::Main::WorldRootCamera();
-			if (!camera || !(st.puppeting || st.skyrimDrives) || st.skyrimMenuOpen || !atlasSrv) {
+			if (!camera || !(st.worldVisible || st.puppeting || st.skyrimDrives) || st.skyrimMenuOpen || !atlasSrv) {
 				return;
 			}
 
@@ -3546,8 +3567,41 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			};
 			// Main::RenderWorld's one call, in the frame function: right after it, Skyrim's scene is
 			// complete and its post-processing (tone mapping, bloom, depth of field, grading) hasn't run.
-			const auto worldSite = REL::ID(36559).address() + 0x85E;
-			if (hookCall(worldSite, REL::ID(107142).address(), "Main::RenderWorld's call")) {
+			// The call sits at a different offset in different 1.6 builds of the frame function, so the offset the author found is
+			// only tried first; if that's not a call to RenderWorld, the function is searched for the one call that is.
+			const auto frameFunction = REL::ID(36559).address();
+			const auto renderWorld = REL::ID(107142).address();
+			auto       worldSite = frameFunction + 0x85E;
+			bool       found = false;
+			{
+				const auto* code = reinterpret_cast<const std::uint8_t*>(worldSite);
+				std::int32_t rel = 0;
+				std::memcpy(&rel, code + 1, 4);
+				found = code[0] == 0xE8 && worldSite + 5 + static_cast<std::intptr_t>(rel) == renderWorld;
+			}
+			if (!found) {
+				std::vector<std::uintptr_t> matches;
+				for (std::size_t offset = 0; offset < 0x1400; ++offset) {
+					const auto  site = frameFunction + offset;
+					const auto* code = reinterpret_cast<const std::uint8_t*>(site);
+					if (code[0] != 0xE8) {
+						continue;
+					}
+					std::int32_t rel = 0;
+					std::memcpy(&rel, code + 1, 4);
+					if (site + 5 + static_cast<std::intptr_t>(rel) == renderWorld) {
+						matches.push_back(site);
+					}
+				}
+				if (matches.size() == 1) {
+					worldSite = matches.front();
+					found = true;
+					logger::info("in-frame block drawing: Main::RenderWorld's call found at +{:#x} in this build", worldSite - frameFunction);
+				} else {
+					logger::warn("in-frame block drawing: {} calls to Main::RenderWorld in the frame function; can't tell which to hook", matches.size());
+				}
+			}
+			if (found && hookCall(worldSite, renderWorld, "Main::RenderWorld's call")) {
 				RenderWorldHook::func = SKSE::GetTrampoline().write_call<5>(worldSite, RenderWorldHook::thunk);
 				logger::info("in-frame block drawing: hooked after Main::RenderWorld");
 			}

@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 50;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk)
+	inline constexpr std::uint32_t kVersion = 51;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl)
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -484,6 +484,8 @@ namespace skycraft::proto
 	// block outline.
 	inline constexpr std::uint32_t kMaxWorldEntities = 160;
 
+	inline constexpr std::uint32_t kMobNameBytes = 32;
+
 	enum WorldEntityKind : std::uint32_t
 	{
 		kWeArrow = 1,    // uv[0]: the arrow's item icon
@@ -492,6 +494,9 @@ namespace skycraft::proto
 		kWeBlock = 4,    // dropped block item: a spinning cube of side `scale`, uv[0..2] = side, top, bottom
 		kWeCrack = 5,    // block-breaking cracks over the box at (x, y, z) of size ext, uv[0] = crack stage
 		kWeShadow = 6,   // a player's or mob's feet at (x, y, z), `scale` wide: its soft contact shadow
+		kWeMob = 7,      // a Minecraft mob Skyrim's player may lock on to (not drawn: Minecraft draws it). id = entity id, (x, y, z) = its feet,
+		                 // scale = its height in blocks, ext[0] = health 0..1 (< 0: unknown), ext[1] = its width in blocks, and its name is
+		                 // zero-ended UTF-8 in the first 32 bytes of uv (kMobNameBytes)
 	};
 
 	struct WorldEntity

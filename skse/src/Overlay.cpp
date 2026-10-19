@@ -234,7 +234,8 @@ float4 PSMain(VSOut i) : SV_Target {
 				st.viewportW = static_cast<int>(desc.BufferDesc.Width);
 				st.viewportH = static_cast<int>(desc.BufferDesc.Height);
 			}
-			if (!Link::Get().Valid() || !Link::Get().McAlive() || !st.mcInWorld || !InitResources(a_swapChain)) {
+			// (Skyrim's mode shows Skyrim's own HUD alone, so none of Minecraft's is drawn.)
+			if (!Link::Get().Valid() || !Link::Get().McAlive() || !st.mcInWorld || (st.skyrimMode && !st.mcScreenOpen) || !InitResources(a_swapChain)) {
 				return;
 			}
 			UploadLatestFrame();

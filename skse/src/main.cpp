@@ -21,6 +21,9 @@ namespace
 	void OnMessage(SKSE::MessagingInterface::Message* a_msg)
 	{
 		switch (a_msg->type) {
+		case SKSE::MessagingInterface::kInputLoaded:
+			skycraft::Input::InstallSink();  // before other mods' sinks, so Minecraft's keys can be kept from them
+			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			if (!skycraft::Link::Get().Create()) {
 				logger::error("SkyCraft disabled: could not create shared memory");
@@ -32,6 +35,7 @@ namespace
 			skycraft::WorldRender::Install();
 			skycraft::PathAvoid::Install();
 			skycraft::Dig::Install();
+			skycraft::LockOn::Install();
 			skycraft::CrashLog::Install();
 			// SkyCraft+ : Minecraft's structures in Skyrim's world. Where Skyrim's Data folder is, for
 			// Minecraft (started through Prism, so given nothing) to read the land from Skyrim.esm.
@@ -62,6 +66,8 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	SetupLog();
 	skycraft::CrashLog::Install();
 	logger::info("SkyCraft {} loading (runtime {})", "0.1.2-plus.5", a_skse->RuntimeVersion().string());
+	logger::info("patch revision 60 (block collision with exact shapes, doors with their own collision and headroom under a block above a door, Minecraft's world drawn under Skyrim's menus, mob lock-on through True Directional Movement; merged onto SkyCraft+, the patch's version wins where both have a feature)");
+	skycraft::BlockCollision::PrepareFiles();
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
 	if (auto* serialization = SKSE::GetSerializationInterface()) {
 		serialization->SetUniqueID('SKYC');

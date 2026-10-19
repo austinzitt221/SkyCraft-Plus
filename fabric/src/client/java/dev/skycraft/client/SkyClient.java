@@ -314,8 +314,11 @@ public final class SkyClient {
 		DiscordPresence.tick(minecraft);
 		SkyDigClient.tick(minecraft);
 		freezeWhileUnlinked(minecraft);
-		holdUntilReady(minecraft);
-		followSkyrim(minecraft);
+		// SkyCraft's own follow of Skyrim's player first; SkyCraft+'s is the fallback for what it doesn't take.
+		if (!followSkyrimPlayer(minecraft)) {
+			holdUntilReady(minecraft);
+			followSkyrim(minecraft);
+		}
 		publishTick(minecraft);
 	}
 
@@ -505,6 +508,44 @@ public final class SkyClient {
 		player.yo = unlinkedHold.y;
 		player.zo = unlinkedHold.z;
 		player.resetFallDistance();
+	}
+
+	/**
+	 * The player switched to Skyrim's own controls (Proto.SKY_SKYRIM_CONTROL): Skyrim moves its player
+	 * and Minecraft gets no input, so Minecraft's player rides along on Skyrim's instead of standing
+	 * where it was left. Left behind, it would lose its ground (Skyrim's collision streams in around
+	 * Skyrim's player), fall out of the world and die, and a Minecraft death kills the Skyrim player.
+	 * It's also kept at full health, so drowning in Skyrim's water or standing inside a block can't do
+	 * the same. Skyrim says where the player is every frame, so no teleports are needed.
+	 *
+	 * @return true while it has the player, so {@link #holdUntilReady} stays out of the way. It
+	 *         doesn't while Skyrim is loading: parking the player there is what that's for.
+	 */
+	private static boolean followSkyrimPlayer(Minecraft minecraft) {
+		LocalPlayer player = minecraft.player;
+		if (!linked || player == null || !sky.skyrimControl() || !sky.inGame() || sky.loading()) {
+			return false;
+		}
+		holdPos = null;
+		holdSince = 0;
+		player.setDeltaMovement(Vec3.ZERO);
+		player.setPos(sky.x, sky.y, sky.z);
+		player.xo = sky.x;
+		player.yo = sky.y;
+		player.zo = sky.z;
+		player.resetFallDistance();
+		var server = minecraft.getSingleplayerServer();
+		if (server != null) {
+			var uuid = player.getUUID();
+			server.execute(() -> {
+				ServerPlayer sp = server.getPlayerList().getPlayer(uuid);
+				if (sp != null && !sp.isDeadOrDying()) {
+					sp.setHealth(sp.getMaxHealth());
+					sp.resetFallDistance();
+				}
+			});
+		}
+		return true;
 	}
 
 	/**

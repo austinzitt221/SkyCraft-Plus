@@ -2,6 +2,13 @@
 
 #include <SimpleIni.h>
 
+#include <array>
+#include <atomic>
+#include <cctype>
+#include <chrono>
+#include <cstdlib>
+#include <string>
+
 namespace skycraft
 {
 	namespace
@@ -50,6 +57,8 @@ namespace skycraft
 		std::array<bool, 256> extraMenuKeys{};
 		// SkyCraft+ : mode switch. sModeToggleKey: Minecraft mode <-> Skyrim mode (0: none).
 		std::uint32_t modeToggleKey = 0;
+		std::string   ownToggleText, modeToggleText;  // sToggleKey and sModeToggleKey as written (ResolveToggleKey)
+		bool          startInSkyrimMode = true;
 		// SkyCraft+ : controller. bController: a gamepad plays Minecraft mode too (see Pad below).
 		bool padEnabled = true;
 		// SkyCraft+ : controller inventory snapping. bControllerSlots: in a screen with item slots the
@@ -202,12 +211,132 @@ namespace skycraft
 					logger::info("mode switch key: {}", toggle);
 				}
 			}
+
+			ownToggleText = ini.GetValue("Controls", "sToggleKey", "");
+			modeToggleText = toggle;
+			startInSkyrimMode = ini.GetBoolValue("Controls", "bStartInSkyrimMode", false);
 		}
 
 		bool IsSkyrimMenuKey(std::uint32_t a_code)
 		{
 			return a_code == kDikEscape || a_code == kDikConsole || a_code == kDikJ || a_code == kDikM || a_code == kDikF9 ||
 			       (a_code < extraMenuKeys.size() && extraMenuKeys[a_code]);
+		}
+
+		// The key that switches between Minecraft's controls and Skyrim's (SkyCraft.ini [Controls] sToggleKey; SkyCraft+'s sModeToggleKey is
+		// the fallback when it isn't set). It's SkyCraft's in both modes: never sent to Minecraft, and in Minecraft mode Skyrim never sees it either.
+		constexpr std::uint32_t kDikF8 = 0x42;
+		std::uint32_t           toggleKey = kDikF8;
+		std::string             toggleKeyName = "F8";
+
+		struct NamedKey
+		{
+			const char*   name;
+			std::uint32_t dik;
+		};
+		constexpr NamedKey kNamedKeys[] = {
+			{ "F1", 0x3B }, { "F2", 0x3C }, { "F3", 0x3D }, { "F4", 0x3E }, { "F5", 0x3F }, { "F6", 0x40 },
+			{ "F7", 0x41 }, { "F8", 0x42 }, { "F9", 0x43 }, { "F10", 0x44 }, { "F11", 0x57 }, { "F12", 0x58 },
+			{ "SCROLLLOCK", 0x46 }, { "PAUSE", 0xC5 }, { "HOME", 0xC7 }, { "PAGEUP", 0xC9 },
+			{ "END", 0xCF }, { "PAGEDOWN", 0xD1 }, { "INSERT", 0xD2 }, { "DELETE", 0xD3 },
+		};
+
+		// A key name from the list above (any case), or a DirectInput scan code (decimal or 0x hex).
+		// 0 when it isn't usable: unknown, or one of the keys SkyCraft already routes (Esc, ~, G, H, J, M, O, F9), since the toggle would swallow it.
+		std::uint32_t ParseToggleKey(const std::string& a_text)
+		{
+			std::string s;
+			for (const char c : a_text) {
+				if (!std::isspace(static_cast<unsigned char>(c))) {
+					s.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+				}
+			}
+			std::uint32_t code = 0;
+			for (const auto& key : kNamedKeys) {
+				if (s == key.name) {
+					code = key.dik;
+				}
+			}
+			if (code == 0 && !s.empty()) {
+				char*      end = nullptr;
+				const auto number = std::strtoul(s.c_str(), &end, 0);
+				if (end && *end == '\0' && number > 0 && number <= 0xFF) {
+					code = static_cast<std::uint32_t>(number);
+				}
+			}
+			if (IsSkyrimMenuKey(code) || code == kDikG || code == kDikH || code == kDikO) {
+				return 0;
+			}
+			return code;
+		}
+
+		// Whether the keyboard is Minecraft's right now: one of its screens is up (chat, commands, an anvil's name box, the inventory's
+		// search, ...), or one closed a moment ago. Everything typed then is Minecraft's, and none of it may reach Skyrim, or the letters of a
+		// command open Skyrim's map, journal and the like.
+		//
+		// The moment after a screen closes counts too: the key that closed it (Esc, Enter) is released after the screen is gone, and that
+		// release must not open Skyrim's menu either, and Minecraft's own report of its screens reaches Skyrim a frame late, so a screen's last
+		// keys arrive early.
+		constexpr auto kScreenGrace = std::chrono::milliseconds(200);
+		bool           screenWasOpen = false;
+		std::chrono::steady_clock::time_point screenClosedAt{};
+		// Keys whose press went to Minecraft while it had the keyboard. Their release is Minecraft's too, even if the screen has closed by
+		// then (the hook below drops it on its way to Skyrim's menus).
+		std::array<bool, 256> heldByMinecraft{};
+
+		bool MinecraftHasKeyboard()
+		{
+			if (State().mcScreenOpen) {
+				screenWasOpen = true;
+				return true;
+			}
+			const auto now = std::chrono::steady_clock::now();
+			if (screenWasOpen) {
+				screenWasOpen = false;
+				screenClosedAt = now;
+			}
+			return now - screenClosedAt < kScreenGrace;
+		}
+
+		// The toggle key was pressed: swap Minecraft's controls and Skyrim's. This only flips the switch (and tells Minecraft to let go of
+		// what it holds); the per-frame update does the rest, and says which mode it is now.
+		void SwitchControls(bool a_skyrimMenuOpen)
+		{
+			if (a_skyrimMenuOpen) {
+				return;  // a Skyrim menu has all the input
+			}
+			auto& st = State();
+			// A Minecraft screen (inventory, chat, ...) can't be seen or used in Skyrim's mode. Going back is always allowed, so a screen
+			// Minecraft opened by itself can't lock the player out.
+			if (!st.skyrimMode && st.mcScreenOpen) {
+				RE::SendHUDMessage::ShowHUDMessage("SkyCraft: close the Minecraft screen first.");
+				return;
+			}
+			Game::ToggleSkyrimMode();  // SkyCraft+'s guards (nothing to switch from, Minecraft's own worlds) and the flip itself
+		}
+
+		// SkyCraft's own setting wins; SkyCraft+'s is the fallback; F8 if neither is set. (After LoadControls.)
+		void ResolveToggleKey()
+		{
+			if (!ownToggleText.empty()) {
+				toggleKeyName = ownToggleText;
+				toggleKey = ParseToggleKey(ownToggleText);
+				if (toggleKey == 0) {
+					logger::warn("SkyCraft.ini [Controls] sToggleKey = {}: not a key SkyCraft can use (F1-F12, Insert, Delete, Home, End, PageUp, PageDown, Pause, ScrollLock, or a DirectInput scan code that isn't Esc, ~, G, H, J, M, O or F9); falling back", ownToggleText);
+				}
+			}
+			if (ownToggleText.empty() || toggleKey == 0) {
+				if (modeToggleKey) {
+					toggleKey = modeToggleKey;
+					toggleKeyName = modeToggleText;
+				} else {
+					toggleKey = kDikF8;
+					toggleKeyName = "F8";
+				}
+			}
+			modeToggleKey = toggleKey;
+			State().skyrimMode = startInSkyrimMode;
+			logger::info("controls switch: {} (scan code {:#x}); starting with {}'s controls", toggleKeyName, toggleKey, State().skyrimMode ? "Skyrim" : "Minecraft");
 		}
 
 		float lookDx = 0.0f;
@@ -692,6 +821,24 @@ namespace skycraft
 			}
 		}
 
+		// The sink may be registered before the rest of SkyCraft is up (see Input::InstallSink): until then it lets everything by.
+		std::atomic<bool> sinkReady{ false };
+		bool              sinkRegistered = false;
+
+		// A keyboard event made into nothing: still in the chain, but neither a press, a release nor a key held down, and no
+		// character. Every event sink that runs after SkyCraft's (other mods' hotkeys: OBody's menu on O, and the like) is handed
+		// this same chain, so a key that belongs to a Minecraft screen has to be emptied here or they would act on it too.
+		void Swallow(RE::InputEvent* a_event)
+		{
+			if (a_event->GetEventType() == RE::INPUT_EVENT_TYPE::kButton) {
+				auto* button = a_event->AsButtonEvent();
+				button->value = 0.0f;
+				button->heldDownSecs = 0.0f;
+			} else if (a_event->GetEventType() == RE::INPUT_EVENT_TYPE::kChar) {
+				a_event->AsCharEvent()->keyCode = 0;
+			}
+		}
+
 		class InputSink final : public RE::BSTEventSink<RE::InputEvent*>
 		{
 		public:
@@ -703,7 +850,7 @@ namespace skycraft
 
 			RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>*) override
 			{
-				if (!a_event) {
+				if (!a_event || !sinkReady) {
 					return RE::BSEventNotifyControl::kContinue;
 				}
 				auto& st = State();
@@ -719,6 +866,7 @@ namespace skycraft
 				// A Minecraft screen opened from Skyrim mode (a chest, a crafting table) takes the input
 				// like it does in Minecraft mode.
 				const bool route = (st.puppeting || (st.skyrimDrives && st.mcScreenOpen)) && !menuOpen;
+				const bool mcKeys = MinecraftHasKeyboard();
 
 				for (auto* e = *a_event; e; e = e->next) {
 					if (st.skyrimMode && st.skyrimDrives && !menuOpen && !st.mcScreenOpen && IsActivatePress(e)) {
@@ -729,8 +877,8 @@ namespace skycraft
 					if ((modeToggleKey && e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && e->GetDevice() == RE::INPUT_DEVICE::kKeyboard &&
 							e->AsButtonEvent()->GetIDCode() == modeToggleKey) ||
 						Pad::IsModeToggle(e)) {
-						if (e->AsButtonEvent()->IsDown() && !menuOpen && !st.mcScreenOpen) {
-							Game::ToggleSkyrimMode();
+						if (e->AsButtonEvent()->IsDown()) {
+							SwitchControls(menuOpen);
 						}
 						continue;
 					}
@@ -773,9 +921,12 @@ namespace skycraft
 							}
 							const auto code = button->GetIDCode();
 							if (button->GetDevice() == RE::INPUT_DEVICE::kKeyboard) {
+								if (down) {
+									heldByMinecraft[code & 0xFF] = mcKeys;
+								}
 								// With a Minecraft screen up (chat, inventory, options) every key is
 								// Minecraft's, so typing works and Esc closes the screen.
-								if (!st.mcScreenOpen) {
+								if (!mcKeys) {
 									if (IsSkyrimMenuKey(code)) {
 										break;  // MenuControls (see the hook below) opens Skyrim's menu
 									}
@@ -834,12 +985,36 @@ namespace skycraft
 						}
 						break;
 					case RE::INPUT_EVENT_TYPE::kChar:
-						if (route && st.mcScreenOpen) {
+						if (route && mcKeys) {
 							link.PushInput(proto::kInText, 0, static_cast<std::int32_t>(e->AsCharEvent()->keyCode));
 						}
 						break;
 					default:
 						break;
+					}
+				}
+				// Whatever a Minecraft screen (chat, inventory, options, ...) was typed or clicked into stays out of everything
+				// that comes after: the keys were Minecraft's, not Skyrim's or any other mod's.
+				if (route) {
+					for (auto* e = *a_event; e; e = e->next) {
+						if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kChar) {
+							if (mcKeys) {
+								Swallow(e);
+							}
+						} else if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && e->GetDevice() == RE::INPUT_DEVICE::kKeyboard) {
+							const auto code = e->AsButtonEvent()->GetIDCode() & 0xFF;
+							if (mcKeys || heldByMinecraft[code]) {
+								if (e->AsButtonEvent()->IsUp()) {
+									heldByMinecraft[code] = false;  // its release ends here too
+								}
+								Swallow(e);
+							} else if (code == kDikO) {
+								// O opens Minecraft's pause menu in Minecraft's controls (the loop above has sent it). Other mods' sinks run
+								// after this one and would see the same press: OBody opens its menu on O. In Skyrim's controls (no routing) it
+								// is theirs again.
+								Swallow(e);
+							}
+						}
 					}
 				}
 				return RE::BSEventNotifyControl::kContinue;
@@ -861,13 +1036,21 @@ namespace skycraft
 				}
 				std::vector<RE::InputEvent*> keep;
 				std::vector<RE::InputEvent*> all;
+				const bool                   mcKeys = MinecraftHasKeyboard();
 				for (auto* e = *a_event; e; e = e->next) {
 					all.push_back(e);
-					if (st.mcScreenOpen) {
-						continue;
-					}
 					if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && e->GetDevice() == RE::INPUT_DEVICE::kKeyboard) {
-						if (IsSkyrimMenuKey(e->AsButtonEvent()->GetIDCode())) {
+						auto*      button = e->AsButtonEvent();
+						const auto code = button->GetIDCode() & 0xFF;
+						if (heldByMinecraft[code]) {
+							// Minecraft's key (pressed while a text box or screen had the keyboard): its
+							// release is Minecraft's too, Skyrim never sees either half.
+							if (button->IsUp()) {
+								heldByMinecraft[code] = false;
+							}
+							continue;
+						}
+						if (!mcKeys && IsSkyrimMenuKey(button->GetIDCode())) {
 							keep.push_back(e);
 						}
 					}
@@ -1002,12 +1185,26 @@ namespace skycraft
 
 	namespace Input
 	{
+		// Registers the input sink. Called as soon as Skyrim's input exists (SKSE's kInputLoaded), well before other mods register theirs,
+		// because sinks run in the order they were added and SkyCraft's has to see the keys first to keep Minecraft's away from the rest;
+		// Install() calls it again, which does nothing if it has already run.
+		void InstallSink()
+		{
+			if (sinkRegistered) {
+				return;
+			}
+			if (auto* devices = RE::BSInputDeviceManager::GetSingleton()) {
+				devices->AddEventSink(InputSink::Get());
+				sinkRegistered = true;
+			}
+		}
+
 		void Install()
 		{
 			LoadControls();
-			if (auto* devices = RE::BSInputDeviceManager::GetSingleton()) {
-				devices->AddEventSink(InputSink::Get());
-			}
+			ResolveToggleKey();
+			InstallSink();
+			sinkReady = true;
 			REL::Relocation<std::uintptr_t> vtbl{ RE::VTABLE_MenuControls[0] };
 			MenuControlsHook::func = vtbl.write_vfunc(0x1, MenuControlsHook::thunk);
 			REL::Relocation<std::uintptr_t> playerVtbl{ RE::VTABLE_PlayerControls[0] };
@@ -1030,6 +1227,11 @@ namespace skycraft
 		void ReleaseAll()
 		{
 			Link::Get().PushInput(proto::kInReleaseAll, 0);
+		}
+
+		const std::string& ToggleKeyName()
+		{
+			return toggleKeyName;
 		}
 
 		void SetActivatePromptKey(bool a_minecraftControls)

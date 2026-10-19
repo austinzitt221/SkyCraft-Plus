@@ -2,6 +2,8 @@
 #include "Game.h"
 #include "Perf.h"
 
+#include <SimpleIni.h>
+
 // Skyrim's NPCs in a dug-up world. Every actor moves with a Havok character proxy: it collects
 // contact points with the world (bhkCharacterPointCollector), turns them into surface planes, and
 // solves its movement against those planes. Two hooks:
@@ -15,6 +17,14 @@
 // may add up to userPlanes planes. Skyrim's own surface planes (0x140BA04D0): the contact normal,
 // distance minus keepDistance (+0xA8), the proxy's frictions, and a push out of penetration at
 // penetrationRecoverySpeed (+0xDC).
+namespace skycraft
+{
+	namespace BlockCrates
+	{
+		RE::FormID BaseForm();  // BlockCrates.cpp
+	}
+}
+
 namespace skycraft::Dig
 {
 	namespace
@@ -70,6 +80,9 @@ namespace skycraft::Dig
 		std::atomic<RE::bhkCharacterController*> blockGroundController{ nullptr };
 		std::atomic<std::uint64_t>               blockGroundTick{ 0 };
 		std::atomic<const RE::hkpCollidable*> puppet{ nullptr };
+		// The player's proxy in Skyrim's own control mode. Minecraft's blocks are real crates there (BlockCrates.cpp), so Havok's own contacts
+		// are all the player gets: no planes of ours, no holding it up by hand.
+		std::atomic<const RE::hkpCollidable*> skyPlayer{ nullptr };
 		std::atomic<float>                    puppetFeet{ 0.0f };
 		constexpr float                       kFeetSlack = 0.3f;  // Havok units above the feet still "under" them
 
@@ -311,6 +324,10 @@ namespace skycraft::Dig
 				}
 				RE::hkAabb box;
 				shape->GetAabbImpl(phantom->motionState.transform, 0.0f, box);
+				// The player in Skyrim's own control mode stands on real crates (BlockCrates.cpp): Havok's contacts with them are all it gets.
+				if (&phantom->collidable == skyPlayer.load(std::memory_order_relaxed)) {
+					return;
+				}
 				static thread_local std::vector<Plane> planes;
 				planes.clear();
 				const bool isPuppet = &phantom->collidable == puppet.load(std::memory_order_relaxed);
@@ -504,6 +521,11 @@ namespace skycraft::Dig
 	{
 		puppetFeet.store(a_feetHavokZ, std::memory_order_relaxed);
 		puppet.store(a_proxy, std::memory_order_relaxed);
+	}
+
+	void SetSkyrimPlayer(const RE::hkpCollidable* a_proxy)
+	{
+		skyPlayer.store(a_proxy, std::memory_order_relaxed);
 	}
 
 	void Install()

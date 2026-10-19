@@ -4,6 +4,14 @@
 #include "Dig.h"
 #include "Perf.h"
 
+#include <chrono>
+
+namespace skycraft::BlockCrates
+{
+	void Update(RE::PlayerCharacter* a_player, float a_delta);
+	void Release();
+}
+
 namespace skycraft
 {
 	Runtime& State()
@@ -589,6 +597,9 @@ namespace skycraft
 			}
 		}
 
+		// The takeover reason while the player has switched to Skyrim's own controls (Input.cpp).
+		constexpr const char* kSkyrimControl = "Skyrim control mode";
+
 		// Skyrim takes the player for its own animations: sitting, crafting stations, beds, pull-bar
 		// levers and other furniture (it walks the player into place, plays the animation and uses its
 		// furniture camera), riding a horse, kill moves, and scripted scenes that drive the player.
@@ -597,7 +608,7 @@ namespace skycraft
 		const char* SkyrimTakeover(RE::PlayerCharacter* a_player)
 		{
 			if (State().skyrimMode) {
-				return "Skyrim mode";
+				return kSkyrimControl;
 			}
 			if (a_player->AsActorState()->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal) {
 				return "furniture";
@@ -1254,6 +1265,8 @@ namespace skycraft
 			auto& link = Link::Get();
 			auto* ui = RE::UI::GetSingleton();
 			link.Heartbeat();
+			// Read once, so the takeover below and the state sent to Minecraft agree within a frame.
+			const bool skyrimMode = st.skyrimMode;
 
 			const bool mcAlive = link.McAlive();
 			const bool haveMc = mcAlive && link.ReadMcState(mc);
@@ -1334,7 +1347,7 @@ namespace skycraft
 				teleportPending = true;
 				haveLastSet = false;
 				settleTimer = kSettleSeconds;
-			} else if (!st.parked && haveLastSet && current.GetDistance(lastSetPos) > kSkyrimTeleportThreshold) {  // (parked: Minecraft leads, nothing to resync)
+			} else if (!st.parked && !st.skyrimMode && haveLastSet && current.GetDistance(lastSetPos) > kSkyrimTeleportThreshold) {  // (parked: Minecraft leads, nothing to resync)
 				const float dx = current.x - lastSetPos.x, dy = current.y - lastSetPos.y, dz = current.z - lastSetPos.z;
 				// SkyCraft+ : underground. Down a mine, under Skyrim's land, Skyrim lifts the player back
 				// up to it (no loading screen, same world, mostly straight up). Minecraft is driving and
@@ -1404,6 +1417,16 @@ namespace skycraft
 			// Minecraft holds its player still after a teleport until Skyrim's ground has arrived
 			// around them. If it's holding somewhere Skyrim's player isn't, that ground never comes:
 			// send it again to where Skyrim's player really is.
+			// The player's own switch to Skyrim's controls (Input.cpp) is a takeover too, one that doesn't end by itself.
+			// Say which mode it is when it changes.
+			static bool announcedMode = false;
+			if (st.skyrimMode != announcedMode) {
+				announcedMode = st.skyrimMode;
+				const std::string key = Input::ToggleKeyName();
+				const std::string note = st.skyrimMode ? "SkyCraft: Skyrim controls. Press " + key + " for Minecraft." :
+				                                         "SkyCraft: Minecraft controls. Press " + key + " for Skyrim.";
+				RE::SendHUDMessage::ShowHUDMessage(note.c_str());
+			}
 			static const char* takeover = nullptr;
 			const char*        takeoverNow = a_player->IsDead() ? nullptr : SkyrimTakeover(a_player);
 			if ((takeoverNow != nullptr) != (takeover != nullptr)) {
@@ -1418,6 +1441,18 @@ namespace skycraft
 					logger::info("Skyrim hands the player back");
 					teleportPending = true;  // Minecraft picks up wherever Skyrim left the player
 					skyrimLookPending = true;
+					if (takeover == kSkyrimControl && !loading) {
+						// Back to Minecraft by choice. Resync now instead of next frame: this frame would otherwise let
+						// Minecraft drive from the facing it had before Skyrim's mode, and the resync would then pick
+						// that stale facing up as Skyrim's.
+						st.yaw = HeadingToMcYaw(a_player->data.angle.z);
+						st.pitch = a_player->data.angle.x * kRadToDeg;
+						st.lookInitialized = true;
+						++teleportSeq;
+						teleportPending = false;
+						haveLastSet = false;
+						skyrimLookPending = false;
+					}
 				}
 			}
 			takeover = takeoverNow;
@@ -1442,6 +1477,8 @@ namespace skycraft
 				logger::info("puppet {}", puppet ? "on (Minecraft drives the player)" : "off");
 			}
 			st.puppeting = puppet;
+			// Skyrim's mode still shows Minecraft's world (blocks, mobs, items); not while loading or dead.
+			st.worldVisible = puppet || (st.skyrimMode && haveMc && st.mcInWorld && !loading && !a_player->IsDead());
 
 			// SkyCraft+ : the Nether and the End. Just back: held where it came out (see returnPin).
 			// Until Minecraft drives it again out here (while still in the waiting cell, Minecraft drives
@@ -1485,45 +1522,6 @@ namespace skycraft
 			st.skyrimDrives = skyrimDrives;
 			if (skyrimDrives && !menu) {
 				SeedLookFromCamera(st, false);  // Minecraft's player looks where Skyrim's camera does
-				// SkyCraft+ : Skyrim mode on Minecraft blocks. Havok is told the player stands on one
-				// (DigPhysics), but the animation can stay in its jump/fall from a moment Skyrim thought
-				// otherwise (seen in third person): standing on a block, it lands.
-				// (Only once it's lasted: a real jump starts on a block too.)
-				static float stuckInJump = 0.0f;
-				bool         jumping = false;
-				float        rising = 0.0f;
-				if (auto* controller = a_player->GetCharController()) {
-					RE::hkVector4 velocity;
-					controller->GetLinearVelocityImpl(velocity);
-					alignas(16) float v[4];
-					_mm_store_ps(v, velocity.quad);
-					rising = v[2];
-				}
-				// SkyCraft+ : the falling animation on blocks (Known bugs). Rising up to Havok's own
-				// "taking off" speed still counts as standing (settling onto a block plane pushes up a
-				// little), and a jump state lasting a second with no landing says why, now and then.
-				const bool onBlock = Dig::PlayerOnBlock();
-				const bool inJump = a_player->GetGraphVariableBool("bInJumpState", jumping) && jumping;
-				const bool stuck = onBlock && rising <= 0.3f && inJump;
-				stuckInJump = stuck ? stuckInJump + a_delta : 0.0f;
-				static float longJump = 0.0f;
-				static int   whyLogged = 0;
-				longJump = inJump ? longJump + a_delta : 0.0f;
-				if (longJump > 1.0f && !stuck) {
-					longJump = -4.0f;  // (again in 5 s at most)
-					if (whyLogged++ < 20) {
-						logger::info("dig: in a jump or fall animation for a second: on a Minecraft block {}, rising {:.2f}, Havok state {}, in the air {}", onBlock, rising,
-							a_player->GetCharController() ? static_cast<int>(a_player->GetCharController()->context.currentState) : -1, a_player->IsInMidair());
-					}
-				}
-				if (stuckInJump > 0.25f) {
-					stuckInJump = 0.0f;
-					a_player->NotifyAnimationGraph("JumpLand");
-					static int logged = 0;
-					if (logged++ < 20) {
-						logger::info("dig: standing on a Minecraft block in a jump or fall animation: landed");
-					}
-				}
 			}
 			if (puppet) {
 				EnsureControlsEnabled();
@@ -1548,8 +1546,34 @@ namespace skycraft
 				MinecraftEnemies::StopShotsAtBlocks(a_player);  // SkyCraft+
 			}
 			WorldRender::UpdateRagdoll(a_player, haveMc && st.mcInWorld);
-			if (puppet || skyrimDrives) {
+			LockOn::Update(a_player, skyrimDrives);
+			if (puppet) {
 				NpcBlocks::PushActorsOut(a_player, a_delta);
+				BlockCrates::Release();
+				BlockCollision::Release();
+				Dig::SetSkyrimPlayer(nullptr);
+			} else if (skyrimDrives) {
+				// Skyrim's own control mode: the blocks are still there, for NPCs and for the player.
+				NpcBlocks::PushActorsOut(a_player, a_delta);
+				NpcBlocks::StepUpPlayer(a_player, a_delta);
+				if (BlockCollision::Wanted()) {
+					BlockCollision::Update(a_player, a_delta);
+					if (BlockCollision::NeedCrates()) {
+						BlockCrates::Update(a_player, a_delta);
+					} else {
+						BlockCrates::Release();
+					}
+				} else {
+					BlockCollision::Release();
+					BlockCrates::Update(a_player, a_delta);
+				}
+				auto* proxyController = skyrim_cast<RE::bhkCharProxyController*>(a_player->GetCharController());
+				auto* proxy = proxyController ? proxyController->GetCharacterProxy() : nullptr;
+				Dig::SetSkyrimPlayer(proxy && proxy->shapePhantom ? &proxy->shapePhantom->collidable : nullptr);
+			} else {
+				Dig::SetSkyrimPlayer(nullptr);
+				BlockCrates::Release();
+				BlockCollision::Release();
 			}
 
 			// Interpolate Minecraft's 20 Hz physics ticks on our own clock (what MC's renderer does
@@ -1992,7 +2016,8 @@ namespace skycraft
 			const McVec lightCentre = puppet ? McVec{ mc.x, mc.y, mc.z } : skyMc;
 			{
 				Perf::Scope timer(Perf::kLights);
-				BlockLights::Update(haveMc && st.mcInWorld && !loading && cell ? &lightCentre : nullptr, a_delta);
+				// (Not in Skyrim's mode: the blocks aren't drawn then, so their light would come from nothing.)
+				BlockLights::Update(!skyrimMode && haveMc && st.mcInWorld && !loading && cell ? &lightCentre : nullptr, a_delta);
 			}
 
 			// Blocks dug out of Skyrim's world: its collision around them goes to Minecraft again, and
@@ -2376,7 +2401,6 @@ namespace skycraft
 			st.skyrimMode = !st.skyrimMode;
 			Input::ReleaseAll();
 			logger::info("mode switch: {} mode", st.skyrimMode ? "Skyrim" : "Minecraft");
-			RE::SendHUDMessage::ShowHUDMessage(st.skyrimMode ? "SkyCraft: Skyrim mode" : "SkyCraft: Minecraft mode");
 		}
 
 		void OnGameLoaded()

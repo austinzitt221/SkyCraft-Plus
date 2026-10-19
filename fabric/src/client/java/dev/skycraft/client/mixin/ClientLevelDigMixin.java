@@ -11,7 +11,7 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/** Every block the client changes: the dug-block reveal (SkyDigClient), and the section mesh. */
+/** A dug block breaking reveals what's around it (SkyDigClient); any block change sends its section to Skyrim again (WorldExporter). */
 @Mixin(ClientLevel.class)
 public abstract class ClientLevelDigMixin {
 	@Inject(method = "setBlocksDirty", at = @At("HEAD"))
@@ -27,12 +27,6 @@ public abstract class ClientLevelDigMixin {
 		if (!RenderToggles.remeshOnChange) {
 			return;
 		}
-		for (int dx = -1; dx <= 1; dx++) {
-			for (int dy = -1; dy <= 1; dy++) {
-				for (int dz = -1; dz <= 1; dz++) {
-					WorldExporter.markDirtyNow((pos.getX() + dx) >> 4, (pos.getY() + dy) >> 4, (pos.getZ() + dz) >> 4);
-				}
-			}
-		}
+		WorldExporter.blockChanged(pos, oldState, newState);
 	}
 }

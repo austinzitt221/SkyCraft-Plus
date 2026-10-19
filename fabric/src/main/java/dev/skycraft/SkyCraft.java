@@ -99,6 +99,20 @@ public final class SkyCraft implements ModInitializer {
 		rules.set(GameRules.SHOW_ADVANCEMENT_MESSAGES, false, server);
 		server.getCommands().performPrefixedCommand(server.createCommandSourceStack().withSuppressedOutput(), "time set noon");
 		LOG.info("SkyCraft: mirror world configured");
+
+		// The list of every distinct collision shape, for the collision model library (tools/make_collision_library.py). Written by
+		// itself the first time the world starts (and again if the game's blocks change, e.g. a mod was added); -Dskycraft.dumpShapes=false
+		// turns it off, -Dskycraft.dumpShapes=force writes it every start.
+		try {
+			String mode = System.getProperty("skycraft.dumpShapes", "auto");
+			java.nio.file.Path catalog = net.fabricmc.loader.api.FabricLoader.getInstance().getGameDir().resolve("skycraft").resolve("shape_catalog.json");
+			if (!"false".equalsIgnoreCase(mode) && ("force".equalsIgnoreCase(mode) || "true".equalsIgnoreCase(mode) || !java.nio.file.Files.exists(catalog)
+				|| !dev.skycraft.world.ShapeCatalog.upToDate(catalog))) {
+				dev.skycraft.world.ShapeCatalog.dump(catalog);
+			}
+		} catch (RuntimeException ex) {
+			LOG.warn("SkyCraft: shape catalog skipped", ex);
+		}
 	}
 
 	/**

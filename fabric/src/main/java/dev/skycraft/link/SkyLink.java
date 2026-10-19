@@ -348,6 +348,11 @@ public final class SkyLink {
 			return (this.flags & SKY_DRIVES_PLAYER) != 0;
 		}
 
+		/** The player is in Skyrim's own controls: Minecraft gets no input and its player follows Skyrim's (the same flag as skyrimDrives). */
+		public boolean skyrimControl() {
+			return (this.flags & SKY_DRIVES_PLAYER) != 0;
+		}
+
 		public boolean loading() {
 			return (this.flags & SKY_LOADING) != 0;
 		}

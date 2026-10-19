@@ -2,6 +2,11 @@
 
 #include "Link.h"
 
+#include <algorithm>
+#include <cstdio>
+#include <string>
+#include <vector>
+
 namespace skycraft
 {
 	// Shared runtime state between the per-frame update, input sink and renderer hook.
@@ -26,6 +31,10 @@ namespace skycraft
 		// Skyrim drives its own player (Skyrim mode, furniture, riding, scenes) while Minecraft is in
 		// its world and follows: Minecraft's blocks are still drawn and still block NPCs.
 		std::atomic<bool> skyrimDrives{ false };
+		// Minecraft's world things (placed blocks, mobs, dropped items, arrows, particles, chests, ...) are drawn into Skyrim's frame: while
+		// Minecraft drives the player (puppeting), and also in Skyrim's control mode, where Minecraft's player only follows Skyrim's but its
+		// world is still there to see. (Not Minecraft's hand, HUD or screens, which are the overlay's and stay off in Skyrim's mode.)
+		std::atomic<bool> worldVisible{ false };
 		// SkyCraft+ : hand ownership (bSkyrimHands in SkyCraft.ini). While Minecraft drives, a hand
 		// with something equipped in Skyrim (weapon, spell, shield, torch) is Skyrim's: Skyrim draws
 		// it and gets its mouse button (left: right hand, right: left hand).
@@ -179,18 +188,31 @@ namespace skycraft
 	namespace Input
 	{
 		void Install();
+		// Adds the input sink early (kInputLoaded) so it runs ahead of other mods' sinks.
+		void InstallSink();
 		// Mouse deltas accumulated since the last frame (main thread).
 		void ConsumeLook(float& a_dx, float& a_dy);
 		// SkyCraft+ : controller. Held sticks, once a frame (main thread): movement keys, look, cursor.
 		void PadFrame(float a_delta);
 		// Tells MC to release everything (input focus moved to Skyrim).
 		void ReleaseAll();
+		// The key that switches between Minecraft's controls and Skyrim's, as the player wrote it in SkyCraft.ini ("F8"), for the corner messages.
+		const std::string& ToggleKeyName();
 	}
 
 	namespace Input
 	{
 		// While Minecraft drives the player, Skyrim's Activate prompt shows G (our activate key).
 		void SetActivatePromptKey(bool a_minecraftControls);
+	}
+
+	namespace LockOn
+	{
+		// At kDataLoaded: finds True Directional Movement's virtual-target interface, if it has one.
+		void Install();
+		// Main thread, every frame: hands Minecraft's mobs to True Directional Movement as lock-on targets while a_active (Skyrim's
+		// own control mode, Minecraft's world around the player), and takes them back when not.
+		void Update(RE::PlayerCharacter* a_player, bool a_active);
 	}
 
 	namespace Combat
@@ -259,6 +281,90 @@ namespace skycraft
 		std::uint32_t Generation();
 		// Main thread, every frame: NPCs overlapping solid Minecraft blocks are pushed back out.
 		void PushActorsOut(RE::PlayerCharacter* a_player, float a_delta);
+
+		// Minecraft's exact collision boxes (blocks, absolute Minecraft coordinates, y up). A block that isn't a full cube (slab, stair, fence,
+		// carpet...) has its own boxes; a full one has one cube. They come from the same per-section data as ShapeAt (proto::kRenShapes).
+		struct BlockBox
+		{
+			float lo[3], hi[3];
+		};
+		static constexpr int kMaxBoxes = 16;  // (a block with more has the rest dropped; vanilla blocks have at most a handful)
+		// Boxes of block (x, y, z) in block-local coordinates (0..1, fences up to 1.5); 0 if not solid.
+		int BoxesAt(std::int32_t a_x, std::int32_t a_y, std::int32_t a_z, BlockBox a_out[kMaxBoxes]);
+		// Every box of every solid block in the given block range (inclusive), absolute coordinates.
+		void GatherBoxes(int a_x0, int a_x1, int a_y0, int a_y1, int a_z0, int a_z1, std::vector<BlockBox>& a_out);
+		// Every section that has solid blocks, with a stamp that changes whenever its blocks (or their shapes) do.
+		struct SectionStamp
+		{
+			std::int32_t  sx, sy, sz;
+			std::uint32_t stamp;
+		};
+		void ListSections(std::vector<SectionStamp>& a_out);
+		// Is the face of a_box (absolute coords) on a_axis (0 x, 1 y, 2 z), direction a_sign, flush against another solid box that covers it
+		// (so the face is inside a wall and mustn't snag anything)?
+		bool FaceCovered(const BlockBox& a_box, int a_axis, int a_sign);
+		// Main thread, every frame in Skyrim's control mode: the player walking into a block no higher than Minecraft's step (0.6) is lifted
+		// onto it, as Minecraft's player is (stairs, slabs, carpets), without a jump.
+		void StepUpPlayer(RE::PlayerCharacter* a_player, float a_delta);
+	}
+
+	// The key of a block's collision shape: FNV-1a over "x0,y0,z0,x1,y1,z1;..." (boxes in sixteenths of a block, sorted by y0, x0, z0, y1,
+	// x1, z1), as 8 hex digits. It is ShapeCatalog.canonical/key in the Fabric mod and fnv_key in tools/make_collision_library.py,
+	// and names the library file shp_<key>.nif.
+	struct ShapeBox16
+	{
+		int v[6];  // x0 y0 z0 x1 y1 z1
+	};
+	inline std::string ShapeKey(std::vector<ShapeBox16> a_boxes)
+	{
+		std::sort(a_boxes.begin(), a_boxes.end(), [](const ShapeBox16& a, const ShapeBox16& b) {
+			static constexpr int order[6] = { 1, 0, 2, 4, 3, 5 };
+			for (const int k : order) {
+				if (a.v[k] != b.v[k]) {
+					return a.v[k] < b.v[k];
+				}
+			}
+			return false;
+		});
+		std::uint32_t h = 0x811C9DC5u;
+		bool          first = true;
+		for (const auto& box : a_boxes) {
+			for (int k = 0; k < 6; ++k) {
+				const std::string part = std::to_string(box.v[k]) + (k == 5 ? "" : ",");
+				for (const char c : (first || k ? std::string() : std::string(";")) + part) {
+					h = (h ^ static_cast<std::uint8_t>(c)) * 0x01000193u;
+				}
+			}
+			first = false;
+		}
+		char out[9];
+		std::snprintf(out, sizeof out, "%08x", h);
+		return out;
+	}
+
+	namespace BlockCollision
+	{
+		// Skyrim's own control mode: real collision for every Minecraft block Minecraft has sent, as models of merged boxes loaded as
+		// invisible statics (BlockCollision.cpp), so that the player, NPCs and projectiles all meet the blocks. False when it is off in
+		// SkyCraft.ini or has given up on this install; BlockCrates then holds the player up instead.
+		bool Wanted();
+		// A section model has been seen with its collision in Skyrim's Havok world, so the models work on this install; until then the crates
+		// BlockCrates.cpp makes round the player are kept as well, so there is always something to stand on.
+		bool Verified();
+		bool NeedCrates();
+		// At plugin load, before the game reads its files: Skyrim loads only model files that existed when it started, so the files the
+		// section models will be written into are made now (BlockCollision.cpp).
+		void PrepareFiles();
+		// Main thread, every frame, while Skyrim's controls are on.
+		void Update(RE::PlayerCharacter* a_player, float a_delta);
+		// Puts every section model away (leaving Skyrim's control mode, another cell).
+		void Release();
+	}
+
+	namespace BlockCrates
+	{
+		void Update(RE::PlayerCharacter* a_player, float a_delta);
+		void Release();
 	}
 
 	// SkyCraft+ : performance. Deep underground Skyrim's objects and distant land aren't drawn.
