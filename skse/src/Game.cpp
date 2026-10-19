@@ -449,10 +449,92 @@ namespace skycraft
 		// furniture camera), riding a horse, kill moves, and scripted scenes that drive the player.
 		// Minecraft lets go meanwhile (Skyrim gets the controls and the camera) and picks the player
 		// up again from wherever Skyrim leaves them.
+		// SkyCraft+ : Whirlwind Sprint. Its dash is Skyrim moving the player, which Minecraft (placing
+		// the player every frame) undid: the Greybeards' gate couldn't be passed in time. When the
+		// player shouts it, Skyrim has the player for the dash.
+		struct SprintSink : RE::BSTEventSink<RE::TESSpellCastEvent>
+		{
+			static SprintSink* Get()
+			{
+				static SprintSink sink;
+				return &sink;
+			}
+			std::atomic<std::uint64_t> castAt{ 0 };  // GetTickCount64
+			std::atomic<int>           words{ 0 };
+			RE::BSEventNotifyControl   ProcessEvent(const RE::TESSpellCastEvent* a_event, RE::BSTEventSource<RE::TESSpellCastEvent>*) override
+			{
+				if (!a_event || !a_event->object || !a_event->object->IsPlayerRef()) {
+					return RE::BSEventNotifyControl::kContinue;
+				}
+				constexpr RE::FormID kWhirlwindSprint = 0x2F7BA;  // Skyrim.esm's shout
+				int                  found = 0;
+				if (auto* shout = RE::TESForm::LookupByID<RE::TESShout>(kWhirlwindSprint)) {
+					for (int i = 0; i < 3; ++i) {
+						if (shout->variations[i].spell && shout->variations[i].spell->GetFormID() == a_event->spell) {
+							found = i + 1;
+						}
+					}
+				}
+				if (!found) {
+					auto*       spell = RE::TESForm::LookupByID<RE::SpellItem>(a_event->spell);
+					const char* name = spell ? spell->GetName() : nullptr;
+					if (name && std::string_view(name).find("Whirlwind") != std::string_view::npos) {
+						found = 2;  // (a mod's own)
+					}
+				}
+				if (found) {
+					words = found;
+					castAt = GetTickCount64();
+					logger::info("Whirlwind Sprint ({} word{}): Skyrim has the player for the dash", found, found > 1 ? "s" : "");
+				}
+				return RE::BSEventNotifyControl::kContinue;
+			}
+		};
+
+		// While the dash lasts: from the shout until the player's slowed to a run (at most a second
+		// and a half, two with all three words).
+		bool Sprinting(RE::PlayerCharacter* a_player)
+		{
+			static bool watching = false;
+			if (!watching) {
+				if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
+					events->AddEventSink<RE::TESSpellCastEvent>(SprintSink::Get());
+					watching = true;
+				}
+			}
+			auto*               sink = SprintSink::Get();
+			const std::uint64_t at = sink->castAt;
+			if (at == 0) {
+				return false;
+			}
+			const std::uint64_t since = GetTickCount64() - at;
+			if (since > (sink->words >= 3 ? 2000u : 1500u)) {
+				sink->castAt = 0;
+				return false;
+			}
+			if (since > 400) {
+				if (auto* controller = a_player->GetCharController()) {
+					RE::hkVector4 velocity;
+					controller->GetLinearVelocityImpl(velocity);
+					alignas(16) float v[4];
+					_mm_store_ps(v, velocity.quad);
+					// (Havok's metres in game units: a run is some 400 a second, the dash several times that.)
+					if (std::sqrt(v[0] * v[0] + v[1] * v[1]) * RE::bhkWorld::GetWorldScaleInverse() < 600.0f) {
+						sink->castAt = 0;
+						return false;
+					}
+				}
+			}
+			return true;
+		}
+
 		const char* SkyrimTakeover(RE::PlayerCharacter* a_player)
 		{
 			if (State().skyrimMode) {
 				return "Skyrim mode";
+			}
+			if (Sprinting(a_player)) {
+				return "Whirlwind Sprint";
 			}
 			if (a_player->AsActorState()->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal) {
 				return "furniture";
