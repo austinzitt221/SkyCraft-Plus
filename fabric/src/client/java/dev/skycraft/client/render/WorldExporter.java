@@ -270,28 +270,32 @@ public final class WorldExporter {
 	 * SkyCraft+ : performance. The dirty sections, most wanted first: what the player just changed,
 	 * then by distance from the camera, those behind it counting as four times as far (a cave or a
 	 * structure opens in front of the player first, rather than in the order it was revealed).
+	 * SkyCraft+ : Minecraft patches. Out of all of them (only the oldest 4096 were looked at: with
+	 * twenty thousand waiting, the grass just placed round the player came after all of those), the
+	 * nearest PICK_AT_MOST.
 	 */
 	private static final LongOpenHashSet URGENT = new LongOpenHashSet();
-	private static final int SORT_AT_MOST = 4096;
+	private static final int PICK_AT_MOST = 256;
 
 	private static long[] nearestFirst() {
 		long[] keys;
+		long[] urgent;
 		synchronized (DIRTY) {
-			int n = Math.min(DIRTY.size(), SORT_AT_MOST);
-			keys = new long[n];
-			var it = DIRTY.iterator();
-			for (int i = 0; i < n; i++) {
-				keys[i] = it.nextLong();
-			}
+			keys = DIRTY.toLongArray();
+			urgent = URGENT.toLongArray();
 		}
 		Minecraft minecraft = Minecraft.getInstance();
 		if (keys.length <= 1 || minecraft.player == null) {
 			return keys;
 		}
+		LongOpenHashSet urgentSet = new LongOpenHashSet(urgent);
 		var eye = minecraft.player.getEyePosition();
 		var look = minecraft.player.getViewVector(1.0F);
 		boolean inTheOpen = minecraft.level != null && minecraft.level.canSeeSky(minecraft.player.blockPosition().above());
-		long[] packed = new long[keys.length];
+		// The nearest few: a max-heap of (score << 32 | index), its worst on top.
+		int k = Math.min(PICK_AT_MOST, keys.length);
+		long[] heap = new long[k];
+		int size = 0;
 		for (int i = 0; i < keys.length; i++) {
 			long key = keys[i];
 			double dx = SectionPos.x(key) * 16 + 8 - eye.x, dy = SectionPos.y(key) * 16 + 8 - eye.y, dz = SectionPos.z(key) * 16 + 8 - eye.z;
@@ -304,17 +308,39 @@ public final class WorldExporter {
 			if (inTheOpen && dy < -12.0) {
 				d2 *= 8.0;
 			}
-			boolean urgent;
-			synchronized (DIRTY) {
-				urgent = URGENT.contains(key);
+			long score = urgentSet.contains(key) ? 0L : Math.min((long) d2 + 1L, 0x7FFFFFFFL);
+			long packed = (score << 32) | i;
+			if (size < k) {
+				heap[size] = packed;
+				for (int c = size++; c > 0 && heap[(c - 1) / 2] < heap[c]; c = (c - 1) / 2) {
+					long t = heap[c];
+					heap[c] = heap[(c - 1) / 2];
+					heap[(c - 1) / 2] = t;
+				}
+			} else if (packed < heap[0]) {
+				heap[0] = packed;
+				for (int p = 0;;) {
+					int l = 2 * p + 1, r = l + 1, m = p;
+					if (l < k && heap[l] > heap[m]) {
+						m = l;
+					}
+					if (r < k && heap[r] > heap[m]) {
+						m = r;
+					}
+					if (m == p) {
+						break;
+					}
+					long t = heap[p];
+					heap[p] = heap[m];
+					heap[m] = t;
+					p = m;
+				}
 			}
-			long score = urgent ? 0L : Math.min((long) d2 + 1L, 0x7FFFFFFFL);
-			packed[i] = (score << 32) | i;
 		}
-		java.util.Arrays.sort(packed);
-		long[] order = new long[keys.length];
-		for (int i = 0; i < packed.length; i++) {
-			order[i] = keys[(int) packed[i]];
+		java.util.Arrays.sort(heap, 0, size);
+		long[] order = new long[size];
+		for (int i = 0; i < size; i++) {
+			order[i] = keys[(int) heap[i]];
 		}
 		return order;
 	}
