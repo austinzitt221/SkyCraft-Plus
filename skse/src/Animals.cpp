@@ -173,6 +173,14 @@ namespace skycraft::Animals
 			turn = std::remainder(turn, 2.0f * std::numbers::pi_v<float>);
 			const float most = 8.0f * a_delta;
 			a_actor->SetHeading(a_actor->data.angle.z + std::clamp(turn, -most, most));
+			// Its model too: with its AI paused Skyrim leaves that where it stood (only the lead,
+			// drawn from where it is, came along; the model caught up when it stopped).
+			a_actor->Update3DPosition(true);
+			if (auto* root = a_actor->Get3D()) {
+				root->local.translate = to;
+				RE::NiUpdateData update;
+				root->Update(update);
+			}
 			a_actor->SetGraphVariableFloat("Speed", float(speed) * float(proto::kUnitsPerBlock));  // (its walk, if its graph takes it)
 		}
 
