@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 51;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl)
+	inline constexpr std::uint32_t kVersion = 52;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -439,6 +439,8 @@ namespace skycraft::proto
 		kSkyItemUnequipLeft = 10,  // the same with the left hand (a shield: taken off)
 		// SkyCraft+ (v43): one of it used up elsewhere (a poison onto a Minecraft weapon).
 		kSkyItemConsume = 11,
+		// SkyCraft+ (v52): all of it gone for good (dragged onto the creative menu's destroy slot).
+		kSkyItemDestroy = 12,
 	};
 
 	// InputEvent::code for kInSkyrimHit.

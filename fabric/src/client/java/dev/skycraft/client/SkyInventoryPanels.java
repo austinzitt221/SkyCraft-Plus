@@ -492,12 +492,22 @@ public final class SkyInventoryPanels {
 				if (panel == null) {
 					return true;
 				}
+				// SkyCraft+ : creative. What's on the cursor there is the client's alone (the server never hears of it), so
+				// it's done here: a shortcut put back just goes, a Skyrim item from the creative tabs goes into Skyrim.
 				if (SkyShortcuts.isShortcut(inventory.getMenu().getCarried())) {
-					SkyShortcutsClient.forgetCarried();  // a shortcut put back
+					if (creative) {
+						inventory.getMenu().setCarried(ItemStack.EMPTY);
+					} else {
+						SkyShortcutsClient.forgetCarried();  // a shortcut put back
+					}
 					return false;
 				}
 				if (dev.skycraft.net.SkyStorage.isStored(inventory.getMenu().getCarried())) {
-					SkyStorageClient.takeCarried();  // SkyCraft+ : out of a chest, back into Skyrim
+					if (creative) {
+						SkyStorageClient.giveCarriedHere(inventory.getMenu());
+					} else {
+						SkyStorageClient.takeCarried();  // SkyCraft+ : out of a chest, back into Skyrim
+					}
 					return false;
 				}
 				if (!inventory.getMenu().getCarried().isEmpty()) {
@@ -555,7 +565,7 @@ public final class SkyInventoryPanels {
 							extra.put(item);  // SkyCraft+ : Skyrim armor
 						}
 					} else if (slot != null && slot.container instanceof Inventory) {
-						int index = slot.getContainerSlot();
+						int index = inventoryIndex(minecraft, slot);
 						if ((index < 36 || index == 40) && (slot.getItem().isEmpty() || SkyShortcuts.isShortcut(slot.getItem()))) {
 							SkyShortcutsClient.make(item, index);
 						} else if (index >= 36 && index <= 39) {
@@ -563,6 +573,11 @@ public final class SkyInventoryPanels {
 						}
 					} else if (slot != null && SkyStorageClient.storageMenu(inventory.getMenu()) && dev.skycraft.net.SkyStorage.storageSlot(slot)) {
 						SkyStorageClient.store(item, item.count(), slot.index, false);  // SkyCraft+ : into the chest
+					} else if (slot != null && destroySlot(inventory, slot)) {
+						giveUp(minecraft, item, Proto.SKY_ACT_DESTROY);  // SkyCraft+ : creative's destroy slot
+					} else if (slot == null && state.at(event.x(), event.y()) == null
+						&& accessor.skycraft$hasClickedOutside(event.x(), event.y(), accessor.skycraft$leftPos(), accessor.skycraft$topPos())) {
+						giveUp(minecraft, item, Proto.SKY_ACT_DROP);  // SkyCraft+ : out of the inventory: on the ground
 					}
 				} else if (state.at(event.x(), event.y()) != null && item == itemUnder(state, event.x(), event.y())) {
 					click(item, state.pressedButton == InputConstants.MOUSE_BUTTON_RIGHT);
@@ -591,6 +606,38 @@ public final class SkyInventoryPanels {
 			}
 		}
 		return null;
+	}
+
+	/**
+	 * SkyCraft+ : creative. The player's inventory index a slot of theirs stands for. Creative's inventory tab wraps each slot, and the
+	 * wrapper says its place in Minecraft's inventory screen instead (the hotbar there is 36-44, which read as the armor slots).
+	 */
+	private static int inventoryIndex(Minecraft minecraft, Slot slot) {
+		if (minecraft.gui.screen() instanceof CreativeModeInventoryScreen creative && creative.isInventoryOpen() && minecraft.player != null
+			&& slot.getContainerSlot() >= 0 && slot.getContainerSlot() < minecraft.player.inventoryMenu.slots.size()) {
+			return minecraft.player.inventoryMenu.getSlot(slot.getContainerSlot()).getContainerSlot();
+		}
+		return slot.getContainerSlot();
+	}
+
+	/** SkyCraft+ : creative's destroy slot (the X on its inventory tab, the last slot added there). */
+	private static boolean destroySlot(AbstractContainerScreen<?> screen, Slot slot) {
+		var slots = screen.getMenu().slots;
+		return screen instanceof CreativeModeInventoryScreen creative && creative.isInventoryOpen() && !(slot.container instanceof Inventory) && !slots.isEmpty()
+			&& slots.get(slots.size() - 1) == slot;
+	}
+
+	/** SkyCraft+ : a Skyrim thing dragged out of the panel onto the ground (SKY_ACT_DROP), or onto creative's destroy slot (SKY_ACT_DESTROY). */
+	private static void giveUp(Minecraft minecraft, SkyLink.SkyItem item, int action) {
+		String refused = item.kind() >= Proto.SKY_SPELL ? "Spells, shouts and powers stay known"
+			: item.has(Proto.ITEM_QUEST) ? "Quest items stay in Skyrim" : null;
+		if (refused != null) {
+			if (minecraft.player != null) {
+				minecraft.player.sendOverlayMessage(Component.literal(refused).withStyle(ChatFormatting.YELLOW));
+			}
+			return;
+		}
+		SkyLink.pushEvent(Proto.EV_SKY_ITEM, item.formId(), 0.0F, 0.0F, 0.0F, 0.0F, action);
 	}
 
 	private static SkyLink.@Nullable SkyItem itemUnder(State state, double mx, double my) {

@@ -144,6 +144,19 @@ public final class SkyStorageClient {
 		}
 	}
 
+	/**
+	 * SkyCraft+ : creative. The stored item on the cursor put on the Skyrim panel, given to Skyrim from here: in creative the cursor is
+	 * the client's alone (the server's is empty, so takeCarried found nothing). A Skyrim item from the creative tabs, no shortcut.
+	 */
+	static void giveCarriedHere(AbstractContainerMenu menu) {
+		ItemStack carried = menu.getCarried();
+		SkyStorage.Stored stored = SkyStorage.stored(carried);
+		if (stored != null) {
+			TO_GIVE.add(new SkyStorage.Give(carried.getCount(), stored));
+			menu.setCarried(ItemStack.EMPTY);
+		}
+	}
+
 	private static void tell(Minecraft minecraft, String text) {
 		if (minecraft.player != null) {
 			minecraft.player.sendOverlayMessage(Component.literal(text).withStyle(ChatFormatting.YELLOW));

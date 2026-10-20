@@ -951,7 +951,8 @@ namespace skycraft::SkyInventory
 			logger::info("Skyrim items: {} used on Minecraft's weapon", object->GetName());
 			return;
 		}
-		if (a_event.flags == proto::kSkyItemDrop) {
+		if (a_event.flags == proto::kSkyItemDrop || a_event.flags == proto::kSkyItemDestroy) {  // SkyCraft+ : or destroyed (creative)
+			const bool destroy = a_event.flags == proto::kSkyItemDestroy;  // (quest items never sent: Minecraft checks)
 			if (object->Is(RE::FormType::Weapon, RE::FormType::Armor, RE::FormType::Ammo, RE::FormType::Light)) {
 				for (bool leftHand : { false, true }) {
 					if (auto* worn = ExtraFor(a_player, object, true, leftHand)) {
@@ -960,8 +961,8 @@ namespace skycraft::SkyInventory
 				}
 			}
 			const auto count = a_player->GetItemCount(object);
-			a_player->RemoveItem(object, count, RE::ITEM_REMOVE_REASON::kDropping, nullptr, nullptr);
-			logger::info("Skyrim items: {} x{} dropped (a shortcut thrown out)", object->GetName(), count);
+			a_player->RemoveItem(object, count, destroy ? RE::ITEM_REMOVE_REASON::kRemove : RE::ITEM_REMOVE_REASON::kDropping, nullptr, nullptr);
+			logger::info("Skyrim items: {} x{} {}", object->GetName(), count, destroy ? "destroyed (the creative menu's destroy slot)" : "dropped");
 			return;
 		}
 		switch (object->GetFormType()) {

@@ -6,6 +6,7 @@ import net.minecraft.world.inventory.Slot;
 import org.jspecify.annotations.Nullable;
 import org.spongepowered.asm.mixin.Mixin;
 import org.spongepowered.asm.mixin.gen.Accessor;
+import org.spongepowered.asm.mixin.gen.Invoker;
 
 /** Where a container screen's slots are measured from (InputBridge.slotJump). */
 @Mixin(AbstractContainerScreen.class)
@@ -23,4 +24,8 @@ public interface ContainerScreenAccessor {
 	/** SkyCraft+ : Skyrim shortcuts. The slot under the mouse, where a Skyrim thing is dropped. */
 	@Accessor("hoveredSlot")
 	@Nullable Slot skycraft$hoveredSlot();
+
+	/** SkyCraft+ : Skyrim items dropped. Outside the screen (creative's tabs and the recipe book are in it), where a dragged Skyrim thing is dropped. */
+	@Invoker("hasClickedOutside")
+	boolean skycraft$hasClickedOutside(double mx, double my, int xo, int yo);
 }
