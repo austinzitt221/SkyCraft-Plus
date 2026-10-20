@@ -332,6 +332,68 @@ public final class SkyDig {
 		return true;
 	}
 
+	/** SkyCraft+ : structures put away. Dug cells, each with its Skyrim world. */
+	public record Cells(int[] worlds, long[] positions) {
+	}
+
+	/**
+	 * SkyCraft+ : structures put away. Every cell dug in this box (in any Skyrim world) is no longer dug
+	 * (each chunk's column set once); returns them, to be dug again when the structure comes back.
+	 */
+	public static Cells undigBox(ServerLevel level, net.minecraft.world.level.levelgen.structure.BoundingBox box) {
+		it.unimi.dsi.fastutil.ints.IntArrayList worlds = new it.unimi.dsi.fastutil.ints.IntArrayList();
+		it.unimi.dsi.fastutil.longs.LongArrayList positions = new it.unimi.dsi.fastutil.longs.LongArrayList();
+		for (int cx = box.minX() >> 4; cx <= box.maxX() >> 4; cx++) {
+			for (int cz = box.minZ() >> 4; cz <= box.maxZ() >> 4; cz++) {
+				LevelChunk chunk = level.getChunk(cx, cz);
+				DugColumn column = column(chunk);
+				if (column.sections().isEmpty()) {
+					continue;
+				}
+				List<DugSection> out = new ArrayList<>();
+				boolean changed = false;
+				for (DugSection s : column.sections()) {
+					if (s.bits().length != 64 || (s.sectionY() << 4) > box.maxY() || (s.sectionY() << 4) + 15 < box.minY()) {
+						out.add(s);
+						continue;
+					}
+					long[] bits = s.bits().clone();
+					for (int bit = 0; bit < 4096; bit++) {
+						if (((bits[bit >> 6] >>> (bit & 63)) & 1L) == 0) {
+							continue;
+						}
+						int x = (cx << 4) + (bit & 15), z = (cz << 4) + ((bit >> 4) & 15), y = (s.sectionY() << 4) + (bit >> 8);
+						if (box.isInside(x, y, z)) {
+							bits[bit >> 6] &= ~(1L << (bit & 63));
+							worlds.add(s.world());
+							positions.add(BlockPos.asLong(x, y, z));
+							changed = true;
+						}
+					}
+					if (Arrays.stream(bits).anyMatch(b -> b != 0L)) {
+						out.add(new DugSection(s.world(), s.sectionY(), bits));
+					}
+				}
+				if (changed) {
+					chunk.setAttached(DUG, new DugColumn(List.copyOf(out)));
+				}
+			}
+		}
+		return new Cells(worlds.toIntArray(), positions.toLongArray());
+	}
+
+	/** SkyCraft+ : structures back. Cells dug again (undigBox's), each chunk's column set once. */
+	public static void redig(ServerLevel level, Cells cells) {
+		beginBatch();
+		try {
+			for (int i = 0; i < cells.positions().length && i < cells.worlds().length; i++) {
+				markDug(level, cells.worlds()[i], BlockPos.of(cells.positions()[i]));
+			}
+		} finally {
+			endBatch();
+		}
+	}
+
 	/** SkyCraft+ : the restoration brush. A cell is no longer dug: Skyrim's geometry in it is back. Returns false if it wasn't dug. */
 	public static boolean unmarkDug(ServerLevel level, int world, BlockPos pos) {
 		LevelChunk chunk = level.getChunkAt(pos);

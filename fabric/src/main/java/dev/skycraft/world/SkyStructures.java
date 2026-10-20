@@ -73,7 +73,9 @@ public final class SkyStructures {
 	/** SkyCraft+ : strongholds. No map is coming this run (structures off, Skyrim's Data folder unknown, a failed read). */
 	private static volatile boolean noMap;
 	/** Built in this world: site name -> its bounding box (and structure, for its own mobs). */
-	private static final Map<String, Built> BUILT = new HashMap<>();
+	private static final Map<String, Built> BUILT = new java.util.concurrent.ConcurrentHashMap<>();  // (SkyCraft+ : read by the settings screen too)
+	/** SkyCraft+ : the server whose world this is (the settings screen turns structures off and on in it). */
+	private static volatile @Nullable MinecraftServer server;
 	private static @Nullable Path builtFile;
 
 	/** Set while a structure is laid out and placed: the ground Level.getHeight reports (LevelHeightMixin). */
@@ -120,7 +122,40 @@ public final class SkyStructures {
 
 	public static void init() {
 		ServerLifecycleEvents.SERVER_STARTED.register(SkyStructures::start);
+		ServerLifecycleEvents.SERVER_STOPPED.register(s -> server = null);
 		ServerTickEvents.END_SERVER_TICK.register(SkyStructures::tick);
+		// SkyCraft+ : turned off and on while playing (the settings screen): put away as they are, and back.
+		dev.skycraft.SkySettings.onChange(() -> {
+			MinecraftServer s = server;
+			if (s != null) {
+				s.execute(() -> setEnabled(s, dev.skycraft.SkySettings.flag("skyrimStructures", true)));
+			}
+		});
+	}
+
+	/** SkyCraft+ : the built structures' boxes (placeholders included). */
+	public static Map<String, BoundingBox> builtBoxes() {
+		Map<String, BoundingBox> out = new HashMap<>();
+		BUILT.forEach((name, b) -> out.put(name, b.box));
+		return out;
+	}
+
+	/** SkyCraft+ : the built structure a player stands in or beside, or null (the settings screen won't put them away then). */
+	public static @Nullable String standingIn(BlockPos pos) {
+		MinecraftServer s = server;
+		return s == null ? null : SkyStructureStash.standingIn(s, pos, builtBoxes());
+	}
+
+	private static void setEnabled(MinecraftServer s, boolean on) {
+		if (on == enabled) {
+			return;
+		}
+		enabled = on;
+		SkyCraft.LOG.info("SkyCraft: Minecraft's structures in Skyrim turned {}", on ? "on" : "off");
+		SkyStructureStash.towards(s, on, builtBoxes());
+		if (on && map == null && !reading) {
+			start(s);  // (the map wasn't read while they were off)
+		}
 	}
 
 	private static void start(MinecraftServer server) {
@@ -134,6 +169,7 @@ public final class SkyStructures {
 			}
 		}
 		enabled = Boolean.parseBoolean(p.getProperty("skyrimStructures", "true").trim());
+		SkyStructures.server = server;
 		boolean offMountains = Boolean.parseBoolean(p.getProperty("structuresOffMountains", "true").trim());
 		if (offMountains != SkyrimMap.offMountains) {
 			SkyrimMap.offMountains = offMountains;
@@ -148,6 +184,7 @@ public final class SkyStructures {
 		BOTTOMS.clear();
 		builtFile = server.getWorldPath(LevelResource.ROOT).resolve("skycraft-structures.txt");
 		loadBuilt();
+		SkyStructureStash.towards(server, enabled, builtBoxes());  // SkyCraft+ : (off: any still out put away; on: any put away back)
 		writeAreasForSkyrim();  // this world's (another's were there)
 		noMap = !enabled && map == null && !reading;
 		if (!enabled || map != null || reading) {
@@ -347,6 +384,9 @@ public final class SkyStructures {
 	}
 
 	private static void tick(MinecraftServer server) {
+		if (SkyStructureStash.busy()) {
+			SkyStructureStash.tick(server, builtBoxes());  // SkyCraft+ : put away or brought back, one at a time
+		}
 		SkyrimMap m = map;
 		if (m != null && SkyWorld.valid() && SkyWorld.tamriel() && !SkyWorld.interior()) {
 			keepInsideBorder(server, m);
