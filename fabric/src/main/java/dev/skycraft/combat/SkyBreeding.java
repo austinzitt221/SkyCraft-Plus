@@ -35,7 +35,7 @@ public final class SkyBreeding {
 	}
 
 	// Skyrim's kinds of animal (ActorRecord flags bits 8-15, Animals.cpp's Species).
-	public static final int CHICKEN = 1, COW = 2, GOAT = 3, DEER = 4, ELK = 5, HARE = 6, HORSE = 7, FOX = 8, DOG = 9, MUDCRAB = 10, BOAR = 11;
+	public static final int CHICKEN = 1, COW = 2, GOAT = 3, DEER = 4, ELK = 5, HARE = 6, HORSE = 7, FOX = 8, DOG = 9, MUDCRAB = 10, BOAR = 11, WOLF = 12;
 	private static final int LOVE_TICKS = 600, COOLDOWN_TICKS = 6000, TOGETHER_TICKS = 50;
 	private static final double FIND_RANGE = 8.0, TOUCH_RANGE = 2.5;
 
@@ -56,7 +56,7 @@ public final class SkyBreeding {
 			case HARE -> stack.is(Items.CARROT) || stack.is(Items.GOLDEN_CARROT) || stack.is(Items.DANDELION);
 			case HORSE -> stack.is(Items.GOLDEN_APPLE) || stack.is(Items.GOLDEN_CARROT);
 			case FOX -> stack.is(Items.SWEET_BERRIES) || stack.is(Items.GLOW_BERRIES);
-			case DOG -> stack.is(ItemTags.MEAT);
+			case DOG, WOLF -> stack.is(ItemTags.MEAT);
 			case MUDCRAB -> stack.is(ItemTags.FISHES);
 			case BOAR -> stack.is(Items.CARROT) || stack.is(Items.POTATO) || stack.is(Items.BEETROOT);
 			default -> false;
@@ -72,29 +72,103 @@ public final class SkyBreeding {
 			case HARE -> EntityTypes.RABBIT;
 			case HORSE -> EntityTypes.HORSE;
 			case FOX -> EntityTypes.FOX;
-			case DOG -> EntityTypes.WOLF;
+			case DOG, WOLF -> EntityTypes.WOLF;
 			case BOAR -> EntityTypes.PIG;
 			default -> null;
 		};
 	}
 
-	/** A player used something on a Skyrim animal: its food puts it in love. Null: not breeding's to answer. */
+	/**
+	 * A player used something on a Skyrim animal: its food puts it in love, or makes a baby grow;
+	 * bones tame a dog or a wolf; an empty hand tells a tamed one to sit or stand. Null: not
+	 * breeding's to answer.
+	 */
 	static @Nullable InteractionResult feed(SkyrimActorEntity proxy, ServerPlayer player, ItemStack stack, SkyLink.@Nullable Actor actor) {
-		if (actor == null || (actor.flags() & (Proto.ACTOR_BABY | Proto.ACTOR_HOSTILE | Proto.ACTOR_IN_COMBAT)) != 0) {
+		if (actor == null) {
 			return null;
 		}
+		if (stack.isEmpty() && sitOrStand(proxy, player, actor)) {
+			return InteractionResult.SUCCESS_SERVER;
+		}
 		int species = species(actor.flags());
-		if (species == 0 || !food(species, stack) || LOVE.containsKey(proxy.formId()) || COOLDOWN.containsKey(proxy.formId())) {
+		boolean eaten = stack.is(Items.BONE) ? tame(proxy, player, actor, species) : food(species, stack) && eat(proxy, player, actor);
+		if (!eaten) {
 			return null;
 		}
 		if (!player.hasInfiniteMaterials()) {
 			stack.shrink(1);
 		}
-		LOVE.put(proxy.formId(), LOVE_TICKS);
-		hearts(player.level(), proxy, 7);
-		player.level().playSound(null, proxy.getX(), proxy.getY(), proxy.getZ(), SoundEvents.GENERIC_EAT.value(), net.minecraft.sounds.SoundSource.NEUTRAL, 1.0F, 1.0F);
-		SkyCraft.LOG.info("SkyCraft: {} is in love", proxy.getName().getString());
 		return InteractionResult.SUCCESS_SERVER;
+	}
+
+	/**
+	 * SkyCraft+ : Skyrim food for animals. A Skyrim food (SkyFoods bits) given to a Skyrim animal:
+	 * eaten as its Minecraft food would be, if it's one its kind would eat. True if it was eaten (the
+	 * giver's Skyrim gives one up).
+	 */
+	public static boolean feedSkyrimFood(SkyrimActorEntity proxy, ServerPlayer player, int foods, SkyLink.@Nullable Actor actor) {
+		if (actor == null) {
+			return false;
+		}
+		int species = species(actor.flags());
+		if ((foods & Proto.FOOD_BONE) != 0) {
+			return tame(proxy, player, actor, species);
+		}
+		return (SkyFoods.skyrimLikes(species) & foods) != 0 && eat(proxy, player, actor);
+	}
+
+	/** Food it likes: a baby grows a tenth of what it has left (as Minecraft's do); a grown one falls in love. */
+	private static boolean eat(SkyrimActorEntity proxy, ServerPlayer player, SkyLink.Actor actor) {
+		if ((actor.flags() & (Proto.ACTOR_HOSTILE | Proto.ACTOR_IN_COMBAT)) != 0 && (actor.flags() & Proto.ACTOR_TAMED) == 0) {
+			return false;
+		}
+		ServerLevel level = player.level();
+		if ((actor.flags() & Proto.ACTOR_BABY) != 0) {
+			SkyLink.pushEvent(Proto.EV_GROW_BABY, proxy.formId(), 0.1F, 0.0F, 0.0F, 0.0F, 0);
+			level.sendParticles(ParticleTypes.HAPPY_VILLAGER, proxy.getX(), proxy.getY() + proxy.getBbHeight() * 0.5, proxy.getZ(), 5, 0.3, 0.3, 0.3, 0.0);
+			eatSound(level, proxy);
+			return true;
+		}
+		if (LOVE.containsKey(proxy.formId()) || COOLDOWN.containsKey(proxy.formId())) {
+			return false;
+		}
+		LOVE.put(proxy.formId(), LOVE_TICKS);
+		hearts(level, proxy, 7);
+		eatSound(level, proxy);
+		SkyCraft.LOG.info("SkyCraft: {} is in love", proxy.getName().getString());
+		return true;
+	}
+
+	private static void eatSound(ServerLevel level, SkyrimActorEntity proxy) {
+		level.playSound(null, proxy.getX(), proxy.getY(), proxy.getZ(), SoundEvents.GENERIC_EAT.value(), net.minecraft.sounds.SoundSource.NEUTRAL, 1.0F, 1.0F);
+	}
+
+	/** SkyCraft+ : a bone for a dog or a wolf: a one in three chance it's tamed (as Minecraft's wolves), with hearts; smoke if not. */
+	private static boolean tame(SkyrimActorEntity proxy, ServerPlayer player, SkyLink.Actor actor, int species) {
+		if (species != DOG && species != WOLF || (actor.flags() & (Proto.ACTOR_TAMED | Proto.ACTOR_DEAD)) != 0) {
+			return false;
+		}
+		ServerLevel level = player.level();
+		if (level.getRandom().nextInt(3) == 0) {
+			SkyLink.pushEvent(Proto.EV_TAME, proxy.formId(), 0.0F, 0.0F, 0.0F, 0.0F, 1);
+			hearts(level, proxy, 7);
+			SkyCraft.LOG.info("SkyCraft: {} tamed {}", player.getPlainTextName(), proxy.getName().getString());
+		} else {
+			level.sendParticles(ParticleTypes.SMOKE, proxy.getX(), proxy.getY() + proxy.getBbHeight() * 0.6, proxy.getZ(), 7, 0.3, 0.2, 0.3, 0.02);
+		}
+		eatSound(level, proxy);
+		return true;
+	}
+
+	/** SkyCraft+ : an empty hand on a tamed one: it sits (stays), or stands (follows again). */
+	private static boolean sitOrStand(SkyrimActorEntity proxy, ServerPlayer player, SkyLink.Actor actor) {
+		if ((actor.flags() & Proto.ACTOR_TAMED) == 0 || player.isShiftKeyDown()) {
+			return false;
+		}
+		boolean sitting = (actor.flags() & Proto.ACTOR_SITTING) != 0;
+		SkyLink.pushEvent(Proto.EV_TAME, proxy.formId(), 0.0F, 0.0F, 0.0F, 0.0F, sitting ? 3 : 2);
+		player.sendOverlayMessage(net.minecraft.network.chat.Component.literal(proxy.getName().getString() + (sitting ? " follows you" : " stays")));
+		return true;
 	}
 
 	static void hearts(ServerLevel level, net.minecraft.world.entity.Entity at, int count) {

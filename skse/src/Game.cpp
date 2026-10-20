@@ -2423,6 +2423,7 @@ namespace skycraft
 		{
 			Animals::SaveBabies(a_intfc);  // SkyCraft+
 			Animals::SaveWalks(a_intfc);  // SkyCraft+
+			Animals::SavePets(a_intfc);  // SkyCraft+
 			Crops::Save(a_intfc);  // SkyCraft+
 			if (!State().parked || mc.dimension < proto::kDimNether) {
 				return;
@@ -2454,6 +2455,10 @@ namespace skycraft
 					Animals::LoadWalks(a_intfc);  // SkyCraft+
 					continue;
 				}
+				if (type == 'TAME') {
+					Animals::LoadPets(a_intfc);  // SkyCraft+
+					continue;
+				}
 				if (type == kWorldRecord && version == 1 && a_intfc->ReadRecordData(world) && a_intfc->ReadRecordData(x) && a_intfc->ReadRecordData(y) &&
 					a_intfc->ReadRecordData(z) && (world == proto::kDimNether || world == proto::kDimEnd)) {
 					savedWorld = world;
@@ -2468,6 +2473,7 @@ namespace skycraft
 		{
 			Animals::ClearBabies();  // SkyCraft+
 			Animals::ClearWalks();  // SkyCraft+
+			Animals::ClearPets();  // SkyCraft+
 			MobFights::Clear();  // SkyCraft+
 			Crops::Clear();  // SkyCraft+
 			savedWorld = 0;

@@ -452,35 +452,8 @@ public final class SkyClient {
 	/** One health pool: back in Minecraft's hands, the player keeps Skyrim's share of their health. */
 	/** SkyCraft+ : Skyrim animals follow food. What this held thing tempts (Proto.FOOD_*), as Minecraft's own animals are tempted. */
 	private static int heldFood(net.minecraft.world.item.ItemStack stack) {
-		if (stack.isEmpty()) {
-			return 0;
-		}
-		var item = stack.getItem();
-		if (stack.is(net.minecraft.tags.ItemTags.CHICKEN_FOOD)) {
-			return Proto.FOOD_SEEDS;
-		}
-		if (item == net.minecraft.world.item.Items.WHEAT) {
-			return Proto.FOOD_WHEAT;
-		}
-		if (item == net.minecraft.world.item.Items.CARROT || item == net.minecraft.world.item.Items.DANDELION) {
-			return Proto.FOOD_CARROT;
-		}
-		if (item == net.minecraft.world.item.Items.GOLDEN_CARROT) {
-			return Proto.FOOD_CARROT | Proto.FOOD_APPLE;
-		}
-		if (item == net.minecraft.world.item.Items.APPLE || item == net.minecraft.world.item.Items.GOLDEN_APPLE) {
-			return Proto.FOOD_APPLE;
-		}
-		if (item == net.minecraft.world.item.Items.SWEET_BERRIES || item == net.minecraft.world.item.Items.GLOW_BERRIES) {
-			return Proto.FOOD_BERRIES;
-		}
-		if (item == net.minecraft.world.item.Items.BONE || stack.is(net.minecraft.tags.ItemTags.MEAT)) {
-			return Proto.FOOD_MEAT;
-		}
-		if (stack.is(net.minecraft.tags.ItemTags.FISHES)) {
-			return Proto.FOOD_FISH;
-		}
-		return item == net.minecraft.world.item.Items.BEETROOT ? Proto.FOOD_BEETROOT : 0;
+		// (SkyFoods; a Skyrim shortcut held tempts them with its Skyrim food)
+		return dev.skycraft.combat.SkyFoods.ofMinecraft(stack) | SkyShortcutsClient.heldFood(stack);
 	}
 
 	private static void takeSkyrimHealth(Minecraft minecraft, float fraction) {

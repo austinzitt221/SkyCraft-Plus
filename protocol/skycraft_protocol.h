@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 52;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy
+	inline constexpr std::uint32_t kVersion = 53;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed)
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -273,6 +273,7 @@ namespace skycraft::proto
 		kFoodMeat = 1u << 5,      // dogs (bones and meat)
 		kFoodFish = 1u << 6,      // mudcrabs
 		kFoodBeetroot = 1u << 7,  // boars
+		kFoodBone = 1u << 8,      // SkyCraft+ (v53): bones (dogs and wolves; with kFoodMeat), Minecraft's or Skyrim's
 	};
 	static_assert(sizeof(McState) <= 0x100);
 
@@ -357,8 +358,10 @@ namespace skycraft::proto
 		kActorBaby = 1u << 6,      // SkyCraft+ (v44): a baby bred the Minecraft way, still growing
 		kActorTeammate = 1u << 7,  // SkyCraft+ (v45): the player's follower (it fights Minecraft's monsters with them)
 		kActorRanged = 1u << 16,   // SkyCraft+ (v46): holds a bow or crossbow (it fights Minecraft's mobs from afar)
+		kActorTamed = 1u << 17,    // SkyCraft+ (v53): tamed with bones the Minecraft way (kEvTame): follows the player, fights for them
+		kActorSitting = 1u << 18,  // SkyCraft+ (v53): a tamed one told to sit (stays where it is)
 		// SkyCraft+ (v44): bits 8-15: which kind of animal it is, for Minecraft's breeding (0 none): 1 chicken,
-		// 2 cow, 3 goat, 4 deer, 5 elk, 6 hare, 7 horse, 8 fox, 9 dog, 10 mudcrab, 11 boar.
+		// 2 cow, 3 goat, 4 deer, 5 elk, 6 hare, 7 horse, 8 fox, 9 dog, 10 mudcrab, 11 boar; (v53) 12 wolf.
 	};
 
 	inline constexpr std::uint32_t kActorSpeciesShift = 8;  // SkyCraft+ (v44)
@@ -420,6 +423,9 @@ namespace skycraft::proto
 		                    // (an attack played facing it; Minecraft deals the damage), 0 goes to it (a follower, out of reach)
 		                    // (v46) 2 lets the drawn bow go at it (a ranged actor: 1 draws)
 		kEvSpawnActor = 15,  // SkyCraft+ (v48): a Skyrim spawn egg: formId (an actor base, from the SkyCatalog) appears at a/b/c (MC coords)
+		kEvGrowBaby = 16,    // SkyCraft+ (v53): formId's baby was fed: it grows a = this share of what it has left to grow
+		kEvTame = 17,        // SkyCraft+ (v53): formId (a dog or wolf) given bones: flags 1 tamed (follows, fights for the
+		                     // player), 2 sits (stays), 3 stands (follows again)
 	};
 
 	// SkyCraft+ : what a click on a Skyrim item does (McEvent::flags of kEvSkyItem).

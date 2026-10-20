@@ -29,6 +29,7 @@ public final class SkyCraft implements ModInitializer {
 		dev.skycraft.net.SkyCreative.init(); // SkyCraft+ : every Skyrim thing in the creative menu
 		dev.skycraft.net.SkyArmor.init(); // SkyCraft+ : Skyrim armor in Minecraft's armor slots
 		dev.skycraft.net.SkyPoison.init(); // SkyCraft+ : Skyrim poisons on Minecraft weapons
+		dev.skycraft.net.SkyFeeding.init(); // SkyCraft+ : Skyrim food for animals
 		dev.skycraft.world.SkyWander.init(); // SkyCraft+ : mobs wandering on Skyrim's ground
 		dev.skycraft.world.SkyLootChests.init(); // SkyCraft+ : Minecraft loot chests in Skyrim's dungeons
 		dev.skycraft.world.SkyDig.init();

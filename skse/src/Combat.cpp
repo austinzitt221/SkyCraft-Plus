@@ -362,7 +362,8 @@ namespace skycraft
 				          (actor->IsEssential() ? proto::kActorEssential : 0u) | (actor->IsInCombat() ? proto::kActorInCombat : 0u) |
 				          (Animals::InQuest(actor) ? proto::kActorQuest : 0u) | (Animals::OnPlayersLead(actor->GetFormID()) ? proto::kActorLeashed : 0u) |  // SkyCraft+
 				          (Animals::IsBaby(actor->GetFormID()) ? proto::kActorBaby : 0u) | (Animals::Species(actor) << proto::kActorSpeciesShift) |
-				          (actor->IsPlayerTeammate() ? proto::kActorTeammate : 0u) | (MobFights::Ranged(actor) ? proto::kActorRanged : 0u);  // SkyCraft+ : fights Minecraft's monsters with the player
+				          (actor->IsPlayerTeammate() ? proto::kActorTeammate : 0u) | (MobFights::Ranged(actor) ? proto::kActorRanged : 0u) |  // SkyCraft+ : fights Minecraft's monsters with the player
+				          (Animals::IsTamed(actor->GetFormID()) ? proto::kActorTamed : 0u) | (Animals::IsSitting(actor->GetFormID()) ? proto::kActorSitting : 0u);  // SkyCraft+
 				const auto mc = SkyToMc(pos);
 				r.x = static_cast<float>(mc.x);
 				r.y = static_cast<float>(mc.y);
@@ -1182,6 +1183,12 @@ namespace skycraft
 					break;
 				case proto::kEvApproach:
 					Animals::OnApproach(ev.formId, ev.flags);  // SkyCraft+
+					break;
+				case proto::kEvGrowBaby:
+					Animals::OnGrowBaby(ev.formId, ev.a);  // SkyCraft+
+					break;
+				case proto::kEvTame:
+					Animals::OnTame(a_player, ev.formId, ev.flags);  // SkyCraft+
 					break;
 				case proto::kEvCropGrown:
 					Crops::OnGrown(a_player, ev.formId, ev.a, ev.b, ev.c);  // SkyCraft+

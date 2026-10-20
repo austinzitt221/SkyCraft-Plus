@@ -109,6 +109,16 @@ public final class SkyShortcutsClient {
 	}
 
 	public static void register() {
+		// SkyCraft+ : Skyrim food for animals. The animal ate it: one goes from Skyrim's inventory.
+		ClientPlayNetworking.registerGlobalReceiver(dev.skycraft.net.SkyFeeding.Eaten.TYPE, (payload, context) -> {
+			SkyLink.SkyInventory now = SkyLink.readSkyInventory();
+			for (SkyLink.SkyItem item : now == null ? List.<SkyLink.SkyItem>of() : now.items()) {
+				if (item.is(payload.plugin(), payload.localId())) {
+					SkyLink.pushEvent(Proto.EV_SKY_ITEM, item.formId(), 0.0F, 0.0F, 0.0F, 0.0F, Proto.SKY_ACT_CONSUME);
+					return;
+				}
+			}
+		});
 		ClientPlayNetworking.registerGlobalReceiver(SkyShortcuts.Dropped.TYPE, (payload, context) -> {
 			SkyLink.SkyInventory now = SkyLink.readSkyInventory();
 			if (now == null) {
@@ -186,6 +196,9 @@ public final class SkyShortcutsClient {
 			if (item == null) {
 				continue;
 			}
+			if (feed(item)) {
+				return true;  // SkyCraft+ : to the animal under the crosshair
+			}
 			if (SkyPoisonClient.apply(item)) {
 				return true;  // SkyCraft+ : onto the Minecraft weapon in hand
 			}
@@ -204,6 +217,29 @@ public final class SkyShortcutsClient {
 			}
 		}
 		return false;
+	}
+
+	/**
+	 * SkyCraft+ : Skyrim food for animals. Skyrim food, an ingredient or a bone used on an animal (Skyrim's
+	 * or Minecraft's) is given to it, not eaten (SkyFeeding: the server says whether it took it).
+	 */
+	private static boolean feed(SkyLink.SkyItem item) {
+		var minecraft = net.minecraft.client.Minecraft.getInstance();
+		int foods = dev.skycraft.combat.SkyFoods.ofSkyrim(item.kind(), item.name());
+		if (foods == 0 || !(minecraft.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit)
+			|| !(hit.getEntity() instanceof net.minecraft.world.entity.animal.Animal || hit.getEntity() instanceof dev.skycraft.combat.SkyrimActorEntity)
+			|| !ClientPlayNetworking.canSend(dev.skycraft.net.SkyFeeding.Feed.TYPE)) {
+			return false;
+		}
+		ClientPlayNetworking.send(new dev.skycraft.net.SkyFeeding.Feed(hit.getEntity().getId(), foods, item.plugin(), item.localId()));
+		return true;
+	}
+
+	/** What a held shortcut tempts Skyrim's animals with (SkyClient's McState.heldFood), as Minecraft food would. */
+	public static int heldFood(ItemStack stack) {
+		SkyLink.SkyItem item = SkyShortcuts.isShortcut(stack) ? resolve(stack) : null;
+		int foods = item == null ? 0 : dev.skycraft.combat.SkyFoods.ofSkyrim(item.kind(), item.name());
+		return (foods & Proto.FOOD_BONE) != 0 ? foods | Proto.FOOD_MEAT : foods;  // (a dog follows a bone as it does meat)
 	}
 
 	/** SkyCraft+ : Skyrim crops. A Skyrim thing a Skyrim plant gives, used on farmland: planted there (Skyrim gives one up). */

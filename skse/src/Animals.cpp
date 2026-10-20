@@ -66,8 +66,8 @@ namespace skycraft::Animals
 				likes = proto::kFoodApple;
 			} else if (has("fox")) {
 				likes = proto::kFoodBerries;
-			} else if (has("dog") || has("husky")) {
-				likes = proto::kFoodMeat;
+			} else if (has("dog") || has("husky") || (has("wolf") && !has("werewolf"))) {
+				likes = proto::kFoodMeat | proto::kFoodBone;
 			} else if (has("mudcrab")) {
 				likes = proto::kFoodFish;
 			} else if (has("boar") || has("bristleback")) {
@@ -283,7 +283,7 @@ namespace skycraft::Animals
 		auto has = [&](std::string_view a_part) { return what.find(a_part) != std::string::npos; };
 		const std::uint32_t species = has("chicken") || has(" hen") ? 1 : has("cow") || has("bull") ? 2 : has("goat") ? 3 : has("deer") || has("stag") ? 4
 		                            : has("elk") ? 5 : has("hare") || has("rabbit") ? 6 : has("horse") ? 7 : has("fox") ? 8 : has("dog") || has("husky") ? 9
-		                            : has("mudcrab") ? 10 : has("boar") || has("bristleback") ? 11 : 0;
+		                            : has("mudcrab") ? 10 : has("boar") || has("bristleback") ? 11 : has("wolf") && !has("werewolf") ? 12 : 0;
 		speciesCache.emplace(race->GetFormID(), species);
 		return species;
 	}
@@ -348,6 +348,20 @@ namespace skycraft::Animals
 			} else {
 				++it;
 			}
+		}
+	}
+
+	// SkyCraft+ : fed (as Minecraft's babies are), a baby grows a share of what it has left.
+	void OnGrowBaby(RE::FormID a_baby, float a_share)
+	{
+		auto it = babies.find(a_baby);
+		if (it == babies.end()) {
+			return;
+		}
+		it->second = std::min(1.0f, it->second + (1.0f - it->second) * std::clamp(a_share, 0.0f, 1.0f));
+		if (auto* baby = RE::TESForm::LookupByID<RE::Actor>(a_baby)) {
+			baby->SetScale(0.5f + 0.5f * it->second);
+			logger::info("breeding: {} was fed: {:.0f}% grown", baby->GetName(), it->second * 100.0f);
 		}
 	}
 
@@ -505,9 +519,160 @@ namespace skycraft::Animals
 		}
 	}
 
+	// ---- SkyCraft+ : tamed with bones, the Minecraft way --------------------------------------------
+	// A dog or wolf given bones (Minecraft decides, a chance a bone as with its own wolves: kEvTame)
+	// is the player's: in the player's faction, an ally and a teammate (it fights at their side,
+	// Minecraft's monsters too), no longer aggressive to anyone else. It follows as a Minecraft wolf
+	// does: walked after the player when more than four blocks behind, brought to them when far
+	// behind or through a door. Told to sit, it stays where it is till told to stand.
+	namespace
+	{
+		struct Pet
+		{
+			bool sitting = false;
+			bool friends = false;  // made friends this session (a loaded game's: again, once it's loaded)
+		};
+		std::unordered_map<RE::FormID, Pet> pets;
+		RE::TESObjectCELL*                  petCell = nullptr;
+		constexpr std::uint32_t             kPetsRecord = 'TAME';
+
+		void MakeFriends(RE::PlayerCharacter* a_player, RE::Actor* a_actor)
+		{
+			a_actor->StopCombat();
+			CallActor(a_actor, "RemoveFromAllFactions");
+			if (auto* faction = RE::TESForm::LookupByID<RE::TESFaction>(0xDB1)) {  // PlayerFaction
+				CallActor(a_actor, "AddToFaction", std::move(faction));
+			}
+			RE::Actor* player = a_player;
+			CallActor(a_actor, "SetRelationshipRank", std::move(player), 3);
+			CallActor(a_actor, "SetPlayerTeammate", true, false);
+			CallActor(a_actor, "IgnoreFriendlyHits", true);
+			a_actor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kAggression, 0.0f);
+			a_actor->EvaluatePackage(true, false);
+		}
+
+		void TickPets(RE::PlayerCharacter* a_player, float a_delta)
+		{
+			auto* cell = a_player->GetParentCell();
+			const bool moved = cell != petCell;
+			petCell = cell;
+			const float block = float(proto::kUnitsPerBlock);
+			for (auto it = pets.begin(); it != pets.end();) {
+				auto* actor = RE::TESForm::LookupByID<RE::Actor>(it->first);
+				if (!actor || actor->IsDead()) {
+					if (actor) {
+						Unwalk(actor);
+						logger::info("pets: {} died", actor->GetName());
+					}
+					it = pets.erase(it);
+					continue;
+				}
+				auto& pet = it->second;
+				if (!pet.friends && actor->Get3D()) {
+					pet.friends = true;
+					MakeFriends(a_player, actor);
+					HoldStill(actor, pet.sitting);
+				}
+				if (pet.sitting || leads.contains(it->first) || State().parked) {
+					++it;
+					continue;
+				}
+				auto* actorCell = actor->GetParentCell();
+				const bool otherPlace = cell && actorCell != cell && (cell->IsInteriorCell() || !actorCell || actorCell->IsInteriorCell() ||
+				                                                     actor->GetWorldspace() != a_player->GetWorldspace());
+				const float distance = actor->GetPosition().GetDistance(a_player->GetPosition());
+				if ((moved && otherPlace && distance > 6.0f * block) || (!otherPlace && distance > 20.0f * block && !actor->IsInCombat())) {
+					Unwalk(actor);
+					actor->MoveTo(a_player);
+					static int logged = 0;
+					if (logged++ < 20) {
+						logger::info("pets: {} came to the player ({:.0f} blocks behind{})", actor->GetName(), distance / block, otherPlace ? ", another place" : "");
+					}
+				} else if (!otherPlace) {
+					Steer(actor, a_player->GetPosition(), 3.0, a_delta);
+				} else {
+					Unwalk(actor);
+				}
+				++it;
+			}
+		}
+	}
+
+	void OnTame(RE::PlayerCharacter* a_player, RE::FormID a_actor, std::uint32_t a_mode)
+	{
+		auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_actor);
+		if (!actor || actor->IsDead() || actor->IsPlayerRef()) {
+			return;
+		}
+		if (a_mode == 1) {
+			auto& pet = pets[a_actor];
+			pet.friends = true;
+			pet.sitting = false;
+			following.erase(a_actor);
+			LetGo(actor);
+			MakeFriends(a_player, actor);
+			HoldStill(actor, false);
+			logger::info("pets: {} ({:08X}) tamed", actor->GetName(), a_actor);
+			return;
+		}
+		auto it = pets.find(a_actor);
+		if (it == pets.end()) {
+			return;
+		}
+		it->second.sitting = a_mode == 2;
+		Unwalk(actor);
+		HoldStill(actor, it->second.sitting);
+		logger::info("pets: {} {}", actor->GetName(), it->second.sitting ? "sits" : "stands");
+	}
+
+	bool IsTamed(RE::FormID a_actor)
+	{
+		return pets.contains(a_actor);
+	}
+
+	bool IsSitting(RE::FormID a_actor)
+	{
+		auto it = pets.find(a_actor);
+		return it != pets.end() && it->second.sitting;
+	}
+
+	void SavePets(SKSE::SerializationInterface* a_intfc)
+	{
+		if (pets.empty() || !a_intfc->OpenRecord(kPetsRecord, 1)) {
+			return;
+		}
+		const auto count = static_cast<std::uint32_t>(pets.size());
+		a_intfc->WriteRecordData(count);
+		for (const auto& [id, pet] : pets) {
+			const std::uint8_t sitting = pet.sitting ? 1 : 0;
+			a_intfc->WriteRecordData(id);
+			a_intfc->WriteRecordData(sitting);
+		}
+	}
+
+	void LoadPets(SKSE::SerializationInterface* a_intfc)
+	{
+		std::uint32_t count = 0;
+		a_intfc->ReadRecordData(count);
+		for (std::uint32_t i = 0; i < count && i < 4096; ++i) {
+			RE::FormID   id = 0, resolved = 0;
+			std::uint8_t sitting = 0;
+			if (a_intfc->ReadRecordData(id) && a_intfc->ReadRecordData(sitting) && a_intfc->ResolveFormID(id, resolved)) {
+				pets[resolved] = Pet{ sitting != 0, false };
+			}
+		}
+		logger::info("pets: {} tamed animal(s)", pets.size());
+	}
+
+	void ClearPets()
+	{
+		pets.clear();
+	}
+
 	void PerFrame(RE::PlayerCharacter* a_player, std::uint32_t a_heldFood, bool a_driving, float a_delta)
 	{
 		TickLeads(a_player, a_delta);
+		TickPets(a_player, a_delta);
 		TickBabies(a_delta);
 		for (const auto& [id, _] : following) {
 			if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(id)) {
@@ -542,7 +707,8 @@ namespace skycraft::Animals
 			for (auto& handle : lists->highActorHandles) {
 				auto  actorPtr = handle.get();
 				auto* actor = actorPtr.get();
-				if (!actor || actor->IsDead() || actor->IsPlayerRef() || actor->IsInCombat() || leads.contains(actor->GetFormID()) || !(Likes(actor) & food)) {
+				if (!actor || actor->IsDead() || actor->IsPlayerRef() || actor->IsInCombat() || leads.contains(actor->GetFormID()) || pets.contains(actor->GetFormID()) ||
+					!(Likes(actor) & food)) {
 					continue;
 				}
 				const float distance = actor->GetPosition().GetDistance(at);

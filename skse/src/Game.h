@@ -447,6 +447,15 @@ namespace skycraft
 		void          SaveWalks(SKSE::SerializationInterface* a_intfc);
 		void          LoadWalks(SKSE::SerializationInterface* a_intfc);
 		void          ClearWalks();
+		// SkyCraft+ : a fed baby grows a share of what it has left (kEvGrowBaby).
+		void          OnGrowBaby(RE::FormID a_baby, float a_share);
+		// SkyCraft+ : tamed with bones (kEvTame: 1 tamed, 2 sits, 3 stands); follows the player and fights for them.
+		void          OnTame(RE::PlayerCharacter* a_player, RE::FormID a_actor, std::uint32_t a_mode);
+		bool          IsTamed(RE::FormID a_actor);
+		bool          IsSitting(RE::FormID a_actor);
+		void          SavePets(SKSE::SerializationInterface* a_intfc);
+		void          LoadPets(SKSE::SerializationInterface* a_intfc);
+		void          ClearPets();
 	}
 
 	// SkyCraft+ : Skyrim crops on Minecraft farmland.

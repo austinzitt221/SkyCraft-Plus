@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 52; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY
+	public static final int VERSION = 53; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED)
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -122,6 +122,7 @@ public final class Proto {
 	public static final int ACTOR_BABY = 1 << 6, ACTOR_SPECIES_SHIFT = 8; // SkyCraft+ : v44, breeding (SkyBreeding's kinds)
 	public static final int ACTOR_TEAMMATE = 1 << 7; // SkyCraft+ : v45, the player's follower (fights Minecraft's monsters with them)
 	public static final int ACTOR_RANGED = 1 << 16; // SkyCraft+ : v46, holds a bow or crossbow (fights Minecraft's mobs from afar)
+	public static final int ACTOR_TAMED = 1 << 17, ACTOR_SITTING = 1 << 18; // SkyCraft+ : v53, tamed with bones (follows, fights for the player); told to sit
 
 	// Event ring (relative to OFF_EVENT_RING)
 	public static final int EVENT_RING_ENTRIES = 512;
@@ -142,6 +143,8 @@ public final class Proto {
 	public static final int EV_MINED_ORE = 9; // SkyCraft+ : v44, a/b/c = the mined block's centre: the Skyrim ore vein's ore
 	public static final int EV_MOB_FIGHT = 14; // SkyCraft+ : v45, formId fights a mob at a/b/c: flags 1 strikes now, 0 goes to it; v46: 2 lets a drawn bow go
 	public static final int EV_SPAWN_ACTOR = 15; // SkyCraft+ : v48, a Skyrim spawn egg: formId (an actor base) appears at a/b/c
+	public static final int EV_GROW_BABY = 16; // SkyCraft+ : v53, formId's baby was fed: it grows a = this share of what it has left
+	public static final int EV_TAME = 17; // SkyCraft+ : v53, formId given bones: flags 1 tamed, 2 sits, 3 stands
 	public static final int EV_DRAGON_SOUL = 8; // SkyCraft+ : v39, the Ender Dragon died near this player: a Skyrim dragon soul
 	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,
 		SKY_ACT_EQUIP_RIGHT = 6, SKY_ACT_EQUIP_LEFT = 7, SKY_ACT_DROP = 8, // SkyCraft+ : v36, shortcuts
@@ -294,7 +297,7 @@ public final class Proto {
 	public static final long MS_CURSOR_SEQ = 0xD4, MS_CURSOR_X = 0xD8, MS_CURSOR_Y = 0xDC; // SkyCraft+ : v34, controller inventory snapping
 	public static final long MS_HELD_FOOD = 0xE0; // SkyCraft+ : v44, FOOD_* bits: Skyrim animals follow it
 	public static final int FOOD_SEEDS = 1, FOOD_WHEAT = 1 << 1, FOOD_CARROT = 1 << 2, FOOD_APPLE = 1 << 3, FOOD_BERRIES = 1 << 4, FOOD_MEAT = 1 << 5,
-		FOOD_FISH = 1 << 6, FOOD_BEETROOT = 1 << 7;
+		FOOD_FISH = 1 << 6, FOOD_BEETROOT = 1 << 7, FOOD_BONE = 1 << 8;
 
 	public static final int MC_IN_WORLD = 1;
 	public static final int MC_SCREEN_OPEN = 1 << 1;
