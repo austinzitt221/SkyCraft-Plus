@@ -302,6 +302,7 @@ public final class Proto {
 	public static final long MS_HANDS = 0xD0; // SkyCraft+ : v33, hand mixing (see McState::hands)
 	public static final long MS_CURSOR_SEQ = 0xD4, MS_CURSOR_X = 0xD8, MS_CURSOR_Y = 0xDC; // SkyCraft+ : v34, controller inventory snapping
 	public static final long MS_HELD_FOOD = 0xE0; // SkyCraft+ : v44, FOOD_* bits: Skyrim animals follow it
+	public static final long MS_USE_DISTANCE = 0xE4; // SkyCraft+ : v55, float: how far the Minecraft thing used by hand in view is (0 none)
 	public static final int FOOD_SEEDS = 1, FOOD_WHEAT = 1 << 1, FOOD_CARROT = 1 << 2, FOOD_APPLE = 1 << 3, FOOD_BERRIES = 1 << 4, FOOD_MEAT = 1 << 5,
 		FOOD_FISH = 1 << 6, FOOD_BEETROOT = 1 << 7, FOOD_BONE = 1 << 8;
 

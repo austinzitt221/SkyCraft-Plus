@@ -36,7 +36,8 @@ public final class SkyHands {
 		if (hit instanceof net.minecraft.world.phys.EntityHitResult entityHit) {
 			var e = entityHit.getEntity();
 			return e instanceof net.minecraft.world.entity.npc.villager.AbstractVillager || e instanceof net.minecraft.world.entity.animal.equine.AbstractHorse
-				|| e instanceof net.minecraft.world.entity.vehicle.VehicleEntity || e instanceof net.minecraft.world.entity.decoration.ItemFrame;
+				|| e instanceof net.minecraft.world.entity.vehicle.VehicleEntity || e instanceof net.minecraft.world.entity.decoration.ItemFrame
+				|| e instanceof net.minecraft.world.entity.TamableAnimal tame && tame.isTame();  // SkyCraft+ : (sit or stand)
 		}
 		if (hit instanceof net.minecraft.world.phys.BlockHitResult blockHit && hit.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
 			var pos = blockHit.getBlockPos();

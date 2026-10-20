@@ -1306,6 +1306,7 @@ namespace skycraft
 				}
 			}
 			st.mcUseTarget = haveMc && (mc.flags & proto::kMcUseTarget);
+			st.mcUseDistance = haveMc ? mc.useDistance : 0.0f;  // SkyCraft+
 			if (haveMc && mc.healthFrac > 0.0f) {
 				st.mcHealthFrac = mc.healthFrac;
 			}

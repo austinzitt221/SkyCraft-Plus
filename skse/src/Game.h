@@ -44,6 +44,7 @@ namespace skycraft
 		// SkyCraft+ : Minecraft's crosshair is on something used by hand (chest, door, villager...):
 		// right click goes to Minecraft even with a Skyrim left hand.
 		std::atomic<bool> mcUseTarget{ false };
+		std::atomic<float> mcUseDistance{ 0.0f };  // SkyCraft+ : how far (blocks) that is (McState::useDistance; 0 none)
 		// SkyCraft+ : Minecraft's player health / max (Skyrim's is held at it while Minecraft drives).
 		std::atomic<float> mcHealthFrac{ 1.0f };
 		// SkyCraft+ : the Nether and the End ([Worlds] in SkyCraft.ini). While Minecraft's player is in

@@ -114,7 +114,8 @@ public final class SkyNet {
 	 * server; a guest's sends it to the host's.
 	 */
 	public record Act(int kind, int code, float a, float b, BlockPos pos, int face, float hx, float hy, float hz) implements CustomPacketPayload {
-		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4, BLOCK_HIT = 5, INTO = 6, FEED = 7, POISON = 8, RECHARGE = 9;
+		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4, BLOCK_HIT = 5, INTO = 6, FEED = 7, POISON = 8, RECHARGE = 9,
+			USE_ENTITY = 10;
 		public static final Type<Act> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "act"));
 		public static final StreamCodec<RegistryFriendlyByteBuf, Act> CODEC = StreamCodec.of((buf, act) -> {
 			buf.writeVarInt(act.kind);
@@ -247,6 +248,28 @@ public final class SkyNet {
 				var state = player.level().getBlockState(act.pos);
 				var result = state.useWithoutItem(player.level(), player, hit);
 				SkyCraft.LOG.info("SkyCraft: Skyrim mode use: {} at {}: {}", state.getBlock().getName().getString(), act.pos.toShortString(), result);
+			}
+			// SkyCraft+ : Skyrim mode's Activate on a Minecraft villager, item frame, chest minecart or tamed animal (code: its id):
+			// used by hand (an empty one: the item held isn't), never ridden (horses, boats and minecarts are Minecraft mode's).
+			case Act.USE_ENTITY -> {
+				var entity = player.level().getEntity(act.code);
+				if (entity == null || player.distanceToSqr(entity) > 8.0 * 8.0) {
+					return;
+				}
+				boolean rides = entity instanceof net.minecraft.world.entity.animal.equine.AbstractHorse
+					|| entity instanceof net.minecraft.world.entity.vehicle.VehicleEntity && !(entity instanceof net.minecraft.world.entity.vehicle.ContainerEntity);
+				if (rides) {
+					player.sendOverlayMessage(net.minecraft.network.chat.Component.literal("Ride it in Minecraft mode"));
+					return;
+				}
+				var held = player.getMainHandItem();
+				player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, net.minecraft.world.item.ItemStack.EMPTY);
+				try {
+					var result = player.interactOn(entity, net.minecraft.world.InteractionHand.MAIN_HAND, new net.minecraft.world.phys.Vec3(act.hx, act.hy, act.hz));
+					SkyCraft.LOG.info("SkyCraft: Skyrim mode use: {}: {}", entity.getName().getString(), result);
+				} finally {
+					player.setItemInHand(net.minecraft.world.InteractionHand.MAIN_HAND, held);
+				}
 			}
 			case Act.HEAL -> {
 				if (player.isAlive()) {

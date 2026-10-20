@@ -346,6 +346,13 @@ public final class SkyClient {
 		if (minecraft.player == null || minecraft.gui.screen() != null) {
 			return;
 		}
+		// SkyCraft+ : Skyrim mode's Activate on Minecraft's people and things too: villagers' trading, item frames, chest minecarts.
+		if (minecraft.hitResult instanceof net.minecraft.world.phys.EntityHitResult entityHit && SkyHands.usableTargetInView(minecraft)) {
+			var at = entityHit.getLocation();
+			act(minecraft, new dev.skycraft.net.SkyNet.Act(dev.skycraft.net.SkyNet.Act.USE_ENTITY, entityHit.getEntity().getId(), 0.0F, 0.0F, net.minecraft.core.BlockPos.ZERO, 0,
+				(float) at.x, (float) at.y, (float) at.z));
+			return;
+		}
 		if (!(minecraft.hitResult instanceof BlockHitResult hit) || hit.getType() != HitResult.Type.BLOCK) {
 			SkyCraft.LOG.info("SkyCraft: Skyrim mode use: no Minecraft block in view");
 			return;
@@ -780,6 +787,9 @@ public final class SkyClient {
 		} else if (player != null && (SkyHands.usableTargetInView(minecraft) || SkyShortcutsClient.usableInHand(player))) {
 			flags |= Proto.MC_USE_TARGET;  // (SkyCraft+ : Skyrim shortcuts: a potion's right click is Minecraft's too)
 		}
+		// SkyCraft+ : Skyrim mode's Activate. How far the Minecraft thing used by hand is: nearer than Skyrim's target, Activate is ours.
+		mc.useDistance = player != null && minecraft.gui.screen() == null && minecraft.hitResult != null && SkyHands.usableTargetInView(minecraft)
+			? (float) minecraft.hitResult.getLocation().distanceTo(player.getEyePosition()) : 0.0F;
 		// SkyCraft+ : Skyrim's inventory in Minecraft's (and the shortcuts' counts). Skyrim keeps its list current meanwhile.
 		if (SkyShortcutsClient.wanted()) {
 			flags |= Proto.MC_WANTS_SKY_INVENTORY;

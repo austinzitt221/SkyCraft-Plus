@@ -481,8 +481,13 @@ namespace skycraft
 			return controls && controls->GetMappedKey("Activate", button->GetDevice()) == button->GetIDCode();
 		}
 
+		// SkyCraft+ : Skyrim mode's Activate went to Minecraft's thing, nearer than Skyrim's target: the press (and
+		// its release) are kept from Skyrim (PlayerControlsHook), so Skyrim doesn't also activate its own.
+		std::atomic<std::uint64_t> activateToMinecraftAt{ 0 };
+
 		// Skyrim mode: Activate on nothing Skyrim can activate uses the Minecraft block under the
-		// crosshair instead (Minecraft's player looks the same way, see Game.cpp).
+		// crosshair instead (Minecraft's player looks the same way, see Game.cpp). SkyCraft+ : and so does
+		// Activate on a Skyrim target farther away than the Minecraft block, villager or chest in front of it.
 		void UseMinecraftBlockIfNothingElse()
 		{
 			auto* pick = RE::CrosshairPickData::GetSingleton();
@@ -491,7 +496,15 @@ namespace skycraft
 				return;
 			}
 			if (auto target = pick->GetActiveTarget().get(); target && target.get() != player) {
-				return;  // Skyrim activates that itself
+				const float mine = State().mcUseDistance;
+				auto*       camera = RE::PlayerCamera::GetSingleton();
+				const auto  eye = camera && camera->cameraRoot ? camera->cameraRoot->world.translate : player->GetLookingAtLocation();
+				const float theirs = target->GetPosition().GetDistance(eye) / float(proto::kUnitsPerBlock);
+				if (!(mine > 0.0f && mine + 0.4f < theirs)) {
+					return;  // Skyrim activates that itself
+				}
+				activateToMinecraftAt = GetTickCount64();
+				logger::info("Skyrim mode: Activate on the Minecraft thing in front ({:.1f} blocks) of {} ({:.1f})", mine, target->GetDisplayFullName(), theirs);
 			}
 			Link::Get().PushInput(proto::kInUse, 0);
 			logger::info("Skyrim mode: Activate on no Skyrim target; using the Minecraft block in view");
@@ -1095,16 +1108,36 @@ namespace skycraft
 				if ((!st.minecraftOwnsPlayer && !mcScreenInSkyrimMode) || Game::SkyrimMenuOpen()) {
 					// SkyCraft+ : controller. In Skyrim mode the right stick click switches back to
 					// Minecraft mode, not Skyrim's camera view.
+					// SkyCraft+ : and an Activate that went to Minecraft's thing (UseMinecraftBlockIfNothingElse) isn't Skyrim's too.
+					static bool droppingActivate = false;
+					auto        isActivate = [&](RE::InputEvent* a_e) {
+						auto* events = RE::UserEvents::GetSingleton();
+						return a_e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton && events && a_e->QUserEvent() == events->activate;
+					};
+					auto dropped = [&](RE::InputEvent* a_e) {
+						if (!isActivate(a_e)) {
+							return false;
+						}
+						auto* button = a_e->AsButtonEvent();
+						if (button->IsDown() && GetTickCount64() - activateToMinecraftAt.load() < 250) {
+							droppingActivate = true;
+						}
+						const bool drop = droppingActivate;
+						if (button->IsUp()) {
+							droppingActivate = false;
+						}
+						return drop;
+					};
 					if (a_event && *a_event && !Game::SkyrimMenuOpen()) {
 						bool toggle = false;
 						for (auto* e = *a_event; e; e = e->next) {
-							toggle = toggle || Pad::IsModeToggle(e);
+							toggle = toggle || Pad::IsModeToggle(e) || (isActivate(e) && (droppingActivate || GetTickCount64() - activateToMinecraftAt.load() < 250));
 						}
 						if (toggle) {
 							std::vector<RE::InputEvent*> all, keep;
 							for (auto* e = *a_event; e; e = e->next) {
 								all.push_back(e);
-								if (!Pad::IsModeToggle(e)) {
+								if (!Pad::IsModeToggle(e) && !dropped(e)) {
 									keep.push_back(e);
 								}
 							}

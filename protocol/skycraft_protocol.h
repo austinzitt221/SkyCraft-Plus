@@ -265,7 +265,9 @@ namespace skycraft::proto
 		// SkyCraft+ : Skyrim animals follow food (v44). What the player holds that tempts animals
 		// (HeldFood bits, either hand): Skyrim's animals that like it follow, as Minecraft's do.
 		std::uint32_t heldFood;
-		std::uint32_t padE4;
+		// SkyCraft+ : Skyrim mode's Activate (v55). How far (blocks, from the eye) the Minecraft thing used by
+		// hand under the crosshair is (kMcUseTarget; 0: none): nearer than Skyrim's target, Activate is Minecraft's.
+		float         useDistance;
 	};
 	static_assert(sizeof(McState) == 0xE8);
 
