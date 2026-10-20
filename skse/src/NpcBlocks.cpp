@@ -702,7 +702,7 @@ namespace skycraft
 			static float whyTimer = 0.0f;
 			static int   whyLogged = 0;
 			whyTimer = std::max(0.0f, whyTimer - a_delta);
-			const auto whyNot = [&](const char* a_reason) {
+			const auto whyNot = [&](const std::string& a_reason) {
 				if (whyTimer > 0.0f || whyLogged >= 20) {
 					return;
 				}
@@ -797,6 +797,8 @@ namespace skycraft
 			double       bestTop = -1.0;
 			const float  radius = cfg.radius > 0.0f ? cfg.radius : BodyRadius(a_player);
 			double       missed = 1e9;  // the nearest step ahead that was out of reach (for the log)
+			int          notAhead = 0, cramped = 0;
+			std::string  blocker;  // the first box that left no room above a step (for the log)
 			for (const auto& b : boxes) {
 				const double top = b.hi[1];
 				if (top <= feet + 0.02 || top > feet + cfg.height + 1e-3 || top <= bestTop) {
@@ -807,8 +809,13 @@ namespace skycraft
 				const double qz = std::clamp(mc.z, double(b.lo[2]), double(b.hi[2]));
 				const double vx = qx - mc.x, vz = qz - mc.z;
 				const double dist = std::sqrt(vx * vx + vz * vz);
-				if (dist < 1e-4 || (vx * wantX + vz * wantZ) / dist < 0.5) {
-					continue;  // under the body, or beside it (sliding along it), not ahead
+				// SkyCraft+ : a step already inside the body's width is pressed against (Skyrim's round-bottomed body rides onto the
+				// edge, well inside its width), so it is taken whichever way the player pushes, as Minecraft steps up from any side
+				// it is blocked on. Only a step farther out has to be ahead.
+				const bool touching = dist < radius;
+				if (!touching && (vx * wantX + vz * wantZ) / dist < 0.5) {
+					++notAhead;
+					continue;  // beside the body (sliding along it), not ahead
 				}
 				if (dist >= radius + cfg.reach) {
 					missed = std::min(missed, dist);
@@ -822,15 +829,22 @@ namespace skycraft
 					if (o.lo[0] < mc.x + half && o.hi[0] > mc.x - half && o.lo[2] < mc.z + half && o.hi[2] > mc.z - half && o.lo[1] < newFeet + cfg.bodyHeight &&
 						o.hi[1] > newFeet + 0.001) {
 						roomy = false;
+						if (blocker.empty()) {
+							blocker = std::format("({:.2f}..{:.2f}, {:.2f}..{:.2f}, {:.2f}..{:.2f})", o.lo[0] - mc.x, o.hi[0] - mc.x, o.lo[1] - feet, o.hi[1] - feet,
+								o.lo[2] - mc.z, o.hi[2] - mc.z);
+						}
 						break;
 					}
 				}
 				if (roomy) {
 					bestTop = top;
+				} else {
+					++cramped;
 				}
 			}
 			if (bestTop < 0.0) {
-				whyNot("not ahead in the way you are pushing, out of reach, or no room above it");
+				whyNot(std::format("{} beside and not ahead, {} out of reach, {} with no room above (blocked by a box at {} from the feet); going ({:.2f}, {:.2f}), facing {:.0f} degrees",
+					notAhead, missed < 1e9 ? 1 : 0, cramped, blocker.empty() ? "-" : blocker, wantX, wantZ, a_player->GetAngleZ() * 57.2958f));
 				static int missLogged = 0;
 				if (missed < radius + cfg.reach + 0.3 && missLogged < 6) {
 					++missLogged;
