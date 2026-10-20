@@ -44,6 +44,37 @@ namespace skycraft::SkyrimShots
 				if (arch == Arch::kStagger) {
 					push = std::max(push, 1.0f + effect->GetMagnitude() * 2.0f);
 				}
+				// SkyCraft+ : every shout in Minecraft mode. What it does besides harm, and for how long.
+				std::uint32_t also = 0;
+				switch (arch) {
+				case Arch::kParalysis:
+					also = proto::kShotParalyze;
+					break;
+				case Arch::kDisarm:
+					also = proto::kShotDisarm;
+					break;
+				case Arch::kDemoralize:
+				case Arch::kTurnUndead:
+					also = proto::kShotFear;
+					break;
+				case Arch::kCalm:
+				case Arch::kCommandSummoned:
+					also = proto::kShotCalm;
+					break;
+				case Arch::kFrenzy:
+					also = proto::kShotFrenzy;
+					break;
+				default:
+					if ((arch == Arch::kValueModifier || arch == Arch::kPeakValueModifier) && base->IsDetrimental() &&
+						base->data.primaryAV == RE::ActorValue::kDamageResist) {
+						also = proto::kShotWither;  // Marked for Death
+					}
+					break;
+				}
+				if (also) {
+					a_shot.flags |= also;
+					a_shot.seconds = std::max<std::uint32_t>(a_shot.seconds, std::clamp<std::uint32_t>(effect->GetDuration(), 2u, 60u));
+				}
 				switch (base->data.resistVariable) {
 				case RE::ActorValue::kResistFire:
 					a_shot.flags |= proto::kShotFire;
@@ -137,6 +168,48 @@ namespace skycraft::SkyrimShots
 		}
 	}
 
+	// SkyCraft+ : every shout in Minecraft mode. The shouts and spells on the player now that Minecraft acts out
+	// (proto::SelfEffects): by archetype, and two of Dragonborn's by name.
+	std::uint32_t SelfEffects(RE::PlayerCharacter* a_player)
+	{
+		auto* list = a_player ? a_player->AsMagicTarget()->GetActiveEffectList() : nullptr;
+		if (!list) {
+			return 0;
+		}
+		using Arch = RE::EffectArchetypes::ArchetypeID;
+		std::uint32_t bits = 0;
+		for (auto* active : *list) {
+			auto* base = active ? active->GetBaseObject() : nullptr;
+			if (!base || active->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled)) {
+				continue;
+			}
+			const std::string_view name = base->GetName() ? base->GetName() : "";
+			switch (base->GetArchetype()) {
+			case Arch::kEtherealize:
+				bits |= proto::kSelfEthereal;
+				break;
+			case Arch::kSlowTime:
+				bits |= proto::kSelfSlowTime;
+				break;
+			case Arch::kDetectLife:
+				bits |= proto::kSelfAura;
+				break;
+			default:
+				if (!base->IsDetrimental() && base->data.primaryAV == RE::ActorValue::kWeaponSpeedMult) {
+					bits |= proto::kSelfFury;
+				}
+				break;
+			}
+			if (name.find("Dragon Aspect") != std::string_view::npos) {
+				bits |= proto::kSelfAspect;
+			}
+			if (name.find("Storm Call") != std::string_view::npos) {
+				bits |= proto::kSelfStorm;
+			}
+		}
+		return bits;
+	}
+
 	void PerFrame(RE::PlayerCharacter* a_player, bool a_active, float a_delta)
 	{
 		if (!a_active || !a_player) {
@@ -190,7 +263,9 @@ namespace skycraft::SkyrimShots
 					continue;
 				}
 			}
-			if (shots.size() < proto::kMaxSkyrimShots && (t.shot.damage > 0.0f || (t.shot.flags & (proto::kShotPush | proto::kShotFire | proto::kShotFrost)))) {
+			constexpr std::uint32_t kDoes = proto::kShotPush | proto::kShotFire | proto::kShotFrost | proto::kShotParalyze | proto::kShotDisarm | proto::kShotFear |
+			                                proto::kShotCalm | proto::kShotFrenzy | proto::kShotWither;
+			if (shots.size() < proto::kMaxSkyrimShots && (t.shot.damage > 0.0f || (t.shot.flags & kDoes))) {
 				shots.push_back(t.shot);
 			}
 			++it;

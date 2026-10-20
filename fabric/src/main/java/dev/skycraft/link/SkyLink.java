@@ -335,6 +335,7 @@ public final class SkyLink {
 		public int sendToWorld; // SkyCraft+ : a save made in the Nether or the End: Proto.DIM_* to go to (0: none)
 		public int fed; // SkyCraft+ : hunger points Skyrim food and stamina potions gave, counted up (0..255, wrapping)
 		public int workbench, workbenchSeq; // SkyCraft+ : the Skyrim workbench the player is at (Proto.BENCH_*, 0 none), and a count of them
+		public int selfEffects; // SkyCraft+ : Proto.SELF_*: shouts and spells on the player Minecraft acts out
 
 		public boolean inGame() {
 			return (this.flags & SKY_IN_GAME) != 0;
@@ -469,6 +470,7 @@ public final class SkyLink {
 			out.fed = s.get(JAVA_BYTE, b + SS_FED) & 0xFF;
 			out.workbench = s.get(JAVA_BYTE, b + SS_WORKBENCH) & 0xFF;
 			out.workbenchSeq = s.get(JAVA_INT, b + SS_WORKBENCH_SEQ);
+			out.selfEffects = s.get(JAVA_INT, b + SS_SELF_EFFECTS);
 			VarHandle.loadLoadFence();
 			int seq2 = (int) INT.getAcquire(s, b + SS_SEQ);
 			if (seq1 == seq2) {
@@ -616,7 +618,7 @@ public final class SkyLink {
 
 	/** Seqlock read of the actor table. Returns false (leaving {@code out} empty) on a torn read. */
 	/** SkyCraft+ : one of the Skyrim player's projectiles (see SkyrimShot in the protocol). */
-	public record Shot(int id, int flags, float x0, float y0, float z0, float x1, float y1, float z1, float radius, float damage, float push) {
+	public record Shot(int id, int flags, float x0, float y0, float z0, float x1, float y1, float z1, float radius, float damage, float push, int seconds) {
 	}
 
 	/** Seqlock read of the Skyrim player's projectiles; false if the link is down or Skyrim is mid-write. */
@@ -638,7 +640,7 @@ public final class SkyLink {
 				long r = b + SHOTS_RECORDS + (long) i * SKYRIM_SHOT_BYTES;
 				out.add(new Shot(s.get(JAVA_INT, r), s.get(JAVA_INT, r + 4), s.get(JAVA_FLOAT, r + 8), s.get(JAVA_FLOAT, r + 12), s.get(JAVA_FLOAT, r + 16),
 					s.get(JAVA_FLOAT, r + 20), s.get(JAVA_FLOAT, r + 24), s.get(JAVA_FLOAT, r + 28), s.get(JAVA_FLOAT, r + 32), s.get(JAVA_FLOAT, r + 36),
-					s.get(JAVA_FLOAT, r + 40)));
+					s.get(JAVA_FLOAT, r + 40), s.get(JAVA_INT, r + 44)));
 			}
 			VarHandle.loadLoadFence();
 			if ((int) INT.getAcquire(s, b + SHOTS_SEQ) == seq1) {

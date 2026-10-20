@@ -115,7 +115,7 @@ public final class SkyNet {
 	 */
 	public record Act(int kind, int code, float a, float b, BlockPos pos, int face, float hx, float hy, float hz) implements CustomPacketPayload {
 		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4, BLOCK_HIT = 5, INTO = 6, FEED = 7, POISON = 8, RECHARGE = 9,
-			USE_ENTITY = 10;
+			USE_ENTITY = 10, SELF = 11;
 		public static final Type<Act> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "act"));
 		public static final StreamCodec<RegistryFriendlyByteBuf, Act> CODEC = StreamCodec.of((buf, act) -> {
 			buf.writeVarInt(act.kind);
@@ -295,6 +295,7 @@ public final class SkyNet {
 			case Act.RECHARGE -> dev.skycraft.craft.SkyEnchanting.recharge(player, Math.max(0.0F, Math.min(act.a, 3000.0F)));
 			case Act.SKYRIM_HIT -> SkyCombat.skyrimMelee(player, act.code, Math.max(0.0F, Math.min(act.a, 1000.0F)), Math.max(0.0F, Math.min(act.b, 8.0F)));
 			case Act.HANDS -> GUEST_HANDS.put(player.getUUID(), act.code & 0xFFFF03);
+			case Act.SELF -> dev.skycraft.combat.SkyShouts.guestSelf(player, act.code & 0xFF);  // SkyCraft+ : the shouts on a guest
 			// SkyCraft+ : Skyrim weapons break blocks. The swing landed on this Minecraft block.
 			case Act.BLOCK_HIT -> dev.skycraft.combat.SkyWeaponTools.hit(player, act.pos, (act.code & dev.skycraft.link.Proto.SKYRIM_HIT_LEFT) != 0, (act.code & dev.skycraft.link.Proto.SKYRIM_HIT_POWER) != 0);
 			// SkyCraft+ : interiors in multiplayer. The guest's Skyrim went into an interior, another
@@ -324,13 +325,14 @@ public final class SkyNet {
 				buf.writeFloat(s.radius());
 				buf.writeFloat(s.damage());
 				buf.writeFloat(s.push());
+				buf.writeVarInt(s.seconds());
 			}
 		}, buf -> {
 			int count = Math.min(buf.readVarInt(), 64);
 			var list = new java.util.ArrayList<dev.skycraft.link.SkyLink.Shot>(count);
 			for (int i = 0; i < count; i++) {
 				list.add(new dev.skycraft.link.SkyLink.Shot(buf.readInt(), buf.readInt(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(),
-					buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat()));
+					buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readFloat(), buf.readVarInt()));
 			}
 			return new Shots(list);
 		});
@@ -347,7 +349,7 @@ public final class SkyNet {
 			ServerPlayer player = context.player();
 			// Within reason, whatever the guest's client claims (friends only, but still).
 			var shots = payload.shots().stream().map(s -> new dev.skycraft.link.SkyLink.Shot(s.id(), s.flags(), s.x0(), s.y0(), s.z0(), s.x1(), s.y1(), s.z1(),
-				Math.min(Math.max(s.radius(), 0.0F), 32.0F), Math.min(Math.max(s.damage(), 0.0F), 200.0F), Math.min(Math.max(s.push(), 0.0F), 10.0F))).toList();
+				Math.min(Math.max(s.radius(), 0.0F), 32.0F), Math.min(Math.max(s.damage(), 0.0F), 200.0F), Math.min(Math.max(s.push(), 0.0F), 10.0F), Math.min(Math.max(s.seconds(), 0), 60))).toList();
 			context.server().execute(() -> dev.skycraft.combat.SkyMagic.guestShots(player, shots));
 		});
 		PayloadTypeRegistry.serverboundPlay().register(Act.TYPE, Act.CODEC);

@@ -250,6 +250,8 @@ namespace skycraft
 		// SkyCraft+ : main thread, every frame: the Skyrim player's projectiles (spells, shouts,
 		// arrows) out to Minecraft, which hits its mobs with them. a_active: Minecraft is in its world.
 		void PerFrame(RE::PlayerCharacter* a_player, bool a_active, float a_delta);
+		// SkyCraft+ : the shouts and spells on the player Minecraft acts out (proto::SelfEffects).
+		std::uint32_t SelfEffects(RE::PlayerCharacter* a_player);
 	}
 
 	namespace BlockLights

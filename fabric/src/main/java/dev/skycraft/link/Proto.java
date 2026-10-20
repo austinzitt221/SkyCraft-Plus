@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 56; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE); v56, the settings screen (OFF_SKY_SETTINGS)
+	public static final int VERSION = 57; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE); v56, the settings screen (OFF_SKY_SETTINGS); v57, every shout in Minecraft mode (SHOT_PARALYZE.., SS_SELF_EFFECTS)
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -46,6 +46,8 @@ public final class Proto {
 	public static final long SHOTS_SEQ = 0x0, SHOTS_COUNT = 0x4, SHOTS_RECORDS = 0x40;
 	public static final int SHOT_PATH = 1, SHOT_BEAM = 1 << 1, SHOT_CONE = 1 << 2, SHOT_EXPLOSION = 1 << 3, SHOT_STOPS = 1 << 4, SHOT_SPRAY = 1 << 5, SHOT_REPEATS = 1 << 6,
 		SHOT_FIRE = 1 << 8, SHOT_FROST = 1 << 9, SHOT_SHOCK = 1 << 10, SHOT_PUSH = 1 << 11, SHOT_ARROW = 1 << 12; // SkyCraft+ : v55, SHOT_ARROW: from a bow (not a spell)
+	// SkyCraft+ : v57, what shouts and spells do besides harm (for the shot's seconds).
+	public static final int SHOT_PARALYZE = 1 << 13, SHOT_DISARM = 1 << 14, SHOT_FEAR = 1 << 15, SHOT_CALM = 1 << 16, SHOT_FRENZY = 1 << 17, SHOT_WITHER = 1 << 18;
 	public static final long OFF_RENDER_RING = OFF_OVERLAY_PIXELS + OVERLAY_SLOT_BYTES * OVERLAY_SLOTS;
 	public static final long RENDER_RING_BYTES = 64L << 20;
 	// SkyCraft+ : v35, Skyrim's inventory (Skyrim -> MC, seqlock), see SkyInventory
@@ -251,6 +253,8 @@ public final class Proto {
 	public static final long SS_SEND_TO_WORLD = 0x4E; // SkyCraft+ : v30, one byte (a DIM_*; 0: none)
 	public static final long SS_FED = 0x4F; // SkyCraft+ : v43, one byte: hunger points Skyrim food and stamina potions gave, counted up
 	public static final long SS_WORKBENCH = 0x50, SS_WORKBENCH_SEQ = 0x54; // SkyCraft+ : v54, the Skyrim workbench the player is at (BENCH_*), and a count of them
+	public static final long SS_SELF_EFFECTS = 0x58; // SkyCraft+ : v57, SELF_* bits: shouts and spells on the player
+	public static final int SELF_ETHEREAL = 1, SELF_SLOW_TIME = 1 << 1, SELF_AURA = 1 << 2, SELF_ASPECT = 1 << 3, SELF_FURY = 1 << 4, SELF_STORM = 1 << 5;
 
 	public static final int SKY_IN_GAME = 1;
 	public static final int SKY_MENU_OPEN = 1 << 1;

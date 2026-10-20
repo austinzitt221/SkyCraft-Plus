@@ -44,6 +44,7 @@ public final class SkyClient {
 	private static LocalPlayer lastPlayer;
 	private static Vec3 holdPos;
 	private static int sentHands = -1; // SkyCraft+ : multiplayer (the guest's Skyrim hands, as last sent)
+	private static int sentSelf; // SkyCraft+ : every shout in Minecraft mode (the guest's, as last sent)
 	private static boolean underLand; // SkyCraft+ : the underground (kept while no land is known around)
 	private static boolean deepUnderLand; // SkyCraft+ : performance
 	private static Vec3 unlinkedHold;
@@ -183,6 +184,13 @@ public final class SkyClient {
 		// SkyCraft+ : Skyrim weapons break blocks. And what they hold (the tool each mines as).
 		SkyCombat.rightHandKind = sky.rightHandKind;
 		SkyCombat.leftHandKind = sky.leftHandKind;
+		// SkyCraft+ : every shout in Minecraft mode. The shouts on the player (Become Ethereal, Slow Time...): a guest tells the host's server.
+		dev.skycraft.combat.SkyShouts.hostSelf = sky.selfEffects;
+		if (sky.selfEffects != sentSelf && minecraft.getSingleplayerServer() == null
+			&& net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(dev.skycraft.net.SkyNet.Act.TYPE)) {
+			sentSelf = sky.selfEffects;
+			act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.SELF, sky.selfEffects, 0.0F, 0.0F));
+		}
 		int hands = (sky.rightHandSkyrim() ? 1 : 0) | (sky.leftHandSkyrim() ? 2 : 0) | (sky.rightHandKind & 0xFF) << 8 | (sky.leftHandKind & 0xFF) << 16;
 		if (hands != sentHands && minecraft.getSingleplayerServer() == null
 			&& net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(dev.skycraft.net.SkyNet.Act.TYPE)) {

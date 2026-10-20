@@ -1971,6 +1971,7 @@ namespace skycraft
 			sky.fed = static_cast<std::uint8_t>(st.fedPoints.load());  // SkyCraft+
 			sky.workbench = Workbench::Kind();  // SkyCraft+ : Minecraft's things at Skyrim's workbenches
 			sky.workbenchSeq = Workbench::Seq();
+			sky.selfEffects = SkyrimShots::SelfEffects(a_player);  // SkyCraft+ : every shout in Minecraft mode
 			sky.handKinds[0] = rightHand ? HandKind(a_player, false) : proto::kHandNone;
 			sky.handKinds[1] = leftHand ? HandKind(a_player, true) : proto::kHandNone;
 			if (sky.handKinds[0] >= proto::kHandGreatsword && sky.handKinds[0] <= proto::kHandCrossbow) {

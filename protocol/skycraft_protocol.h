@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 56;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed); v54, Minecraft's things at Skyrim's workbenches (SkyState::workbench, kStoreLendGear/kStoreReturnGear, kEvEnchantHit); v55, arrows across the games (kShotArrow), Skyrim mode's Activate (McState::useDistance); v56, the SkyCraft+ settings screen (SkySettingsText, SettingsEdit)
+	inline constexpr std::uint32_t kVersion = 57;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed); v54, Minecraft's things at Skyrim's workbenches (SkyState::workbench, kStoreLendGear/kStoreReturnGear, kEvEnchantHit); v55, arrows across the games (kShotArrow), Skyrim mode's Activate (McState::useDistance); v56, the SkyCraft+ settings screen (SkySettingsText, SettingsEdit); v57, every shout in Minecraft mode (kShotParalyze..kShotWither, SkyrimShot::seconds, SkyState::selfEffects)
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -153,6 +153,21 @@ namespace skycraft::proto
 		std::uint8_t  workbench;
 		std::uint8_t  pad1[3];
 		std::uint32_t workbenchSeq;
+		// SkyCraft+ : every shout in Minecraft mode (v57). Shouts and spells on the player now (SelfEffects),
+		// which Minecraft acts out: Become Ethereal can't be hurt, Slow Time slows its mobs, Aura Whisper shows them...
+		std::uint32_t selfEffects;
+		std::uint32_t pad2;
+	};
+
+	// SkyCraft+ (v57): SkyState::selfEffects.
+	enum SelfEffects : std::uint32_t
+	{
+		kSelfEthereal = 1u << 0,  // Become Ethereal: nothing hurts the player (nor do they hurt anything)
+		kSelfSlowTime = 1u << 1,  // Slow Time: Minecraft's mobs slowed round the player
+		kSelfAura = 1u << 2,      // Aura Whisper, Detect Life: Minecraft's mobs glow through walls
+		kSelfAspect = 1u << 3,    // Dragon Aspect: stronger, tougher
+		kSelfFury = 1u << 4,      // Elemental Fury: swings faster
+		kSelfStorm = 1u << 5,     // Storm Call: lightning on Minecraft's monsters round the player
 	};
 
 	// SkyState::handKinds.
@@ -175,7 +190,7 @@ namespace skycraft::proto
 		kHandPickaxe = 14,   // SkyCraft+ : v32, tools (one-handed axes that are a pickaxe or a woodcutter's
 		kHandWoodAxe = 15,   // axe): they break Minecraft's blocks as Minecraft's own tools do
 	};
-	static_assert(sizeof(SkyState) == 0x58);
+	static_assert(sizeof(SkyState) == 0x60);
 
 	// ---- MC -> Skyrim state @0x200 (seqlock) ------------------------------------------------
 	enum McFlags : std::uint32_t
@@ -570,6 +585,13 @@ namespace skycraft::proto
 		kShotPush = 1u << 11,      // throws what it hits back (push = strength)
 		kShotArrow = 1u << 12,     // SkyCraft+ (v55): an arrow or bolt from a bow or crossbow (not a spell): Minecraft arrows lent to
 		                           // Skyrim's bow (one is used up a shot) put their own effects on what it hits
+		// SkyCraft+ (v57): what shouts and spells do besides harm, for seconds (SkyrimShot::seconds).
+		kShotParalyze = 1u << 13,  // Ice Form, paralysis: held still
+		kShotDisarm = 1u << 14,    // Disarm: drops what it holds
+		kShotFear = 1u << 15,      // Dismay, fear: runs away
+		kShotCalm = 1u << 16,      // Kyne's Peace, Animal Allegiance, Bend Will, calm: leaves the player alone
+		kShotFrenzy = 1u << 17,    // frenzy: attacks whatever is near
+		kShotWither = 1u << 18,    // Marked for Death: its armor down and health draining
 	};
 
 	struct SkyrimShot
@@ -580,7 +602,7 @@ namespace skycraft::proto
 		float         radius;
 		float         damage;              // Minecraft damage per hit
 		float         push;
-		std::uint32_t pad;
+		std::uint32_t seconds;             // SkyCraft+ (v57): how long kShotParalyze..kShotWither last
 	};
 	static_assert(sizeof(SkyrimShot) == 48);
 

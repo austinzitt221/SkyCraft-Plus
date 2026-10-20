@@ -235,6 +235,9 @@ public final class SkyMagic {
 		if ((flags & Proto.SHOT_ARROW) != 0) {
 			SkyArrows.skyrimArrowHit(player, e);  // SkyCraft+ : a tipped or spectral Minecraft arrow's effect
 		}
+		if ((flags & (Proto.SHOT_PARALYZE | Proto.SHOT_DISARM | Proto.SHOT_FEAR | Proto.SHOT_CALM | Proto.SHOT_FRENZY | Proto.SHOT_WITHER)) != 0) {
+			SkyShouts.affect(player, e, flags, shot.seconds());  // SkyCraft+ : every shout in Minecraft mode
+		}
 		if ((flags & Proto.SHOT_PUSH) != 0 && shot.push() > 0.0F) {
 			Vec3 away = e.position().subtract(from);
 			double h = Math.sqrt(away.x * away.x + away.z * away.z);
