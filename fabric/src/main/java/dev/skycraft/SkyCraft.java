@@ -34,6 +34,7 @@ public final class SkyCraft implements ModInitializer {
 		dev.skycraft.craft.SkyMaterials.init();
 		dev.skycraft.craft.SkyLending.init(); // SkyCraft+ : Minecraft's things at Skyrim's workbenches
 		dev.skycraft.craft.SkyEnchanting.init(); // SkyCraft+ : enchanting across the games
+		dev.skycraft.world.SkyRestore.init(); // SkyCraft+ : the restoration brush
 		dev.skycraft.world.SkyWander.init(); // SkyCraft+ : mobs wandering on Skyrim's ground
 		dev.skycraft.world.SkyLootChests.init(); // SkyCraft+ : Minecraft loot chests in Skyrim's dungeons
 		dev.skycraft.world.SkyDig.init();

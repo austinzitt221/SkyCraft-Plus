@@ -1,0 +1,13 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "equipment",
+  "ingredients": [
+    "minecraft:stick",
+    "minecraft:cobblestone",
+    "minecraft:dirt"
+  ],
+  "result": {
+    "id": "skycraft:restoration_brush",
+    "count": 1
+  }
+}

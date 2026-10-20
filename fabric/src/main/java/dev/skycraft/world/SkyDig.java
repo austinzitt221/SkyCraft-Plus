@@ -114,6 +114,25 @@ public final class SkyDig {
 			return bits != null && ((bits[bit >> 6] >>> (bit & 63)) & 1L) != 0;
 		}
 
+		/** SkyCraft+ : the restoration brush. This column with a cell no longer dug (a section left with none goes). */
+		DugColumn without(int world, int x, int y, int z) {
+			int sy = y >> 4;
+			int bit = (x & 15) + 16 * (z & 15) + 256 * (y & 15);
+			List<DugSection> out = new ArrayList<>(this.sections.size());
+			for (DugSection s : this.sections) {
+				if (s.world == world && s.sectionY == sy && s.bits.length == 64) {
+					long[] bits = s.bits.clone();
+					bits[bit >> 6] &= ~(1L << (bit & 63));
+					if (Arrays.stream(bits).anyMatch(b -> b != 0L)) {
+						out.add(new DugSection(world, sy, bits));
+					}
+				} else {
+					out.add(s);
+				}
+			}
+			return new DugColumn(List.copyOf(out));
+		}
+
 		DugColumn with(int world, int x, int y, int z) {
 			int sy = y >> 4;
 			int bit = (x & 15) + 16 * (z & 15) + 256 * (y & 15);
@@ -310,6 +329,17 @@ public final class SkyDig {
 			return false;
 		}
 		chunk.setAttached(DUG, column.with(world, pos.getX(), pos.getY(), pos.getZ()));
+		return true;
+	}
+
+	/** SkyCraft+ : the restoration brush. A cell is no longer dug: Skyrim's geometry in it is back. Returns false if it wasn't dug. */
+	public static boolean unmarkDug(ServerLevel level, int world, BlockPos pos) {
+		LevelChunk chunk = level.getChunkAt(pos);
+		DugColumn column = column(chunk);
+		if (!column.isDug(world, pos.getX(), pos.getY(), pos.getZ())) {
+			return false;
+		}
+		chunk.setAttached(DUG, column.without(world, pos.getX(), pos.getY(), pos.getZ()));
 		return true;
 	}
 

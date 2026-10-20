@@ -24,6 +24,7 @@ public final class SkyCraftClient implements ClientModInitializer {
 		RenderToggles.register(); // SkyCraft+ : experimental rendering switches
 		SkyCraftingClient.register(); // SkyCraft+ : crafting across the games
 		SkyLendingClient.register(); // SkyCraft+ : Minecraft's things at Skyrim's workbenches
+		SkyRestoreClient.register(); // SkyCraft+ : the restoration brush
 		ClientTickEvents.END_CLIENT_TICK.register(SkyLendingClient::tick);
 		// Multiplayer without editing files: the host opens their world to LAN (O, Open to LAN) and
 		// e4mc gives them a link; friends type /join <link> in chat, and /leave to come back.
