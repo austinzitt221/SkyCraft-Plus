@@ -1,0 +1,12 @@
+{
+  "type": "minecraft:crafting_shapeless",
+  "category": "misc",
+  "ingredients": [
+    "minecraft:crafting_table",
+    "minecraft:iron_ingot"
+  ],
+  "result": {
+    "id": "skycraft:conversion_table",
+    "count": 1
+  }
+}

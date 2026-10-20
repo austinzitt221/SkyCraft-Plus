@@ -1,6 +1,8 @@
 {
+  "block.skycraft.conversion_table": "Conversion Table",
   "block.skycraft.skyrim_crop": "Skyrim Crop",
   "block.skycraft.skyrim_ore_vein": "Skyrim Ore Vein",
+  "container.skycraft.conversion_table": "Conversion Table",
   "entity.skycraft.skyrim_actor": "Skyrim NPC",
   "item.skycraft.skyrim_item": "Skyrim item",
   "item.skycraft.skyrim_spawn_egg": "Skyrim Spawn Egg"

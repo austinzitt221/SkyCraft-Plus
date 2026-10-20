@@ -571,7 +571,7 @@ public final class SkyInventoryPanels {
 						} else if (index >= 36 && index <= 39) {
 							SkyArmorClient.dropOn(item, index);  // SkyCraft+ : onto its armor slot
 						}
-					} else if (slot != null && SkyStorageClient.storageMenu(inventory.getMenu()) && dev.skycraft.net.SkyStorage.storageSlot(slot)) {
+					} else if (slot != null && SkyStorageClient.storesInto(inventory.getMenu(), slot)) {
 						SkyStorageClient.store(item, item.count(), slot.index, false);  // SkyCraft+ : into the chest
 					} else if (slot != null && destroySlot(inventory, slot)) {
 						giveUp(minecraft, item, Proto.SKY_ACT_DESTROY);  // SkyCraft+ : creative's destroy slot

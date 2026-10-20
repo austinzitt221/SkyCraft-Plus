@@ -1,0 +1,9 @@
+{
+  "model": {
+    "type": "minecraft:model",
+    "model": "skycraft:block/conversion_table",
+    "tints": [
+      { "type": "minecraft:constant", "value": -7354113 }
+    ]
+  }
+}

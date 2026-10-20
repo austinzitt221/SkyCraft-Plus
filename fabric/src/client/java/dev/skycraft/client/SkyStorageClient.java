@@ -84,7 +84,25 @@ public final class SkyStorageClient {
 	}
 
 	public static boolean storageScreen(@Nullable Screen screen) {
-		return enabled() && screen instanceof AbstractContainerScreen<?> container && !(screen instanceof CreativeModeInventoryScreen) && storageMenu(container.getMenu());
+		return enabled() && screen instanceof AbstractContainerScreen<?> container && !(screen instanceof CreativeModeInventoryScreen)
+			&& (storageMenu(container.getMenu()) || craftingMenu(container.getMenu()) && !(container.getMenu() instanceof net.minecraft.world.inventory.InventoryMenu));
+	}
+
+	/**
+	 * SkyCraft+ : crafting across the games. Menus whose input slots a Skyrim material goes in to be made into
+	 * something (SkyMaterials): crafting tables and the inventory's own grid, furnaces, the conversion table.
+	 */
+	public static boolean craftingMenu(AbstractContainerMenu menu) {
+		return menu instanceof net.minecraft.world.inventory.CraftingMenu || menu instanceof net.minecraft.world.inventory.InventoryMenu
+			|| menu instanceof net.minecraft.world.inventory.AbstractFurnaceMenu || menu instanceof dev.skycraft.craft.SkyConversionTable.Menu;
+	}
+
+	/** Whether a Skyrim thing put on this slot of this menu is stored there: a container's, or a crafting input's. */
+	public static boolean storesInto(AbstractContainerMenu menu, Slot slot) {
+		if (storageMenu(menu)) {
+			return SkyStorage.storageSlot(slot);
+		}
+		return craftingMenu(menu) && !(slot.container instanceof Inventory) && !(slot.container instanceof net.minecraft.world.inventory.ResultContainer);
 	}
 
 	/** Asks Skyrim to take count of item out, for slot of the open menu (-1: anywhere in its container), or into the bundle in that slot. */
@@ -254,7 +272,7 @@ public final class SkyStorageClient {
 						store(item, item.count(), hovered.index, true);
 						return false;
 					}
-					if (storageMenu(menu) && SkyStorage.storageSlot(hovered)) {
+					if (storesInto(menu, hovered)) {
 						store(item, right ? 1 : item.count(), hovered.index, false);
 						return false;
 					}
