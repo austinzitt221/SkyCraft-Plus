@@ -145,7 +145,7 @@ public final class SkyBreeding {
 
 	/** SkyCraft+ : a bone for a dog or a wolf: a one in three chance it's tamed (as Minecraft's wolves), with hearts; smoke if not. */
 	private static boolean tame(SkyrimActorEntity proxy, ServerPlayer player, SkyLink.Actor actor, int species) {
-		if (species != DOG && species != WOLF || (actor.flags() & (Proto.ACTOR_TAMED | Proto.ACTOR_DEAD)) != 0) {
+		if (species != DOG && species != WOLF || (actor.flags() & (Proto.ACTOR_TAMED | Proto.ACTOR_DEAD)) != 0 || !dev.skycraft.SkySettings.flag("skyrimFoodForAnimals", true)) {
 			return false;
 		}
 		ServerLevel level = player.level();

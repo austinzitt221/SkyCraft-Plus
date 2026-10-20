@@ -167,6 +167,8 @@ public final class SkySettingsScreen extends Screen {
 		{ "Items & combat", "skyrimFightsMobs", "true", "Your followers fight Minecraft's monsters; anyone a mob hurts hits back." },
 		{ "Items & combat", "petsThroughDoors", "true", "Your pets and led animals come through Skyrim's doors with you." },
 		{ "Items & combat", "starterKit", "false", "New players get a Minecraft starter kit (sword, pickaxe, bow, food)." },
+		{ "Items & combat", "silkTouchSkyrimGeo", "true", "Mining Skyrim's ground or rock with silk touch gives that piece of Skyrim as a block (else its Minecraft block)." },
+		{ "Items & combat", "skyrimFoodForAnimals", "true", "Skyrim food feeds animals (Skyrim's and Minecraft's), and bones tame Skyrim's dogs and wolves." },
 	};
 
 	private void reload() {

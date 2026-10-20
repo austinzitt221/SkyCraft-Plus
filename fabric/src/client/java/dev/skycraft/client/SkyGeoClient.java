@@ -61,7 +61,7 @@ public final class SkyGeoClient {
 
 	/** The cell came out: with silk touch, its piece is sent (true), else it's an ordinary dig (false). */
 	static boolean mined(Minecraft minecraft, int world, BlockPos pos, int material) {
-		if (!silkTouch(minecraft) || !ClientPlayNetworking.canSend(SkyGeo.Mine.TYPE)) {
+		if (!silkTouch(minecraft) || !ClientPlayNetworking.canSend(SkyGeo.Mine.TYPE) || !dev.skycraft.SkySettings.flag("silkTouchSkyrimGeo", true)) {
 			return false;
 		}
 		int[] tris = capture(pos);

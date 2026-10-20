@@ -235,7 +235,7 @@ public final class SkyShortcutsClient {
 	 */
 	private static boolean feed(SkyLink.SkyItem item) {
 		var minecraft = net.minecraft.client.Minecraft.getInstance();
-		int foods = dev.skycraft.combat.SkyFoods.ofSkyrim(item.kind(), item.name());
+		int foods = dev.skycraft.SkySettings.flag("skyrimFoodForAnimals", true) ? dev.skycraft.combat.SkyFoods.ofSkyrim(item.kind(), item.name()) : 0;
 		if (foods == 0 || !(minecraft.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit)
 			|| !(hit.getEntity() instanceof net.minecraft.world.entity.animal.Animal || hit.getEntity() instanceof dev.skycraft.combat.SkyrimActorEntity)
 			|| !ClientPlayNetworking.canSend(dev.skycraft.net.SkyFeeding.Feed.TYPE)) {
