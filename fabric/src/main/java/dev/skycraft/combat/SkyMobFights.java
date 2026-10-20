@@ -54,6 +54,10 @@ public final class SkyMobFights {
 
 	private static final Map<Integer, Fight> FIGHTS = new HashMap<>();
 	private static @Nullable Boolean enabled;
+	// SkyCraft+ : the settings screen. Read again after a change.
+	static {
+		dev.skycraft.SkySettings.onChange(() -> enabled = null);
+	}
 	private static int logged;
 
 	private static boolean enabled() {

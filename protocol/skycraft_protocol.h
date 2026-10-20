@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 55;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed); v54, Minecraft's things at Skyrim's workbenches (SkyState::workbench, kStoreLendGear/kStoreReturnGear, kEvEnchantHit); v55, arrows across the games (kShotArrow), Skyrim mode's Activate (McState::useDistance)
+	inline constexpr std::uint32_t kVersion = 56;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed); v54, Minecraft's things at Skyrim's workbenches (SkyState::workbench, kStoreLendGear/kStoreReturnGear, kEvEnchantHit); v55, arrows across the games (kShotArrow), Skyrim mode's Activate (McState::useDistance); v56, the SkyCraft+ settings screen (SkySettingsText, SettingsEdit)
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -48,7 +48,9 @@ namespace skycraft::proto
 	inline constexpr std::uint64_t kSkyStoreBytes = 64ull << 10;
 	inline constexpr std::uint64_t kOffSkyCatalog = kOffSkyStore + kSkyStoreBytes;  // SkyCraft+ : v48, Skyrim -> MC, see SkyCatalog
 	inline constexpr std::uint64_t kSkyCatalogBytes = 8ull << 20;
-	inline constexpr std::uint64_t kMappingBytes = kOffSkyCatalog + kSkyCatalogBytes;
+	inline constexpr std::uint64_t kOffSkySettings = kOffSkyCatalog + kSkyCatalogBytes;  // SkyCraft+ : v56, both ways, see SkySettingsText
+	inline constexpr std::uint64_t kSkySettingsBytes = 256ull << 10;
+	inline constexpr std::uint64_t kMappingBytes = kOffSkySettings + kSkySettingsBytes;
 
 	// ---- header @0x0 ------------------------------------------------------------------------
 	struct Header
@@ -1040,6 +1042,36 @@ namespace skycraft::proto
 		SkyItem       items[kMaxCatalog];
 	};
 	static_assert(sizeof(SkyCatalog) <= kSkyCatalogBytes);
+
+	// ---- SkyCraft+ : SkyCraft.ini @kOffSkySettings (both ways), v56 ------------------------------------
+	// For Minecraft's SkyCraft+ settings screen (its pause menu): Skyrim writes the whole of SkyCraft.ini's
+	// text (seqlock; again after each change, generation up), Minecraft sends changes (edits ring, MC ->
+	// Skyrim), which Skyrim writes into the file and takes up at once where it can.
+	inline constexpr std::uint32_t kSettingsTextMax = 128u << 10;
+
+	struct SkySettingsText
+	{
+		std::uint32_t seq;
+		std::uint32_t bytes;       // of text
+		std::uint32_t generation;  // up at each write
+		std::uint32_t pad[13];
+		char          text[kSettingsTextMax];  // UTF-8, as the file has it
+	};
+
+	inline constexpr std::uint64_t kSettingsEditsOff = sizeof(SkySettingsText);
+	inline constexpr std::uint32_t kSettingsEdits = 32;  // power of two
+	inline constexpr std::uint64_t kSettingsEditHeadOff = 0x00;  // u64, written by MC (relative to kSettingsEditsOff)
+	inline constexpr std::uint64_t kSettingsEditTailOff = 0x40;  // u64, written by Skyrim
+	inline constexpr std::uint64_t kSettingsEditDataOff = 0x80;
+
+	struct SettingsEdit
+	{
+		char section[32];  // zero-terminated
+		char key[48];
+		char value[176];
+	};
+	static_assert(sizeof(SettingsEdit) == 256);
+	static_assert(kSettingsEditsOff + kSettingsEditDataOff + kSettingsEdits * sizeof(SettingsEdit) <= kSkySettingsBytes);
 
 	// ---- SkyCraft+ : Skyrim items in Minecraft's containers @kOffSkyStore, v41 ---------------------
 	// A Skyrim item put in a Minecraft chest (shulker box, hopper, bundle...) leaves Skyrim's inventory

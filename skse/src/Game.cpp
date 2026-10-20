@@ -1544,6 +1544,7 @@ namespace skycraft
 			MapMarkers::PerFrame(a_player, a_delta);  // SkyCraft+
 			SkyInventory::PerFrame(a_player, haveMc && (mc.flags & proto::kMcWantsSkyInventory) != 0, a_delta);  // SkyCraft+
 			Workbench::PerFrame(a_delta);  // SkyCraft+
+			Settings::PerFrame();  // SkyCraft+ : the settings screen
 			if (haveMc && st.mcInWorld) {
 				MinecraftEnemies::StopShotsAtBlocks(a_player);  // SkyCraft+
 			}

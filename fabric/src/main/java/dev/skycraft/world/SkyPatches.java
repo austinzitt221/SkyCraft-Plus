@@ -85,6 +85,7 @@ public final class SkyPatches {
 		Blocks.PINK_PETALS, Blocks.SUNFLOWER, Blocks.LILAC, Blocks.ROSE_BUSH, Blocks.PEONY };
 
 	public static void init() {
+		dev.skycraft.SkySettings.onChange(() -> enabled = dev.skycraft.SkySettings.flag("skyrimPatches", true));  // SkyCraft+ : the settings screen
 		ServerLifecycleEvents.SERVER_STARTED.register(SkyPatches::load);
 		ServerTickEvents.END_SERVER_TICK.register(SkyPatches::tick);
 	}

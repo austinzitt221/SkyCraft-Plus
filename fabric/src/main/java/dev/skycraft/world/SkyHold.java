@@ -35,6 +35,7 @@ public final class SkyHold {
 	}
 
 	public static void init() {
+		dev.skycraft.SkySettings.onChange(() -> enabled = dev.skycraft.SkySettings.flag("holdMobsWithoutGround", true));  // SkyCraft+ : the settings screen
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			Properties p = new Properties();
 			Path config = FabricLoader.getInstance().getConfigDir().resolve("skycraft.properties");

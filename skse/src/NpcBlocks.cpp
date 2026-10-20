@@ -607,7 +607,14 @@ namespace skycraft
 
 		const StepCfg& StepSettings()
 		{
-			static const StepCfg settings = [] {
+			// SkyCraft+ : read again when the settings screen changed SkyCraft.ini (iniGeneration).
+			static std::uint32_t read = ~0u;
+			static StepCfg settings;
+			if (read == State().iniGeneration.load()) {
+				return settings;
+			}
+			read = State().iniGeneration.load();
+			settings = [] {
 				CSimpleIniA ini;
 				ini.SetUnicode();
 				ini.LoadFile("Data/SKSE/Plugins/SkyCraft.ini");

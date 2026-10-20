@@ -59,6 +59,10 @@ public final class SkyStorageClient {
 	private static int asksThisTick;
 
 	private static @Nullable Boolean enabled;
+	// SkyCraft+ : the settings screen. Read again after a change.
+	static {
+		dev.skycraft.SkySettings.onChange(() -> enabled = null);
+	}
 
 	/** Setting: skyrimStorage in config/skycraft.properties (false: Skyrim items can't be put in Minecraft's containers; ones already there still come back). */
 	public static boolean enabled() {

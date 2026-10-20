@@ -89,6 +89,8 @@ namespace skycraft
 		// SkyCraft+ : hunger points Skyrim food and stamina potions gave (SkyState::fed; [Combat] bSkyrimFoodFeeds).
 		std::atomic<std::uint32_t> fedPoints{ 0 };
 		bool                       skyrimFoodFeeds{ true };
+		// SkyCraft+ : the settings screen. Up each time SkyCraft.ini is changed from it (settings read once take it up again).
+		std::atomic<std::uint32_t> iniGeneration{ 0 };
 		float                      skyrimFoodHunger{ 1.5f };  // SkyCraft+ : [Combat] fSkyrimFoodHunger
 		// SkyCraft+ : Minecraft loot chests in Skyrim's dungeons ([Worlds] bLootChests).
 		bool                       lootChestsOption{ true };
@@ -200,6 +202,15 @@ namespace skycraft
 		void ReleaseAll();
 		// The key that switches between Minecraft's controls and Skyrim's, as the player wrote it in SkyCraft.ini ("F8"), for the corner messages.
 		const std::string& ToggleKeyName();
+		// SkyCraft+ : SkyCraft.ini changed (the settings screen): its [Controls], [Worlds] and [Combat] again.
+		void ReloadSettings();
+	}
+
+	// SkyCraft+ : the SkyCraft+ settings screen in Minecraft's pause menu (Settings.cpp).
+	namespace Settings
+	{
+		// Main thread, every frame: SkyCraft.ini's text for Minecraft (at first), and the changes it sends.
+		void PerFrame();
 	}
 
 	namespace Input
@@ -215,6 +226,8 @@ namespace skycraft
 		// Main thread, every frame: hands Minecraft's mobs to True Directional Movement as lock-on targets while a_active (Skyrim's
 		// own control mode, Minecraft's world around the player), and takes them back when not.
 		void Update(RE::PlayerCharacter* a_player, bool a_active);
+		// SkyCraft+ : SkyCraft.ini changed: [LockOn]'s aim and range again (turning it on needs a restart).
+		void Reload();
 	}
 
 	namespace Combat

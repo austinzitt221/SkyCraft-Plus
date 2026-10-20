@@ -57,6 +57,7 @@ public final class SkyLootChests {
 	}
 
 	public static void init() {
+		dev.skycraft.SkySettings.onChange(() -> enabled = dev.skycraft.SkySettings.flag("lootChests", true));  // SkyCraft+ : the settings screen
 		ServerLifecycleEvents.SERVER_STARTED.register(SkyLootChests::start);
 		ServerTickEvents.END_SERVER_TICK.register(SkyLootChests::tick);
 	}

@@ -508,6 +508,44 @@ namespace skycraft
 		return true;
 	}
 
+	void Link::WriteSettingsText(const std::string& a_text)
+	{
+		if (!base_) {
+			return;
+		}
+		auto*      table = At<proto::SkySettingsText>(proto::kOffSkySettings);
+		auto       seq = Atomic(table->seq);
+		const auto s = seq.load(std::memory_order_relaxed);
+		seq.store(s + 1, std::memory_order_relaxed);
+		std::atomic_thread_fence(std::memory_order_release);
+		const auto bytes = static_cast<std::uint32_t>(std::min<std::size_t>(a_text.size(), proto::kSettingsTextMax));
+		std::memcpy(table->text, a_text.data(), bytes);
+		table->bytes = bytes;
+		Atomic(table->generation).store(table->generation + 1, std::memory_order_relaxed);
+		seq.store(s + 2, std::memory_order_release);
+	}
+
+	bool Link::PopSettingsEdit(proto::SettingsEdit& a_out)
+	{
+		if (!base_) {
+			return false;
+		}
+		auto*      ring = base_ + proto::kOffSkySettings + proto::kSettingsEditsOff;
+		auto&      headRef = *reinterpret_cast<std::uint64_t*>(ring + proto::kSettingsEditHeadOff);
+		auto&      tailRef = *reinterpret_cast<std::uint64_t*>(ring + proto::kSettingsEditTailOff);
+		const auto head = Atomic(headRef).load(std::memory_order_acquire);
+		auto       tail = Atomic(tailRef).load(std::memory_order_relaxed);
+		if (tail >= head) {
+			return false;
+		}
+		if (head - tail > proto::kSettingsEdits) {
+			tail = head - proto::kSettingsEdits;
+		}
+		a_out = reinterpret_cast<const proto::SettingsEdit*>(ring + proto::kSettingsEditDataOff)[tail & (proto::kSettingsEdits - 1)];
+		Atomic(tailRef).store(tail + 1, std::memory_order_release);
+		return true;
+	}
+
 	void Link::WriteLootSpots(const proto::LootSpot* a_spots, std::uint32_t a_count)
 	{
 		if (!base_) {

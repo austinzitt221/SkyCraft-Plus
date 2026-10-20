@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 55; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE)
+	public static final int VERSION = 56; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE); v56, the settings screen (OFF_SKY_SETTINGS)
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -62,7 +62,13 @@ public final class Proto {
 	public static final long SKY_CATALOG_BYTES = 8L << 20;
 	public static final int MAX_CATALOG = 40000;
 	public static final long CAT_SEQ = 0x0, CAT_COUNT = 0x4, CAT_GENERATION = 0x8, CAT_ITEMS = 0x40;
-	public static final long MAPPING_BYTES = OFF_SKY_CATALOG + SKY_CATALOG_BYTES;
+	public static final long OFF_SKY_SETTINGS = OFF_SKY_CATALOG + SKY_CATALOG_BYTES; // SkyCraft+ : v56, SkyCraft.ini both ways (the settings screen)
+	public static final long SKY_SETTINGS_BYTES = 256L << 10;
+	public static final long SET_SEQ = 0x00, SET_BYTES = 0x04, SET_GENERATION = 0x08, SET_TEXT = 0x40;
+	public static final int SETTINGS_TEXT_MAX = 128 << 10;
+	public static final long SET_EDITS = 0x40 + SETTINGS_TEXT_MAX, SET_EDIT_HEAD = 0x00, SET_EDIT_TAIL = 0x40, SET_EDIT_DATA = 0x80;
+	public static final int SETTINGS_EDITS = 32, SETTINGS_EDIT_BYTES = 256, EDIT_SECTION_BYTES = 32, EDIT_KEY_BYTES = 48, EDIT_VALUE_BYTES = 176;
+	public static final long MAPPING_BYTES = OFF_SKY_SETTINGS + SKY_SETTINGS_BYTES;
 	public static final int STORE_REQUESTS = 32, STORE_RESULTS = 64, STORE_REQUEST_BYTES = 96, STORE_RESULT_BYTES = 224;
 	public static final long STORE_REQ_HEAD = 0x00, STORE_REQ_TAIL = 0x40, STORE_RES_HEAD = 0x80, STORE_RES_TAIL = 0xC0, STORE_REQ_DATA = 0x100,
 		STORE_RES_DATA = STORE_REQ_DATA + STORE_REQUESTS * STORE_REQUEST_BYTES;

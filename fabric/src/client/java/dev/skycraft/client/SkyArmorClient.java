@@ -43,6 +43,10 @@ public final class SkyArmorClient {
 	private static final Map<Integer, Long> WEAR_SENT = new HashMap<>();
 	private static float sentHands = -1.0F, sentHandsTough = -1.0F;
 	private static @Nullable Boolean enabled;
+	// SkyCraft+ : the settings screen. Read again after a change.
+	static {
+		dev.skycraft.SkySettings.onChange(() -> enabled = null);
+	}
 
 	public static boolean enabled() {
 		if (enabled == null) {

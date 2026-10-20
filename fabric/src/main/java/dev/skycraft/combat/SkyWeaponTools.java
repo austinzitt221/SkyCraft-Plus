@@ -49,6 +49,7 @@ public final class SkyWeaponTools {
 	}
 
 	public static void init() {
+		dev.skycraft.SkySettings.onChange(() -> enabled = dev.skycraft.SkySettings.flag("skyrimWeaponsBreakBlocks", true));  // SkyCraft+ : the settings screen
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			MINING.clear();
 			Path file = FabricLoader.getInstance().getConfigDir().resolve("skycraft.properties");

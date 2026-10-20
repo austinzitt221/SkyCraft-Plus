@@ -1233,6 +1233,18 @@ namespace skycraft
 			}
 		}
 
+		// SkyCraft+ : the settings screen. SkyCraft.ini changed: its [Controls], [Worlds] and [Combat] taken up again
+		// (the keys from scratch; the mode the player is in stays).
+		void ReloadSettings()
+		{
+			const bool mode = State().skyrimMode;
+			extraMenuKeys.fill(false);
+			modeToggleKey = 0;
+			LoadControls();
+			ResolveToggleKey();
+			State().skyrimMode = mode;
+		}
+
 		void Install()
 		{
 			LoadControls();

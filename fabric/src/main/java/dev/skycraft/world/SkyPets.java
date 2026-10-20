@@ -37,6 +37,7 @@ public final class SkyPets {
 	private static int travelEnds;
 
 	public static void init() {
+		dev.skycraft.SkySettings.onChange(() -> enabled = dev.skycraft.SkySettings.flag("petsThroughDoors", true));  // SkyCraft+ : the settings screen
 		ServerTickEvents.END_SERVER_TICK.register(SkyPets::tick);
 		net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			java.util.Properties p = new java.util.Properties();

@@ -84,6 +84,7 @@ public final class SkySpawner {
 	}
 
 	public static void init() {
+		dev.skycraft.SkySettings.onChange(SkySpawner::loadSettings);  // SkyCraft+ : the settings screen
 		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
 			loadSettings();
 			lastTimeSet = -1;

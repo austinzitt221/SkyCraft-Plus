@@ -186,6 +186,7 @@ public final class SkyWander {
 	}
 
 	public static void init() {
+		dev.skycraft.SkySettings.onChange(() -> loaded = false);  // SkyCraft+ : the settings screen (read again)
 		ServerTickEvents.END_SERVER_TICK.register(SkyWander::summary);
 	}
 }

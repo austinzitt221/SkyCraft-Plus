@@ -64,18 +64,23 @@ namespace skycraft::LockOn
 		}
 	}
 
-	void Install()
+	void Reload()
 	{
-		if (installed) {
-			return;
-		}
-		installed = true;
 		CSimpleIniA ini;
 		ini.SetUnicode();
 		ini.LoadFile("Data/SKSE/Plugins/SkyCraft.ini");
 		cfg.on = ini.GetBoolValue("LockOn", "bLockOnMobs", true);
 		cfg.aimHeight = static_cast<float>(std::clamp(ini.GetDoubleValue("LockOn", "fAimHeight", 0.6), 0.1, 1.0));
 		cfg.range = static_cast<float>(std::clamp(ini.GetDoubleValue("LockOn", "fRange", 40.0), 4.0, 200.0));
+	}
+
+	void Install()
+	{
+		if (installed) {
+			return;
+		}
+		installed = true;
+		Reload();
 		if (!cfg.on) {
 			logger::info("lock-on: Minecraft's mobs as lock-on targets are off (SkyCraft.ini [LockOn] bLockOnMobs)");
 			return;
@@ -97,6 +102,7 @@ namespace skycraft::LockOn
 		if (!api) {
 			return;
 		}
+		a_active = a_active && cfg.on;  // SkyCraft+ : (turned off from the settings screen: its targets taken back)
 		if (!a_active || !a_player) {
 			Withdraw();
 			return;

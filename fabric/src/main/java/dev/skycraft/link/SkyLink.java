@@ -845,6 +845,63 @@ public final class SkyLink {
 		return id;
 	}
 
+	/** SkyCraft+ : the settings screen. SkyCraft.ini's generation (-1: the link is down); it changes when Skyrim writes the text again. */
+	public static int settingsGeneration() {
+		MemorySegment s = shm;
+		return s == null ? -1 : (int) INT.getAcquire(s, OFF_SKY_SETTINGS + SET_GENERATION);
+	}
+
+	/** SkyCraft+ : the settings screen. Seqlock read of SkyCraft.ini's text as Skyrim has it; null if the link is down or Skyrim kept writing. */
+	public static @org.jspecify.annotations.Nullable String readSettingsText() {
+		MemorySegment s = shm;
+		if (s == null) {
+			return null;
+		}
+		long b = OFF_SKY_SETTINGS;
+		for (int attempt = 0; attempt < 16; attempt++) {
+			int seq1 = (int) INT.getAcquire(s, b + SET_SEQ);
+			if ((seq1 & 1) != 0) {
+				Thread.onSpinWait();
+				continue;
+			}
+			int bytes = Math.clamp(s.get(JAVA_INT, b + SET_BYTES), 0, SETTINGS_TEXT_MAX);
+			byte[] text = s.asSlice(b + SET_TEXT, bytes).toArray(JAVA_BYTE);
+			VarHandle.loadLoadFence();
+			if ((int) INT.getAcquire(s, b + SET_SEQ) == seq1) {
+				return new String(text, StandardCharsets.UTF_8);
+			}
+		}
+		return null;
+	}
+
+	/** SkyCraft+ : the settings screen. Asks Skyrim to change one setting of SkyCraft.ini; false if it couldn't be sent. */
+	public static synchronized boolean pushSettingsEdit(String section, String key, String value) {
+		MemorySegment s = shm;
+		if (s == null) {
+			return false;
+		}
+		long base = OFF_SKY_SETTINGS + SET_EDITS;
+		long head = s.get(JAVA_LONG, base + SET_EDIT_HEAD);
+		long tail = (long) LONG.getAcquire(s, base + SET_EDIT_TAIL);
+		if (head - tail >= SETTINGS_EDITS) {
+			return false;
+		}
+		long e = base + SET_EDIT_DATA + (head & (SETTINGS_EDITS - 1)) * SETTINGS_EDIT_BYTES;
+		s.asSlice(e, SETTINGS_EDIT_BYTES).fill((byte) 0);
+		writeText(s, e, section, EDIT_SECTION_BYTES);
+		writeText(s, e + EDIT_SECTION_BYTES, key, EDIT_KEY_BYTES);
+		writeText(s, e + EDIT_SECTION_BYTES + EDIT_KEY_BYTES, value, EDIT_VALUE_BYTES);
+		LONG.setRelease(s, base + SET_EDIT_HEAD, head + 1);
+		return true;
+	}
+
+	private static void writeText(MemorySegment s, long off, String text, int max) {
+		byte[] bytes = text.getBytes(StandardCharsets.UTF_8);
+		for (int i = 0; i < Math.min(bytes.length, max - 1); i++) {
+			s.set(JAVA_BYTE, off + i, bytes[i]);
+		}
+	}
+
 	/** SkyCraft+ : a loot chest's spot in the dungeon the player is in (see LootSpot in the protocol header). */
 	public record LootSpot(double x, double y, double z, float yaw, int worldId, int tier, int kind, String key, String location) {
 	}
