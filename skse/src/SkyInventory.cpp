@@ -470,7 +470,29 @@ namespace skycraft::SkyInventory
 			for (auto& item : items) {
 				item.flags &= ~(proto::kSkyItemRightHand | proto::kSkyItemLeftHand | proto::kSkyItemVoice | proto::kSkyItemWorn);
 			}
-			int people = 0, creatures = 0;
+			// SkyCraft+ : quest people. Anyone a quest alias names (a unique actor, or a forced reference's base), or
+			// essential or protected: another of them can break that quest (the egg's tooltip warns).
+			std::unordered_set<RE::TESNPC*> questPeople;
+			for (auto* quest : handler->GetFormArray<RE::TESQuest>()) {
+				if (!quest) {
+					continue;
+				}
+				for (auto* alias : quest->aliases) {
+					if (!alias || alias->GetVMTypeID() != RE::BGSRefAlias::VMTYPEID) {
+						continue;
+					}
+					auto* ref = static_cast<RE::BGSRefAlias*>(alias);
+					if (ref->fillType == RE::BGSBaseAlias::FILL_TYPE::kUniqueActor && ref->fillData.uniqueActor.uniqueActor) {
+						questPeople.insert(ref->fillData.uniqueActor.uniqueActor);
+					} else if (ref->fillType == RE::BGSBaseAlias::FILL_TYPE::kForced) {
+						auto forced = ref->fillData.forced.forcedRef.get();
+						if (auto* base = forced ? forced->GetBaseObject() : nullptr; base && base->Is(RE::FormType::NPC)) {
+							questPeople.insert(static_cast<RE::TESNPC*>(base));
+						}
+					}
+				}
+			}
+			int people = 0, creatures = 0, quests = 0;
 			for (auto* npc : handler->GetFormArray<RE::TESNPC>()) {
 				const char* name = npc ? npc->GetName() : nullptr;
 				if (!name || !*name || npc->GetFormID() == 0x7 || items.size() >= proto::kMaxCatalog || !named.insert({ proto::kSkyActor, name }).second) {
@@ -484,13 +506,17 @@ namespace skycraft::SkyInventory
 				item.sub = person ? 0 : 1;
 				item.material = person ? 0 : EggLook(race);
 				item.count = 1;
+				if (questPeople.contains(npc) || npc->IsEssential() || npc->IsProtected()) {
+					item.flags |= proto::kSkyItemQuest;  // SkyCraft+
+					++quests;
+				}
 				SetName(item, name);
 				SetSource(item, npc);
 				items.push_back(item);
 				++(person ? people : creatures);
 			}
 			Link::Get().WriteSkyCatalog(items.data(), static_cast<std::uint32_t>(items.size()), 1);
-			logger::info("Skyrim catalog: {} things for Minecraft's creative menu ({} people, {} creatures)", items.size(), people, creatures);
+			logger::info("Skyrim catalog: {} things for Minecraft's creative menu ({} people, {} creatures; {} in quests)", items.size(), people, creatures, quests);
 			items.swap(mine);
 		}
 

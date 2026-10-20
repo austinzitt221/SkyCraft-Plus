@@ -151,9 +151,15 @@ public final class SkyCreative {
 			stack.set(DataComponents.ITEM_MODEL, model);
 		}
 		stack.set(DataComponents.CUSTOM_NAME, Component.literal(actor.name() + " Spawn Egg").withStyle(st -> st.withItalic(false).withColor(ChatFormatting.WHITE)));
-		stack.set(DataComponents.LORE, new ItemLore(List.of(Component.literal(actor.sub() == 0 ? "Skyrim person" : "Skyrim creature")
+		List<Component> lore = new java.util.ArrayList<>(List.of(Component.literal(actor.sub() == 0 ? "Skyrim person" : "Skyrim creature")
 			.withStyle(st -> st.withItalic(false).withColor(ChatFormatting.GRAY)), Component.literal(actor.plugin()).withStyle(st -> st.withItalic(false)
-			.withColor(ChatFormatting.DARK_GRAY)))));
+			.withColor(ChatFormatting.DARK_GRAY))));
+		// SkyCraft+ : a quest's person (a quest names them, or they're essential): another of them can break it.
+		if ((actor.flags() & Proto.ITEM_QUEST) != 0) {
+			lore.add(Component.literal("Warning: a quest NPC. Spawning another").withStyle(st -> st.withItalic(false).withColor(ChatFormatting.RED)));
+			lore.add(Component.literal("may break your game's quests.").withStyle(st -> st.withItalic(false).withColor(ChatFormatting.RED)));
+		}
+		stack.set(DataComponents.LORE, new ItemLore(lore));
 		return stack;
 	}
 
