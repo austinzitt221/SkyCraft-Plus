@@ -794,7 +794,8 @@ namespace skycraft
 			}
 
 			const double feet = mc.y;
-			double       bestTop = -1.0;
+			// SkyCraft+ : no step yet is -infinity, not -1: Minecraft heights go below 0 (Skyrim's world is mostly under it)
+			double       bestTop = -std::numeric_limits<double>::infinity();
 			const float  radius = cfg.radius > 0.0f ? cfg.radius : BodyRadius(a_player);
 			double       missed = 1e9;  // the nearest step ahead that was out of reach (for the log)
 			int          notAhead = 0, cramped = 0;
@@ -842,7 +843,7 @@ namespace skycraft
 					++cramped;
 				}
 			}
-			if (bestTop < 0.0) {
+			if (!std::isfinite(bestTop)) {
 				whyNot(std::format("{} beside and not ahead, {} out of reach, {} with no room above (blocked by a box at {} from the feet); going ({:.2f}, {:.2f}), facing {:.0f} degrees",
 					notAhead, missed < 1e9 ? 1 : 0, cramped, blocker.empty() ? "-" : blocker, wantX, wantZ, a_player->GetAngleZ() * 57.2958f));
 				static int missLogged = 0;
