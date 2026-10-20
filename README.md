@@ -9,6 +9,16 @@ official release.
 > your Skyrim saves, and expect updates. What changed in each update is on the
 > [Releases](../../releases) page.
 
+> **Community contributions — thank you!**
+> - **[KotIsOff](https://github.com/kotisoff)**: big resource packs work (the block atlas is sent in
+>   pieces), redstone and levers show the moment they change, blocks from mods that use Fabric's
+>   renderer (custom models), dropped items with Minecraft's own 3D model, a Mod Menu settings
+>   screen, faster re-sending of changed blocks, and **Linux support** (Minecraft native, Skyrim
+>   under Proton; see [docs/LINUX.md](docs/LINUX.md)). ([#2](../../pull/2), [#3](../../pull/3))
+> - **SunPix**: Skyrim mode collides with Minecraft blocks by their exact shapes (stairs, slabs,
+>   fences, doors), Skyrim's menus and HUD drawn over Minecraft's blocks instead of under them,
+>   and True Directional Movement lock-on for Minecraft mobs (with a patched TDM).
+
 **Download:** the latest `SkyCraft-…-plus.zip` from [Releases](../../releases). Same requirements
 as SkyCraft (see [Requirements](#requirements)). Remove the original SkyCraft from your mod manager
 first, install the zip the same way, and start a **new Minecraft world** to get the structures.
@@ -31,6 +41,10 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   down like it would with a matching Minecraft tool. Skyrim's pickaxe mines stone and ore, the
   woodcutter's axe and war axes chop wood, and swords and maces work slowly on anything soft.
   Power attacks count for more. (`skyrimWeaponsBreakBlocks` in `skycraft.properties`.)
+- In Skyrim mode you collide with Minecraft blocks by their exact shapes and walk up stairs and
+  slabs without jumping (`bStepUp` in `SkyCraft.ini`).
+- **Whirlwind Sprint** works in Minecraft mode: Z charges it word by word, you dash as far as in
+  Skyrim, and the compass shows its recovery.
 
 **Skyrim's inventory inside Minecraft's**
 - Open Minecraft's inventory and Skyrim's is right beside it: your items on the right, your magic
@@ -57,6 +71,11 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 - **Skyrim poisons on Minecraft weapons:** use a poison while holding a Minecraft weapon and its
   next hit deals the poison's damage (undead mobs included).
 - **Skyrim food and stamina potions fill Minecraft's hunger bar** (`bSkyrimFoodFeeds`).
+- **Every Skyrim item, spell and shout in Minecraft's creative menu**, on tabs of their own, plus
+  spawn eggs for Skyrim's people and creatures. Drag between the creative menu and the Skyrim
+  panels; the destroy slot deletes a Skyrim item (or just a shortcut).
+- **Plant Skyrim crops on Minecraft farmland:** cabbages, leeks, potatoes, wheat and more grow
+  through Minecraft's stages and are picked the Skyrim way.
 
 **Skyrim combat works on Minecraft mobs**
 - Skyrim melee, spells (Flames, bolts, beams), shouts and arrows hit Minecraft mobs, and fire
@@ -79,6 +98,17 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   level, from desert temple to End city, and food in all of them (`bLootChests`, `lootChests`).
 - **Your footsteps make Skyrim's sounds**, and enemies hear you walk (sneak to stay quiet)
   (`bMinecraftFootsteps`).
+- **Skyrim's animals, Minecraft style:** they follow you when you hold food they like, breed
+  (babies grow up), and go on Minecraft leads, which you can tie to fence posts. Leads work on
+  Skyrim's people too, and pets and led animals follow you through doors.
+- **Your followers fight Minecraft's monsters**, with blades and bows, and anyone a mob hurts
+  hits back (`skyrimFightsMobs`).
+- **Little Minecraft patches in Skyrim's countryside:** a grass block here and there, Minecraft
+  trees in the woods, flowers, ferns, berry bushes and tall grass (`skyrimPatches`).
+- Wandering traders come by now and then with their llamas (`wanderingTraders`).
+- Skyrim's barrels, crates, bookshelves, candles, braziers and more break into their Minecraft
+  counterparts, and Skyrim's ore veins mined with a pickaxe give real Skyrim ore.
+- Buckets fill from Skyrim's lakes, rivers and sea.
 
 **The real Minecraft underground**
 - Dig down anywhere and you're in real Minecraft terrain: caves, ores at the right depths,
@@ -87,6 +117,8 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 - Caves open only around you (`caveRevealRadius` in `skycraft.properties`, 48 blocks) and what's
   in front of you loads first; deep underground, Skyrim stops drawing the world above
   (`bHideWorldDeep` in `SkyCraft.ini`).
+- Underground, Minecraft's blocks and mobs are lit by Minecraft's own light: torches as bright as
+  in Minecraft, daylight down open shafts (`bMinecraftLightUnderground`).
 
 **The Nether and the End**
 - Build portals and go; you come back out where you went in, even in Whiterun, a house or a cave.
@@ -370,7 +402,8 @@ Movement is on or off (no slow walk yet). In Skyrim mode the controller is Skyri
   can't hit their own Skyrim NPCs yet. Guests' Skyrim magic on mobs works; their Skyrim-mode
   use of blocks is built but untested.
 - Mods that also take over the camera (Improved Camera SE, SmoothCam, True Directional Movement)
-  will conflict.
+  will conflict. Lock-on to Minecraft mobs needs a True Directional Movement built with SunPix's
+  VirtualTargets patch (`[LockOn]` in `SkyCraft.ini`).
 
 ## Building from source
 

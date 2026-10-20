@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
   "name": "skycraft-skse",
-  "version-string": "0.1.2-plus.5",
+  "version-string": "0.1.2-plus.6",
   "dependencies": [
     "directxmath",
     "directxtk",
