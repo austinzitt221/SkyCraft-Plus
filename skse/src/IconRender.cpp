@@ -50,7 +50,13 @@ namespace skycraft::IconRender
 			std::uint32_t key;
 			RE::FormID    formId;
 			std::uint64_t nameHash;
+			std::uint64_t rank;  // SkyCraft+ : which keeps its slot when there's none free: higher wins (kAlways, else when it was last asked for)
 		};
+		constexpr std::uint64_t kAlways = ~0ull;  // the inventory's things and the categories: never put out for a picture
+		// SkyCraft+ : keys whose drawing failed on the render thread (to be tried again), and how often each has.
+		std::vector<std::uint32_t>                       failedKeys;  // under lock
+		std::unordered_map<std::uint32_t, int>           failures;
+		constexpr int                                    kTries = 3;
 		std::vector<Wanted>                            wanted;
 		std::unordered_map<std::uint32_t, std::uint32_t> slotOf;       // key -> slot
 		std::unordered_map<std::uint32_t, std::uint64_t> drawnName;    // key -> name hash it was drawn for
@@ -480,22 +486,39 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 			return true;
 		}
 
-		std::uint32_t PickSlot(std::uint32_t a_key, const std::unordered_set<std::uint32_t>& a_wantedKeys)
+		// SkyCraft+ : a slot for a_key: its own, an empty one, one no longer wanted (the longest unused), or else one whose picture is wanted
+		// less (ranked lower: asked for longer ago). None (kNoSlot) if every slot holds something wanted at least as much: it waits. (Before, a
+		// full table always gave slot 0, and two pictures still wanted put each other out of it every frame: icons flickering.)
+		constexpr std::uint32_t kNoSlot = ~0u;
+
+		std::uint32_t PickSlot(std::uint32_t a_key, std::uint64_t a_rank, const std::unordered_map<std::uint32_t, std::uint64_t>& a_wanted)
 		{
 			if (const auto it = slotOf.find(a_key); it != slotOf.end()) {
 				return it->second;
 			}
-			std::uint32_t best = 0;
-			std::uint64_t oldest = ~0ull;
+			std::uint32_t best = kNoSlot, lowest = kNoSlot;
+			std::uint64_t oldest = ~0ull, lowestRank = a_rank;
 			for (std::uint32_t i = 0; i < proto::kMaxSkyIcons; ++i) {
 				if (keyIn[i] == 0) {
 					best = i;
 					break;
 				}
-				if (!a_wantedKeys.contains(keyIn[i]) && lastUse[i] < oldest) {
-					oldest = lastUse[i];
-					best = i;
+				const auto wantedHere = a_wanted.find(keyIn[i]);
+				if (wantedHere == a_wanted.end()) {
+					if (lastUse[i] < oldest) {
+						oldest = lastUse[i];
+						best = i;
+					}
+				} else if (wantedHere->second < lowestRank) {
+					lowestRank = wantedHere->second;
+					lowest = i;
 				}
+			}
+			if (best == kNoSlot) {
+				best = lowest;
+			}
+			if (best == kNoSlot) {
+				return kNoSlot;
 			}
 			if (keyIn[best] != 0) {
 				slotOf.erase(keyIn[best]);
@@ -986,15 +1009,17 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 		}
 	}
 
-	void Want(const proto::SkyItem* a_items, std::size_t a_count)
+	void Want(const proto::SkyItem* a_items, std::size_t a_count, const std::uint64_t* a_askedAt)
 	{
 		wanted.clear();
 		for (std::uint32_t i = 0; i < 18; ++i) {
-			wanted.push_back({ proto::kSkyIconCategory + i, 0, 0 });
+			wanted.push_back({ proto::kSkyIconCategory + i, 0, 0, kAlways });
 		}
 		for (std::size_t i = 0; i < a_count; ++i) {
-			wanted.push_back({ a_items[i].formId, a_items[i].formId, Hash(a_items[i].name) });
+			wanted.push_back({ a_items[i].formId, a_items[i].formId, Hash(a_items[i].name), a_askedAt && a_askedAt[i] ? a_askedAt[i] : kAlways });
 		}
+		// SkyCraft+ : most wanted first (PerFrame stops at the first with no slot: all after it are wanted less).
+		std::ranges::stable_sort(wanted, std::greater{}, &Wanted::rank);
 	}
 
 	void PerFrame()
@@ -1003,15 +1028,23 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 			return;
 		}
 		++tick;
-		std::unordered_set<std::uint32_t> keys;
+		std::unordered_map<std::uint32_t, std::uint64_t> keys;
 		for (const auto& w : wanted) {
-			keys.insert(w.key);
+			auto& rank = keys[w.key];
+			rank = std::max(rank, w.rank);
 			if (const auto it = slotOf.find(w.key); it != slotOf.end()) {
 				lastUse[it->second] = tick;
 			}
 		}
 		{
 			std::scoped_lock guard(lock);
+			// SkyCraft+ : pictures the render thread couldn't finish: drawn again (a few tries), not left as stand-ins for good.
+			for (const auto key : failedKeys) {
+				if (++failures[key] <= kTries) {
+					drawnName.erase(key);
+				}
+			}
+			failedKeys.clear();
 			if (queue.size() >= 8) {
 				return;
 			}
@@ -1024,6 +1057,11 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 			const auto drawn = drawnName.find(w.key);
 			if ((drawn != drawnName.end() && drawn->second == w.nameHash) || noModel.contains(w.key)) {
 				continue;
+			}
+			// SkyCraft+ : no slot it may have: it waits (tried again each frame, as slots come free).
+			const auto slot = PickSlot(w.key, keys[w.key], keys);
+			if (slot == kNoSlot) {
+				break;
 			}
 			drawnName[w.key] = w.nameHash;
 			++loads;
@@ -1041,9 +1079,11 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 				if (!path && logged++ < 40) {
 					logger::info("icons: {} has no model to draw", model.name);
 				}
+				keyIn[slot] = 0;  // SkyCraft+ : its slot back for another
+				slotOf.erase(w.key);
 				continue;
 			}
-			model.slot = PickSlot(w.key, keys);
+			model.slot = slot;
 			lastUse[model.slot] = tick;
 			std::scoped_lock guard(lock);
 			queue.push_back(std::move(model));
@@ -1061,6 +1101,7 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 		if (!InitResources(a_device)) {
 			std::scoped_lock guard(lock);
 			for (auto& model : queue) {
+				failedKeys.push_back(model.key);  // SkyCraft+ : tried again
 				Release(model);
 			}
 			queue.clear();
@@ -1099,6 +1140,10 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 				continue;
 			}
 			if (FAILED(hr)) {
+				{
+					std::scoped_lock guard(lock);
+					failedKeys.push_back(job.model.key);  // SkyCraft+ : the picture never came back (or took too long): tried again
+				}
 				Release(job.model);
 				job.busy = false;
 				continue;

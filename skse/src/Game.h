@@ -397,7 +397,7 @@ namespace skycraft
 	namespace IconRender
 	{
 		// Main thread: the things listed for Minecraft (pictures for these, and the categories').
-		void Want(const proto::SkyItem* a_items, std::size_t a_count);
+		void Want(const proto::SkyItem* a_items, std::size_t a_count, const std::uint64_t* a_askedAt);  // a_askedAt: 0, always kept; else when last asked for
 		// Main thread, while Minecraft wants Skyrim's inventory: loads the models still to draw.
 		void PerFrame();
 		// Present: draws them and hands the pictures to Minecraft.

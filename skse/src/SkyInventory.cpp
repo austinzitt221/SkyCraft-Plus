@@ -537,6 +537,7 @@ namespace skycraft::SkyInventory
 			}
 			// SkyCraft+ : and the pictures of Skyrim items in Minecraft's containers on screen (kStorePicture).
 			std::vector<proto::SkyItem> icons = items;
+			std::vector<std::uint64_t>  askedAt(items.size(), 0);  // SkyCraft+ : 0, the inventory's: always kept; a picture's, when last asked for
 			const auto                  now = GetTickCount64();
 			for (auto it = pictures.begin(); it != pictures.end();) {
 				auto* form = now - it->second < 60000 ? RE::TESForm::LookupByID(it->first) : nullptr;
@@ -548,9 +549,10 @@ namespace skycraft::SkyInventory
 				icon.formId = it->first;
 				SetName(icon, form->GetName());
 				icons.push_back(icon);
+				askedAt.push_back(it->second);
 				++it;
 			}
-			IconRender::Want(icons.data(), icons.size());
+			IconRender::Want(icons.data(), icons.size(), askedAt.data());
 			Link::Get().WriteSkyInventory(items.data(), static_cast<std::uint32_t>(items.size()), generation, gold, carried, carryMax);
 		}
 
