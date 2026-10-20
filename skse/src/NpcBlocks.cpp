@@ -600,7 +600,7 @@ namespace skycraft
 		{
 			bool  on{ true };
 			float height{ 0.6f };   // blocks: the highest step taken without a jump (Minecraft: 0.6)
-			float radius{ 0.3f };   // blocks: how wide the player's body is, from its middle
+			float radius{ 0.0f };   // blocks: how wide the player's body is, from its middle (0: measured)
 			float reach{ 0.14f };   // blocks: how far from the body a step is looked for (the controller stops a little short of a wall)
 			float bodyHeight{ 1.8f };  // blocks: room needed above the step
 		};
@@ -614,11 +614,35 @@ namespace skycraft
 				StepCfg c;
 				c.on = ini.GetBoolValue("Collision", "bStepUp", true);
 				c.height = static_cast<float>(std::clamp(ini.GetDoubleValue("Collision", "fStepHeight", 0.6), 0.0, 1.0));
-				c.radius = static_cast<float>(std::clamp(ini.GetDoubleValue("Collision", "fStepRadius", 0.3), 0.1, 0.6));
+				// SkyCraft+ : 0 (the default) measures the body Skyrim collides with (see BodyRadius)
+				const double radius = ini.GetDoubleValue("Collision", "fStepRadius", 0.0);
+				c.radius = radius <= 0.0 ? 0.0f : static_cast<float>(std::clamp(radius, 0.1, 0.6));
 				c.reach = static_cast<float>(std::clamp(ini.GetDoubleValue("Collision", "fStepReach", 0.14), 0.0, 0.5));
 				return c;
 			}();
 			return settings;
+		}
+
+		// SkyCraft+ : the half width (blocks) of the body Skyrim's character controller collides with. In Skyrim's mode that's
+		// Skyrim's own body, 0.88 blocks wide, not Minecraft's 0.6: it stops against a stair a little over 0.44 blocks from its
+		// middle, so with Minecraft's 0.3 the step was always just out of reach (walking into stairs never stepped).
+		float BodyRadius(RE::PlayerCharacter* a_player)
+		{
+			auto*       proxyController = skyrim_cast<RE::bhkCharProxyController*>(a_player->GetCharController());
+			auto*       proxy = proxyController ? proxyController->GetCharacterProxy() : nullptr;
+			const auto* phantom = proxy ? proxy->shapePhantom : nullptr;
+			const auto* shape = phantom ? phantom->collidable.shape : nullptr;
+			if (!shape) {
+				return 0.3f;
+			}
+			RE::hkAabb box;
+			shape->GetAabbImpl(phantom->motionState.transform, 0.0f, box);
+			alignas(16) float lo[4], hi[4];
+			_mm_store_ps(lo, box.min.quad);
+			_mm_store_ps(hi, box.max.quad);
+			const float k = RE::bhkWorld::GetWorldScaleInverse() / static_cast<float>(proto::kUnitsPerBlock);
+			const float radius = 0.25f * ((hi[0] - lo[0]) + (hi[1] - lo[1])) * k;
+			return radius > 0.1f && radius < 1.0f ? radius : 0.3f;
 		}
 
 		// The way the player is pushing to move, from Skyrim's own movement input (relative to the way the body faces, as Skyrim reads it).
@@ -723,6 +747,8 @@ namespace skycraft
 
 			const double feet = mc.y;
 			double       bestTop = -1.0;
+			const float  radius = cfg.radius > 0.0f ? cfg.radius : BodyRadius(a_player);
+			double       missed = 1e9;  // the nearest step ahead that was out of reach (for the log)
 			for (const auto& b : boxes) {
 				const double top = b.hi[1];
 				if (top <= feet + 0.02 || top > feet + cfg.height + 1e-3 || top <= bestTop) {
@@ -733,15 +759,16 @@ namespace skycraft
 				const double qz = std::clamp(mc.z, double(b.lo[2]), double(b.hi[2]));
 				const double vx = qx - mc.x, vz = qz - mc.z;
 				const double dist = std::sqrt(vx * vx + vz * vz);
-				if (dist < 1e-4 || dist >= cfg.radius + cfg.reach) {
-					continue;
+				if (dist < 1e-4 || (vx * wantX + vz * wantZ) / dist < 0.5) {
+					continue;  // under the body, or beside it (sliding along it), not ahead
 				}
-				if ((vx * wantX + vz * wantZ) / dist < 0.5) {
-					continue;  // beside the body (sliding along it), not ahead
+				if (dist >= radius + cfg.reach) {
+					missed = std::min(missed, dist);
+					continue;
 				}
 				// Room for the whole body standing on it, where the body is now?
 				const double newFeet = top + 0.01;
-				const double half = cfg.radius - 0.02;
+				const double half = radius - 0.02;
 				bool         roomy = true;
 				for (const auto& o : boxes) {
 					if (o.lo[0] < mc.x + half && o.hi[0] > mc.x - half && o.lo[2] < mc.z + half && o.hi[2] > mc.z - half && o.lo[1] < newFeet + cfg.bodyHeight &&
@@ -755,6 +782,12 @@ namespace skycraft
 				}
 			}
 			if (bestTop < 0.0) {
+				static int missLogged = 0;
+				if (missed < radius + cfg.reach + 0.3 && missLogged < 6) {
+					++missLogged;
+					logger::info("Step up: a step {:.2f} blocks ahead, out of reach (body {:.2f} + reach {:.2f}); raise fStepReach if this was a stair you stopped at",
+						missed, radius, cfg.reach);
+				}
 				return;
 			}
 
