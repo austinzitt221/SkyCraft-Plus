@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 53; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED)
+	public static final int VERSION = 54; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT)
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -67,6 +67,10 @@ public final class Proto {
 	public static final long STORE_REQ_HEAD = 0x00, STORE_REQ_TAIL = 0x40, STORE_RES_HEAD = 0x80, STORE_RES_TAIL = 0xC0, STORE_REQ_DATA = 0x100,
 		STORE_RES_DATA = STORE_REQ_DATA + STORE_REQUESTS * STORE_REQUEST_BYTES;
 	public static final int STORE_TAKE = 1, STORE_GIVE = 2, STORE_PICTURE = 3;
+	public static final int STORE_LEND_GEAR = 4, STORE_RETURN_GEAR = 5; // SkyCraft+ : v54, a Minecraft weapon or armor at Skyrim's enchanter
+	public static final int GEAR_SWORD = 1, GEAR_AXE = 2, GEAR_MACE = 3, GEAR_PICKAXE = 4, GEAR_BOW = 5, GEAR_CROSSBOW = 6, GEAR_HELMET = 7, GEAR_CHEST = 8,
+		GEAR_LEGS = 9, GEAR_BOOTS = 10, GEAR_SHIELD = 11;
+	public static final int BENCH_CREATE = 1, BENCH_SHARPEN = 2, BENCH_ENCHANT = 3, BENCH_ALCHEMY = 5, BENCH_ARMOR = 7; // SkyCraft+ : v54, SkyState workbench
 	// SkyCraft+ : v42, loot chests (Skyrim -> MC, seqlock) inside the SkyStore region, see LootSpots
 	public static final long LOOT_SPOTS_OFF = 0x8000, LOOT_SEQ = 0x0, LOOT_COUNT = 0x4, LOOT_SPOTS = 0x40;
 	public static final int MAX_LOOT_SPOTS = 16, LOOT_SPOT_BYTES = 128, LOOT_MIDDLE = 1, LOOT_END = 2;
@@ -145,6 +149,7 @@ public final class Proto {
 	public static final int EV_SPAWN_ACTOR = 15; // SkyCraft+ : v48, a Skyrim spawn egg: formId (an actor base) appears at a/b/c
 	public static final int EV_GROW_BABY = 16; // SkyCraft+ : v53, formId's baby was fed: it grows a = this share of what it has left
 	public static final int EV_TAME = 17; // SkyCraft+ : v53, formId given bones: flags 1 tamed, 2 sits, 3 stands
+	public static final int EV_ENCHANT_HIT = 18; // SkyCraft+ : v54, a Minecraft weapon's Skyrim enchantment (flags: its form id) on formId
 	public static final int EV_DRAGON_SOUL = 8; // SkyCraft+ : v39, the Ender Dragon died near this player: a Skyrim dragon soul
 	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,
 		SKY_ACT_EQUIP_RIGHT = 6, SKY_ACT_EQUIP_LEFT = 7, SKY_ACT_DROP = 8, // SkyCraft+ : v36, shortcuts
@@ -239,6 +244,7 @@ public final class Proto {
 	public static final long SS_HAND_KINDS = 0x4C; // SkyCraft+ : v29, two bytes (right, left)
 	public static final long SS_SEND_TO_WORLD = 0x4E; // SkyCraft+ : v30, one byte (a DIM_*; 0: none)
 	public static final long SS_FED = 0x4F; // SkyCraft+ : v43, one byte: hunger points Skyrim food and stamina potions gave, counted up
+	public static final long SS_WORKBENCH = 0x50, SS_WORKBENCH_SEQ = 0x54; // SkyCraft+ : v54, the Skyrim workbench the player is at (BENCH_*), and a count of them
 
 	public static final int SKY_IN_GAME = 1;
 	public static final int SKY_MENU_OPEN = 1 << 1;

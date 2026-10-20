@@ -61,7 +61,7 @@ public final class SkyShortcutsClient {
 
 	/** True while the player has shortcuts (or Skyrim armor may go in Minecraft's slots): Skyrim keeps its list current. */
 	static boolean wanted() {
-		return anyShortcuts || SkyArmorClient.enabled() && SkyLink.active();
+		return anyShortcuts || SkyArmorClient.enabled() && SkyLink.active() || SkyLendingClient.busy();
 	}
 
 	/** The count drawn on a shortcut (GuiGraphicsShortcutMixin): Skyrim's, for things there's more than one of. */
@@ -147,6 +147,13 @@ public final class SkyShortcutsClient {
 			List<Component> skyrim = SkyInventoryPanels.tooltip(item);
 			lines.clear();
 			lines.addAll(skyrim);
+			// SkyCraft+ : enchanting across the games. Minecraft enchantments it got at Minecraft's table.
+			var enchantments = stack.get(DataComponents.ENCHANTMENTS);
+			if (enchantments != null) {
+				for (var entry : enchantments.entrySet()) {
+					lines.add(net.minecraft.world.item.enchantment.Enchantment.getFullname(entry.getKey(), entry.getIntValue()));
+				}
+			}
 			String hint = useHint(item);
 			if (hint != null) {
 				lines.add(Component.literal(hint).withStyle(ChatFormatting.DARK_GRAY));
@@ -201,6 +208,9 @@ public final class SkyShortcutsClient {
 			}
 			if (SkyPoisonClient.apply(item)) {
 				return true;  // SkyCraft+ : onto the Minecraft weapon in hand
+			}
+			if (SkyCraftingClient.recharge(item)) {
+				return true;  // SkyCraft+ : a soul gem into the Minecraft weapon's Skyrim enchantment
 			}
 			if (plant(player, item)) {
 				return true;  // SkyCraft+ : onto farmland

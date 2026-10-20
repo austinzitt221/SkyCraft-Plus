@@ -23,6 +23,28 @@ public final class SkyCraftingClient {
 		MenuScreens.register(SkyConversionTable.MENU, ConversionScreen::new);
 	}
 
+	/** A filled soul gem used with a Skyrim-enchanted Minecraft weapon in hand: its soul goes into the enchantment's charge (Skyrim gives the gem up). */
+	static boolean recharge(dev.skycraft.link.SkyLink.SkyItem item) {
+		var minecraft = net.minecraft.client.Minecraft.getInstance();
+		var player = minecraft.player;
+		if (player == null || item.kind() != dev.skycraft.link.Proto.SKY_MISC || item.sub() != 1 || !item.has(dev.skycraft.link.Proto.ITEM_FILLED)) {
+			return false;
+		}
+		var weapon = player.getMainHandItem();
+		var enchant = dev.skycraft.craft.SkyEnchanting.enchant(weapon);
+		float charge = dev.skycraft.craft.SkyEnchanting.soulCharge(Math.round(item.stat()));
+		if (enchant == null || enchant.max() <= 0.0F || charge <= 0.0F) {
+			return false;
+		}
+		if (enchant.charge() >= enchant.max()) {
+			player.sendOverlayMessage(Component.literal(weapon.getHoverName().getString() + " is fully charged"));
+			return true;
+		}
+		dev.skycraft.link.SkyLink.pushEvent(dev.skycraft.link.Proto.EV_SKY_ITEM, item.formId(), 0.0F, 0.0F, 0.0F, 0.0F, dev.skycraft.link.Proto.SKY_ACT_CONSUME);
+		SkyClient.act(minecraft, dev.skycraft.net.SkyNet.Act.simple(dev.skycraft.net.SkyNet.Act.RECHARGE, 0, charge, 0.0F));
+		return true;
+	}
+
 	/** Laid out as a grindstone's: Minecraft's material on top, Skyrim's below, the other game's on the right. */
 	static final class ConversionScreen extends AbstractContainerScreen<SkyConversionTable.Menu> {
 		private static final Identifier BACKGROUND = Identifier.withDefaultNamespace("textures/gui/container/grindstone.png");

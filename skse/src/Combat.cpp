@@ -1190,6 +1190,9 @@ namespace skycraft
 				case proto::kEvTame:
 					Animals::OnTame(a_player, ev.formId, ev.flags);  // SkyCraft+
 					break;
+				case proto::kEvEnchantHit:
+					Workbench::EnchantHit(a_player, ev.formId, ev.flags);  // SkyCraft+
+					break;
 				case proto::kEvCropGrown:
 					Crops::OnGrown(a_player, ev.formId, ev.a, ev.b, ev.c);  // SkyCraft+
 					break;

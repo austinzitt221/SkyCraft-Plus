@@ -104,9 +104,19 @@ public final class SkyCombat {
 		var source = player.damageSources().playerAttack(player);
 		double kx = net.minecraft.util.Mth.sin(player.getYRot() * (float) (Math.PI / 180.0));
 		double kz = -net.minecraft.util.Mth.cos(player.getYRot() * (float) (Math.PI / 180.0));
+		// SkyCraft+ : enchanting across the games. Minecraft enchantments on the Skyrim weapon: sharpness, smite, knockback, fire aspect...
+		var enchanted = enchantedShortcut(player, (flags & Proto.SKYRIM_HIT_LEFT) != 0);
 		for (LivingEntity e : targets) {
-			if (e.hurtServer(level, source, damage)) {
-				e.knockback(bash ? 1.2 : power ? 0.8 : 0.4, kx, kz, source, damage);
+			float dealt = enchanted.isEmpty() ? damage : net.minecraft.world.item.enchantment.EnchantmentHelper.modifyDamage(level, enchanted, e, source, damage);
+			if (e.hurtServer(level, source, dealt)) {
+				float push = bash ? 1.2F : power ? 0.8F : 0.4F;
+				if (!enchanted.isEmpty()) {
+					push = net.minecraft.world.item.enchantment.EnchantmentHelper.modifyKnockback(level, enchanted, e, source, push);
+				}
+				e.knockback(push, kx, kz, source, dealt);
+				if (!enchanted.isEmpty()) {
+					net.minecraft.world.item.enchantment.EnchantmentHelper.doPostAttackEffectsWithItemSource(level, e, source, enchanted);
+				}
 			}
 		}
 		SkyCraft.LOG.info("SkyCraft: Skyrim {} hit {} Minecraft mob(s) for {}", bash ? "bash" : power ? "power attack" : "attack", targets.size(), damage);
@@ -135,7 +145,22 @@ public final class SkyCombat {
 			int hands = dev.skycraft.net.SkyNet.guestHandsAndKinds(sp);
 			kind = right ? (hands >> 8) & 0xFF : (hands >> 16) & 0xFF;
 		}
-		return SkyWeaponTools.tool(kind);
+		net.minecraft.world.item.ItemStack tool = SkyWeaponTools.tool(kind);
+		// SkyCraft+ : enchanting across the games. Minecraft enchantments the Skyrim weapon got at Minecraft's
+		// table (its shortcut in that hand keeps them): the stand-in tool mines with them (silk touch, fortune).
+		var held = player.getItemInHand(hand);
+		var enchantments = dev.skycraft.net.SkyShortcuts.isShortcut(held) ? held.get(net.minecraft.core.component.DataComponents.ENCHANTMENTS) : null;
+		if (!tool.isEmpty() && enchantments != null && !enchantments.isEmpty()) {
+			tool.set(net.minecraft.core.component.DataComponents.ENCHANTMENTS, enchantments);
+		}
+		return tool;
+	}
+
+	/** SkyCraft+ : enchanting across the games. The shortcut in the hand a Skyrim swing came from, if it holds Minecraft enchantments (else EMPTY). */
+	private static net.minecraft.world.item.ItemStack enchantedShortcut(net.minecraft.world.entity.player.Player player, boolean left) {
+		var held = player.getItemInHand(left ? net.minecraft.world.InteractionHand.OFF_HAND : net.minecraft.world.InteractionHand.MAIN_HAND);
+		var enchantments = dev.skycraft.net.SkyShortcuts.isShortcut(held) ? held.get(net.minecraft.core.component.DataComponents.ENCHANTMENTS) : null;
+		return enchantments != null && !enchantments.isEmpty() ? held : net.minecraft.world.item.ItemStack.EMPTY;
 	}
 
 	public static boolean skyrimHolds(net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand) {

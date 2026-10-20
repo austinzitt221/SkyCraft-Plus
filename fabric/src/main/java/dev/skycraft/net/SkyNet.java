@@ -114,7 +114,7 @@ public final class SkyNet {
 	 * server; a guest's sends it to the host's.
 	 */
 	public record Act(int kind, int code, float a, float b, BlockPos pos, int face, float hx, float hy, float hz) implements CustomPacketPayload {
-		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4, BLOCK_HIT = 5, INTO = 6, FEED = 7, POISON = 8;
+		public static final int USE_BLOCK = 0, HEAL = 1, SKYRIM_HIT = 2, SET_HEALTH = 3, HANDS = 4, BLOCK_HIT = 5, INTO = 6, FEED = 7, POISON = 8, RECHARGE = 9;
 		public static final Type<Act> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "act"));
 		public static final StreamCodec<RegistryFriendlyByteBuf, Act> CODEC = StreamCodec.of((buf, act) -> {
 			buf.writeVarInt(act.kind);
@@ -268,6 +268,8 @@ public final class SkyNet {
 			}
 			// SkyCraft+ : a Skyrim poison onto the Minecraft weapon in hand (a: its damage).
 			case Act.POISON -> SkyPoison.coat(player, Math.max(0.0F, Math.min(act.a, 24.0F)));
+			// SkyCraft+ : a soul gem's charge into the Minecraft weapon's Skyrim enchantment (a: the charge).
+			case Act.RECHARGE -> dev.skycraft.craft.SkyEnchanting.recharge(player, Math.max(0.0F, Math.min(act.a, 3000.0F)));
 			case Act.SKYRIM_HIT -> SkyCombat.skyrimMelee(player, act.code, Math.max(0.0F, Math.min(act.a, 1000.0F)), Math.max(0.0F, Math.min(act.b, 8.0F)));
 			case Act.HANDS -> GUEST_HANDS.put(player.getUUID(), act.code & 0xFFFF03);
 			// SkyCraft+ : Skyrim weapons break blocks. The swing landed on this Minecraft block.

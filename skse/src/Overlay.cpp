@@ -374,6 +374,7 @@ float4 PSMain(VSOut i) : SV_Target {
 			// so this is where Skyrim tells Minecraft it is still alive.
 			Link::Get().Heartbeat();
 			Game::ReportPause();
+			Workbench::WhilePaused();  // SkyCraft+
 			Game::CheckRenderedCamera();
 			try {
 				// Minecraft's world things (blocks, arrows, items) go under its hand and HUD.

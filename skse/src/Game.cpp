@@ -1542,6 +1542,7 @@ namespace skycraft
 			Crops::PerFrame(a_delta);  // SkyCraft+
 			MapMarkers::PerFrame(a_player, a_delta);  // SkyCraft+
 			SkyInventory::PerFrame(a_player, haveMc && (mc.flags & proto::kMcWantsSkyInventory) != 0, a_delta);  // SkyCraft+
+			Workbench::PerFrame(a_delta);  // SkyCraft+
 			if (haveMc && st.mcInWorld) {
 				MinecraftEnemies::StopShotsAtBlocks(a_player);  // SkyCraft+
 			}
@@ -1966,6 +1967,8 @@ namespace skycraft
 			}();
 			sky.seaLevel = seaLevel;
 			sky.fed = static_cast<std::uint8_t>(st.fedPoints.load());  // SkyCraft+
+			sky.workbench = Workbench::Kind();  // SkyCraft+ : Minecraft's things at Skyrim's workbenches
+			sky.workbenchSeq = Workbench::Seq();
 			sky.handKinds[0] = rightHand ? HandKind(a_player, false) : proto::kHandNone;
 			sky.handKinds[1] = leftHand ? HandKind(a_player, true) : proto::kHandNone;
 			if (sky.handKinds[0] >= proto::kHandGreatsword && sky.handKinds[0] <= proto::kHandCrossbow) {

@@ -153,7 +153,43 @@ public final class SkyStorage {
 	}
 
 	public static boolean isStored(ItemStack stack) {
-		return !stack.isEmpty() && stack.is(ITEM);
+		if (stack.isEmpty()) {
+			return false;
+		}
+		if (stack.is(ITEM)) {
+			return true;
+		}
+		// SkyCraft+ : enchanting across the games. A Skyrim weapon or apparel at Minecraft's enchanting table is its stand-in (standIn).
+		CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+		return data != null && data.copyTag().contains(TAG);
+	}
+
+	/**
+	 * SkyCraft+ : enchanting across the games. A stored Skyrim weapon or apparel as its Minecraft stand-in
+	 * itself (an iron sword, a bow, a chestplate), so Minecraft's enchanting table offers it what it offers
+	 * that; taken back into the inventory it goes into Skyrim as ever, and its shortcut keeps what it was
+	 * enchanted with (the Skyrim weapon's hits and mining use them: SkyCombat).
+	 */
+	public static ItemStack standIn(Stored s) {
+		Identifier modelId = Identifier.tryParse(s.model);
+		var item = modelId == null ? null : BuiltInRegistries.ITEM.getOptional(modelId).orElse(null);
+		if (item == null || item == net.minecraft.world.item.Items.PAPER) {
+			return make(s, 1);
+		}
+		ItemStack stack = new ItemStack(item);
+		CompoundTag root = new CompoundTag();
+		root.put(TAG, tagOf(s));
+		stack.set(DataComponents.CUSTOM_DATA, CustomData.of(root));
+		stack.set(DataComponents.MAX_STACK_SIZE, 1);
+		stack.set(DataComponents.CUSTOM_NAME, Component.literal(s.name).withStyle(st -> st.withItalic(false).withColor(ChatFormatting.WHITE)));
+		stack.set(DataComponents.LORE, new ItemLore(lore(s)));
+		return stack;
+	}
+
+	/** Whether a Skyrim thing goes onto this slot as its stand-in: the enchanting table's (weapons and apparel). */
+	private static boolean asStandIn(AbstractContainerMenu menu, @Nullable Slot slot, Stored stored) {
+		return slot != null && menu instanceof net.minecraft.world.inventory.EnchantmentMenu && slot.index == 0
+			&& (stored.kind == Proto.SKY_WEAPON || stored.kind == Proto.SKY_APPAREL);
 	}
 
 	public static @Nullable Stored stored(ItemStack stack) {
@@ -174,26 +210,8 @@ public final class SkyStorage {
 	/** The Minecraft item for count of a stored Skyrim thing (count up to its stack size). */
 	public static ItemStack make(Stored s, int count) {
 		ItemStack stack = new ItemStack(ITEM, count);
-		CompoundTag tag = new CompoundTag();
-		tag.putString("plugin", s.plugin);
-		tag.putInt("id", s.localId);
-		tag.putInt("kind", s.kind);
-		tag.putInt("sub", s.sub);
-		tag.putInt("material", s.material);
-		tag.putInt("flags", s.flags);
-		tag.putFloat("health", s.health);
-		tag.putFloat("charge", s.charge);
-		tag.putInt("soul", s.soul);
-		tag.putFloat("weight", s.weight);
-		tag.putInt("value", s.value);
-		tag.putFloat("stat", s.stat);
-		tag.putFloat("stat2", s.stat2);
-		tag.putString("name", s.name);
-		tag.putString("model", s.model);
-		tag.putInt("color", s.color);
-		tag.putBoolean("glint", s.glint);
 		CompoundTag root = new CompoundTag();
-		root.put(TAG, tag);
+		root.put(TAG, tagOf(s));
 		stack.set(DataComponents.CUSTOM_DATA, CustomData.of(root));
 		Identifier modelId = Identifier.tryParse(s.model);
 		var standIn = modelId == null ? null : BuiltInRegistries.ITEM.getOptional(modelId).orElse(null);
@@ -215,6 +233,28 @@ public final class SkyStorage {
 			.withStyle(st -> st.withItalic(false).withColor(enchanted ? ChatFormatting.AQUA : ChatFormatting.WHITE)));
 		stack.set(DataComponents.LORE, new ItemLore(lore(s)));
 		return stack;
+	}
+
+	private static CompoundTag tagOf(Stored s) {
+		CompoundTag tag = new CompoundTag();
+		tag.putString("plugin", s.plugin);
+		tag.putInt("id", s.localId);
+		tag.putInt("kind", s.kind);
+		tag.putInt("sub", s.sub);
+		tag.putInt("material", s.material);
+		tag.putInt("flags", s.flags);
+		tag.putFloat("health", s.health);
+		tag.putFloat("charge", s.charge);
+		tag.putInt("soul", s.soul);
+		tag.putFloat("weight", s.weight);
+		tag.putInt("value", s.value);
+		tag.putFloat("stat", s.stat);
+		tag.putFloat("stat2", s.stat2);
+		tag.putString("name", s.name);
+		tag.putString("model", s.model);
+		tag.putInt("color", s.color);
+		tag.putBoolean("glint", s.glint);
+		return tag;
 	}
 
 	/** The stats Skyrim's menu would show, so the item says what it is wherever it is. */
@@ -263,7 +303,10 @@ public final class SkyStorage {
 		while (left > 0) {
 			int size = Math.min(left, stored.maxStack());
 			left -= size;
-			ItemStack chunk = make(stored, size);
+			ItemStack chunk = asStandIn(menu, target, stored) ? standIn(stored) : make(stored, size);
+			if (asStandIn(menu, target, stored)) {
+				left += size - 1;  // (one at a time onto the enchanting table)
+			}
 			if (target != null && deposit.intoBundle()) {
 				ItemStack bundle = target.getItem();
 				BundleContents contents = bundle.get(DataComponents.BUNDLE_CONTENTS);
@@ -339,10 +382,21 @@ public final class SkyStorage {
 				}
 				giveBack(player, stored, stack.getCount());
 				ItemStack shortcut = null;
+				// SkyCraft+ : enchanting across the games. Minecraft enchantments it got (as its stand-in, at the
+				// enchanting table) go onto its shortcut: the one it has, or a new one here.
+				var enchantments = stack.get(DataComponents.ENCHANTMENTS);
+				boolean enchanted = enchantments != null && !enchantments.isEmpty();
+				ItemStack existing = enchanted ? shortcutFor(inventory, stored) : null;
+				if (existing != null) {
+					existing.set(DataComponents.ENCHANTMENTS, enchantments);
+				}
 				// (SkyCraft+ : a dragon soul from the creative menu is absorbed: nothing to keep a shortcut for.)
-				if ((i < 36 || i == 40) && !hasShortcut(inventory, stored) && !SkyCreative.SOUL_PLUGIN.equals(stored.plugin())) {
+				if ((i < 36 || i == 40) && existing == null && (enchanted || !hasShortcut(inventory, stored)) && !SkyCreative.SOUL_PLUGIN.equals(stored.plugin())) {
 					shortcut = SkyShortcuts.make(new SkyShortcuts.Make(i, stored.plugin(), stored.localId(), stored.kind(), stored.model(), stored.color(), stored.glint(),
 						stored.name()));
+					if (shortcut != null && enchanted) {
+						shortcut.set(DataComponents.ENCHANTMENTS, enchantments);
+					}
 				}
 				inventory.setItem(i, shortcut != null ? shortcut : ItemStack.EMPTY);
 				changed = true;
@@ -352,6 +406,15 @@ public final class SkyStorage {
 				player.containerMenu.broadcastChanges();
 			}
 		}
+	}
+
+	private static @Nullable ItemStack shortcutFor(Inventory inventory, Stored stored) {
+		for (int i = 0; i < inventory.getContainerSize(); i++) {
+			if (sameThing(SkyShortcuts.ref(inventory.getItem(i)), stored)) {
+				return inventory.getItem(i);
+			}
+		}
+		return null;
 	}
 
 	private static boolean hasShortcut(Inventory inventory, Stored stored) {

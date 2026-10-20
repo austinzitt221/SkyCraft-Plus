@@ -94,7 +94,8 @@ public final class SkyStorageClient {
 	 */
 	public static boolean craftingMenu(AbstractContainerMenu menu) {
 		return menu instanceof net.minecraft.world.inventory.CraftingMenu || menu instanceof net.minecraft.world.inventory.InventoryMenu
-			|| menu instanceof net.minecraft.world.inventory.AbstractFurnaceMenu || menu instanceof dev.skycraft.craft.SkyConversionTable.Menu;
+			|| menu instanceof net.minecraft.world.inventory.AbstractFurnaceMenu || menu instanceof dev.skycraft.craft.SkyConversionTable.Menu
+			|| menu instanceof net.minecraft.world.inventory.EnchantmentMenu;  // (a Skyrim weapon goes on as its stand-in: SkyStorage.standIn)
 	}
 
 	/** Whether a Skyrim thing put on this slot of this menu is stored there: a container's, or a crafting input's. */
@@ -200,6 +201,9 @@ public final class SkyStorageClient {
 			TO_GIVE.poll();
 		}
 		for (SkyLink.StoreResult result : SkyLink.popStoreResults()) {
+			if (SkyLendingClient.onStoreResult(result)) {
+				continue;  // SkyCraft+ : lent to a Skyrim workbench
+			}
 			String pictureOf = PICTURE_ASKS.remove(result.id());
 			if (pictureOf != null) {
 				if (result.status() == Proto.STORE_OK) {

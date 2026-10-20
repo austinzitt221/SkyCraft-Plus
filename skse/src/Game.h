@@ -392,6 +392,8 @@ namespace skycraft
 		void Apply(RE::PlayerCharacter* a_player, const proto::McEvent& a_event);
 		// SkyCraft+ : a Skyrim spawn egg used in Minecraft: one of this actor base (a person or creature) there.
 		void Spawn(RE::PlayerCharacter* a_player, RE::FormID a_base, double a_x, double a_y, double a_z);
+		// SkyCraft+ : Minecraft's requests (SkyStoreRequest) handled now: the player update has stopped (a paused menu).
+		void ProcessStoreNow(RE::PlayerCharacter* a_player);
 	}
 
 	// SkyCraft+ : Skyrim's item pictures (IconRender.cpp).
@@ -467,6 +469,21 @@ namespace skycraft
 		void Save(SKSE::SerializationInterface* a_intfc);
 		void Load(SKSE::SerializationInterface* a_intfc);
 		void Clear();
+	}
+
+	// SkyCraft+ : Minecraft's things at Skyrim's workbenches (Workbench.cpp).
+	namespace Workbench
+	{
+		void          Install();
+		std::uint8_t  Kind();  // the workbench the player is at (BenchType), 0 none
+		std::uint32_t Seq();   // up by one at each
+		void          Given();  // something was lent: an open workbench menu makes its lists again
+		void          WhilePaused();  // Present, every frame: lent things handled while its menu pauses the game
+		void          PerFrame(float a_delta);
+		// How Minecraft acts a magic effect out ("fire", "absorb_health", "fortify_health"...), or null.
+		const char*   EffectKind(RE::EffectSetting* a_effect);
+		// A Minecraft weapon with a Skyrim enchantment hit this actor (kEvEnchantHit).
+		void          EnchantHit(RE::PlayerCharacter* a_player, RE::FormID a_target, RE::FormID a_enchantment);
 	}
 
 	// SkyCraft+ : footsteps.

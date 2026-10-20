@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 53;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed)
+	inline constexpr std::uint32_t kVersion = 54;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed); v54, Minecraft's things at Skyrim's workbenches (SkyState::workbench, kStoreLendGear/kStoreReturnGear, kEvEnchantHit)
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -144,6 +144,13 @@ namespace skycraft::proto
 		// SkyCraft+ : Skyrim food and stamina potions feed Minecraft's hunger (v43): every hunger point
 		// they've given, counted up (wrapping); Minecraft adds what's new since it last looked.
 		std::uint8_t  fed;
+		// SkyCraft+ : Minecraft's things at Skyrim's workbenches (v54). The workbench the player went to
+		// (TESFurniture::WorkBenchData::BenchType: 1 forge, tanning rack, smelter or cooking pot, 2 grindstone,
+		// 3 enchanter, 5 alchemy lab, 7 workbench; 0 none) from the moment it's activated till its menu
+		// closes, and a count that goes up at each one: Minecraft lends its matching materials meanwhile.
+		std::uint8_t  workbench;
+		std::uint8_t  pad1[3];
+		std::uint32_t workbenchSeq;
 	};
 
 	// SkyState::handKinds.
@@ -166,7 +173,7 @@ namespace skycraft::proto
 		kHandPickaxe = 14,   // SkyCraft+ : v32, tools (one-handed axes that are a pickaxe or a woodcutter's
 		kHandWoodAxe = 15,   // axe): they break Minecraft's blocks as Minecraft's own tools do
 	};
-	static_assert(sizeof(SkyState) == 0x50);
+	static_assert(sizeof(SkyState) == 0x58);
 
 	// ---- MC -> Skyrim state @0x200 (seqlock) ------------------------------------------------
 	enum McFlags : std::uint32_t
@@ -426,6 +433,8 @@ namespace skycraft::proto
 		kEvGrowBaby = 16,    // SkyCraft+ (v53): formId's baby was fed: it grows a = this share of what it has left to grow
 		kEvTame = 17,        // SkyCraft+ (v53): formId (a dog or wolf) given bones: flags 1 tamed (follows, fights for the
 		                     // player), 2 sits (stays), 3 stands (follows again)
+		kEvEnchantHit = 18,  // SkyCraft+ (v54): a Minecraft weapon enchanted at Skyrim's enchanter hit formId: the player
+		                     // casts its enchantment (flags: the EnchantmentItem) on it
 	};
 
 	// SkyCraft+ : what a click on a Skyrim item does (McEvent::flags of kEvSkyItem).
@@ -1047,6 +1056,18 @@ namespace skycraft::proto
 		kStoreTake = 1,  // take count of formId out of Skyrim's inventory (plain copies first)
 		kStoreGive = 2,  // put count of plugin/localId, with health/charge/soul, into it
 		kStorePicture = 3,  // draw plugin/localId's picture too for a while (SkyIcons; the result's formId is its key)
+		// SkyCraft+ (v54): a Minecraft weapon or piece of armor at Skyrim's enchanter.
+		kStoreLendGear = 4,    // give a Skyrim stand-in for it: soul = GearKind, plugin = its Minecraft name (the stand-in's)
+		kStoreReturnGear = 5,  // take the stand-in back: kStoreOk with its enchantment if it was enchanted (formId the
+		                       // EnchantmentItem, charge its charge, health its most, stat its cost a hit, name its effects
+		                       // as "kind magnitude seconds;..."), else kStoreNone
+	};
+
+	// SkyCraft+ (v54): what a Minecraft thing at Skyrim's enchanter stands as (SkyStoreRequest::soul of kStoreLendGear).
+	enum GearKind : std::int32_t
+	{
+		kGearSword = 1, kGearAxe = 2, kGearMace = 3, kGearPickaxe = 4, kGearBow = 5, kGearCrossbow = 6,
+		kGearHelmet = 7, kGearChest = 8, kGearLegs = 9, kGearBoots = 10, kGearShield = 11,
 	};
 
 	enum SkyStoreStatus : std::uint8_t

@@ -259,6 +259,7 @@ namespace skycraft::SkyInventory
 				item.kind = proto::kSkyMisc;
 				item.sub = 1;
 				item.flags |= a_entry && a_entry->GetSoulLevel() != RE::SOUL_LEVEL::kNone ? proto::kSkyItemFilled : 0;
+				item.stat = a_entry ? static_cast<float>(a_entry->GetSoulLevel()) : 0.0f;  // SkyCraft+ : its soul (recharging Minecraft weapons)
 				break;
 			case RE::FormType::Light:
 				item.kind = proto::kSkyMisc;
@@ -834,10 +835,163 @@ namespace skycraft::SkyInventory
 					a_player->PickUpObject(ref.get(), 1, false, false);
 				}
 			}
+			Workbench::Given();  // SkyCraft+ : (lent to a workbench whose menu is open: its lists again)
 			logger::info("Skyrim items: {} x{} back from a Minecraft container", object->GetName(), a_request.count);
 			proto::SkyStoreResult result = Refusal(a_request.id, proto::kStoreOk);
 			result.count = a_request.count;
 			result.formId = object->GetFormID();
+			unsent.push_back(result);
+		}
+
+		// SkyCraft+ : Minecraft's things at Skyrim's workbenches. A Minecraft weapon or piece of armor at
+		// Skyrim's enchanter: an iron one of its kind stands in for it, named after it, and comes back out
+		// with whatever enchantment it got (the Minecraft one takes that on: SkyEnchanting).
+		struct LentGear
+		{
+			RE::TESBoundObject* base = nullptr;
+			std::string         name;
+			std::int32_t        enchantedBefore = 0;  // its enchanted copies when lent (a new one is ours)
+		};
+		std::optional<LentGear> lentGear;
+
+		RE::TESBoundObject* GearBase(std::int32_t a_kind)
+		{
+			static std::unordered_map<std::int32_t, RE::TESBoundObject*> cache;
+			if (auto it = cache.find(a_kind); it != cache.end()) {
+				return it->second;
+			}
+			static constexpr std::pair<std::int32_t, const char*> kNames[] = {
+				{ proto::kGearSword, "Iron Sword" }, { proto::kGearAxe, "Iron War Axe" }, { proto::kGearMace, "Iron Mace" }, { proto::kGearPickaxe, "Pickaxe" },
+				{ proto::kGearBow, "Long Bow" }, { proto::kGearCrossbow, "Crossbow" }, { proto::kGearHelmet, "Iron Helmet" }, { proto::kGearChest, "Iron Armor" },
+				{ proto::kGearLegs, "Iron Gauntlets" }, { proto::kGearBoots, "Iron Boots" }, { proto::kGearShield, "Iron Shield" },
+			};
+			const char* wanted = nullptr;
+			for (const auto& [kind, name] : kNames) {
+				if (kind == a_kind) {
+					wanted = name;
+				}
+			}
+			RE::TESBoundObject* found = nullptr;
+			auto*               handler = RE::TESDataHandler::GetSingleton();
+			auto search = [&]<class T>(std::type_identity<T>) {
+				if (!handler || !wanted) {
+					return;
+				}
+				for (auto* form : handler->GetFormArray<T>()) {
+					if (!found && form && form->GetName() && std::string_view(form->GetName()) == wanted && form->GetPlayable() && !form->formEnchanting) {
+						found = form;
+					}
+				}
+			};
+			if (a_kind >= proto::kGearHelmet) {
+				search(std::type_identity<RE::TESObjectARMO>{});
+			} else {
+				search(std::type_identity<RE::TESObjectWEAP>{});
+			}
+			if (!found && a_kind == proto::kGearCrossbow) {
+				found = GearBase(proto::kGearBow);  // (no Dawnguard: a bow)
+			}
+			cache.emplace(a_kind, found);
+			logger::info("workbench: Minecraft gear kind {} stands as {}", a_kind, found ? found->GetName() : "nothing");
+			return found;
+		}
+
+		std::int32_t EnchantedCopies(RE::PlayerCharacter* a_player, RE::TESBoundObject* a_base)
+		{
+			auto         inventory = a_player->GetInventory([a_base](RE::TESBoundObject& a_candidate) { return &a_candidate == a_base; });
+			const auto   it = inventory.find(a_base);
+			std::int32_t n = 0;
+			if (it != inventory.end() && it->second.second && it->second.second->extraLists) {
+				for (auto* list : *it->second.second->extraLists) {
+					if (list && list->GetByType<RE::ExtraEnchantment>()) {
+						n += std::max(1, list->GetCount());
+					}
+				}
+			}
+			return n;
+		}
+
+		void LendGear(RE::PlayerCharacter* a_player, const proto::SkyStoreRequest& a_request)
+		{
+			auto* base = GearBase(a_request.soul);
+			if (!base) {
+				unsent.push_back(Refusal(a_request.id, proto::kStoreMissing));
+				return;
+			}
+			const std::string name = std::string(a_request.plugin, strnlen(a_request.plugin, sizeof(a_request.plugin))) + " (Minecraft)";
+			auto              ref = a_player->PlaceObjectAtMe(base, false);
+			if (!ref) {
+				unsent.push_back(Refusal(a_request.id, proto::kStoreMissing));
+				return;
+			}
+			ref->extraList.Add(new RE::ExtraTextDisplayData(name.c_str()));
+			lentGear = LentGear{ base, name, EnchantedCopies(a_player, base) };
+			a_player->PickUpObject(ref.get(), 1, false, false);
+			Workbench::Given();
+			logger::info("workbench: {} lent to the enchanter as a {}", name, base->GetName());
+			proto::SkyStoreResult result = Refusal(a_request.id, proto::kStoreOk);
+			result.count = 1;
+			result.formId = base->GetFormID();
+			unsent.push_back(result);
+		}
+
+		void ReturnGear(RE::PlayerCharacter* a_player, const proto::SkyStoreRequest& a_request)
+		{
+			if (!lentGear) {
+				unsent.push_back(Refusal(a_request.id, proto::kStoreNone));
+				return;
+			}
+			const auto gear = *lentGear;
+			lentGear.reset();
+			auto               inventory = a_player->GetInventory([&gear](RE::TESBoundObject& a_candidate) { return &a_candidate == gear.base; });
+			const auto         it = inventory.find(gear.base);
+			RE::ExtraDataList* enchanted = nullptr;
+			RE::ExtraDataList* plain = nullptr;
+			if (it != inventory.end() && it->second.second && it->second.second->extraLists) {
+				const bool newOne = EnchantedCopies(a_player, gear.base) > gear.enchantedBefore;
+				for (auto* list : *it->second.second->extraLists) {
+					if (!list) {
+						continue;
+					}
+					if (newOne && list->GetByType<RE::ExtraEnchantment>()) {
+						enchanted = list;  // (the newest is last)
+					} else if (auto* shown = list->GetByType<RE::ExtraTextDisplayData>(); shown && shown->displayName.c_str() && gear.name == shown->displayName.c_str()) {
+						plain = list;
+					}
+				}
+			}
+			proto::SkyStoreResult result = Refusal(a_request.id, enchanted ? proto::kStoreOk : proto::kStoreNone);
+			if (enchanted) {
+				auto*       extra = enchanted->GetByType<RE::ExtraEnchantment>();
+				auto*       enchantment = extra->enchantment;
+				const auto* charge = enchanted->GetByType<RE::ExtraCharge>();
+				std::string effects;
+				if (enchantment) {
+					for (auto* effect : enchantment->effects) {
+						const char* kind = effect ? Workbench::EffectKind(effect->baseEffect) : nullptr;
+						if (kind) {
+							std::string one = std::format("{}{} {:.0f} {}", effects.empty() ? "" : ";", kind, effect->GetMagnitude(), effect->GetDuration());
+							if (effects.size() + one.size() < sizeof(result.name)) {
+								effects += one;
+							}
+						}
+					}
+				}
+				result.count = 1;
+				result.formId = enchantment ? enchantment->GetFormID() : 0;
+				result.health = static_cast<float>(extra->charge);
+				result.charge = charge ? charge->charge : static_cast<float>(extra->charge);
+				result.stat = enchantment ? (enchantment->data.costOverride > 0 ? static_cast<float>(enchantment->data.costOverride) : enchantment->CalculateMagickaCost(a_player)) : 0.0f;
+				std::memcpy(result.name, effects.c_str(), std::min(effects.size() + 1, sizeof(result.name)));
+				logger::info("workbench: {} came back enchanted: {} (charge {:.0f} of {:.0f}, {:.0f} a hit)", gear.name, effects, result.charge, result.health, result.stat);
+			} else {
+				logger::info("workbench: {} came back as it went", gear.name);
+			}
+			if (auto* list = enchanted ? enchanted : plain) {
+				a_player->RemoveItem(gear.base, 1, RE::ITEM_REMOVE_REASON::kRemove, list, nullptr);
+			} else {
+				logger::warn("workbench: {}'s stand-in wasn't found (sold? dropped?)", gear.name);
+			}
 			unsent.push_back(result);
 		}
 
@@ -872,12 +1026,21 @@ namespace skycraft::SkyInventory
 					Give(a_player, request);
 				} else if (request.op == proto::kStorePicture) {
 					Picture(request);
+				} else if (request.op == proto::kStoreLendGear) {
+					LendGear(a_player, request);  // SkyCraft+
+				} else if (request.op == proto::kStoreReturnGear) {
+					ReturnGear(a_player, request);  // SkyCraft+
 				}
 			}
 			while (!unsent.empty() && link.PushStoreResult(unsent.front())) {
 				unsent.pop_front();
 			}
 		}
+	}
+
+	void ProcessStoreNow(RE::PlayerCharacter* a_player)
+	{
+		ProcessStore(a_player);
 	}
 
 	void Spawn(RE::PlayerCharacter* a_player, RE::FormID a_base, double a_x, double a_y, double a_z)
