@@ -180,9 +180,15 @@ public final class WorldExporter {
 			Openables o = entry.getValue();
 			boolean changed = false;
 			for (int i = 0; i < o.pos.length; i++) {
+				// SkyCraft+ : a chunk not loaded (yet, or any more) reads as void air: that's no change to send. And a door
+				// broken is no longer openable; asking it "open?" threw, every frame, before any section was sent.
+				if (!level.hasChunkAt(o.pos[i])) {
+					continue;
+				}
 				BlockState now = level.getBlockState(o.pos[i]);
 				if (now != o.state[i]) {
-					SkyCraft.LOG.info("SkyCraft: {} at {} is now {}; its section goes to Skyrim again", now.getBlock().getDescriptionId(), o.pos[i], now.getValue(BlockStateProperties.OPEN) ? "open" : "closed");
+					SkyCraft.LOG.info("SkyCraft: {} at {} is now {}; its section goes to Skyrim again", now.getBlock().getDescriptionId(), o.pos[i],
+						!now.hasProperty(BlockStateProperties.OPEN) ? "gone" : now.getValue(BlockStateProperties.OPEN) ? "open" : "closed");
 					o.state[i] = now;
 					changed = true;
 				}
@@ -230,7 +236,12 @@ public final class WorldExporter {
 		}
 		long t1 = System.nanoTime();
 		int meshedBefore = meshedTotal;
-		watchOpenable(level);
+		try {
+			watchOpenable(level);
+		} catch (RuntimeException e) {  // SkyCraft+ : an extra never stops the blocks going to Skyrim
+			OPENABLES.clear();
+			SkyCraft.LOG.error("SkyCraft: watching doors and gates failed; blocks still go to Skyrim", e);
+		}
 		meshDirtySections(level);
 		long t2 = System.nanoTime();
 		forgetFar(minecraft);
