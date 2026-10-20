@@ -104,6 +104,7 @@ public final class SkyDigClient {
 			mining = pos;
 			progress = 0.0F;
 			hits = 0;
+			SkyGeoClient.miningStarted(minecraft, pos, hit.x(), hit.y(), hit.z());  // SkyCraft+ : Skyrim geo (with silk touch: its texture)
 		}
 		miningTick = ticks;
 		int material = hit.tri().material == 0 ? DIG_STONE : hit.tri().material;
@@ -120,7 +121,9 @@ public final class SkyDigClient {
 				.setPower(0.2F).scale(0.6F));
 		}
 		if (progress >= 1.0F) {
-			ClientPlayNetworking.send(new SkyNet.DigOpen(world(), pos, material));
+			if (!SkyGeoClient.mined(minecraft, world(), pos, material)) {  // SkyCraft+ : Skyrim geo (with silk touch: the piece itself)
+				ClientPlayNetworking.send(new SkyNet.DigOpen(world(), pos, material));
+			}
 			REVEAL.put(pos.asLong(), REVEAL_TRIES); // what's around it: blocks, or walls
 			mining = null;
 			progress = 0.0F;

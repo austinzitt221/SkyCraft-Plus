@@ -1,6 +1,8 @@
 {
   "block.skycraft.conversion_table": "Conversion Table",
+  "block.skycraft.skyrim_block": "Skyrim Block",
   "block.skycraft.skyrim_crop": "Skyrim Crop",
+  "block.skycraft.skyrim_geo": "Skyrim Ground",
   "block.skycraft.skyrim_ore_vein": "Skyrim Ore Vein",
   "container.skycraft.conversion_table": "Conversion Table",
   "entity.skycraft.skyrim_actor": "Skyrim NPC",

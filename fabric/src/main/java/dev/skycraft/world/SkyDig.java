@@ -266,6 +266,14 @@ public final class SkyDig {
 	 * with the drops and the sound of mining what it was made of.
 	 */
 	public static void open(ServerPlayer player, int world, BlockPos pos, int material) {
+		open(player, world, pos, material, null);
+	}
+
+	/**
+	 * SkyCraft+ : Skyrim geo. silkDrop: what mining it with silk touch gives instead (the piece of Skyrim it was:
+	 * SkyGeo), if the tool has silk touch; else as ever.
+	 */
+	public static void open(ServerPlayer player, int world, BlockPos pos, int material, @Nullable ItemStack silkDrop) {
 		ServerLevel level = player.level();
 		if (!destruction || minecraftsOwnWorld(player.level()) || !inReach(player, pos, REACH) || !level.isLoaded(pos) || player.isSpectator()) {
 			return;
@@ -280,6 +288,16 @@ public final class SkyDig {
 		// SkyCraft+ : Skyrim weapons break blocks. A Skyrim weapon in the main hand mines as its
 		// stand-in tool (the hotbar item hidden behind it isn't used, nor worn).
 		ItemStack skyrimTool = dev.skycraft.combat.SkyCombat.skyrimTool(player, net.minecraft.world.InteractionHand.MAIN_HAND);
+		ItemStack minedWith = !skyrimTool.isEmpty() ? skyrimTool : player.getMainHandItem();
+		if (silkDrop != null && SkyGeo.silkTouch(level, minedWith)) {
+			// SkyCraft+ : Skyrim geo. The piece itself, not its Minecraft block.
+			if (skyrimTool.isEmpty() && !player.isCreative()) {
+				player.getMainHandItem().mineBlock(level, state, pos, player);
+			}
+			Block.popResource(level, pos, silkDrop);
+			level.levelEvent(LevelEvent.PARTICLES_AND_SOUND_DESTROY_BLOCK, pos, Block.getId(state));
+			return;
+		}
 		if (!skyrimTool.isEmpty() && !player.isCreative()) {
 			if (dev.skycraft.combat.SkyWeaponTools.correctTool(state, skyrimTool)) {
 				state.getBlock().playerDestroy(level, player, pos, state, null, skyrimTool);

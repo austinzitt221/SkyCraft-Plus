@@ -206,6 +206,21 @@ namespace skycraft
 		void ReloadSettings();
 	}
 
+	// SkyCraft+ : Skyrim geo placed as Minecraft blocks (GeoTextures.cpp).
+	namespace GeoTextures
+	{
+		// Render thread: Minecraft asked for one of Skyrim's textures in a rect of the atlas (kRenSkyrimTexture).
+		void Request(const std::uint8_t* a_data, std::uint32_t a_bytes);
+		// Main thread, every frame: the textures asked for, loaded.
+		void PerFrameMain();
+		// Render thread: one loaded, to draw into its rect.
+		bool TakeReady(std::uint32_t& a_x, std::uint32_t& a_y, std::uint32_t& a_w, std::uint32_t& a_h, RE::NiPointer<RE::NiTexture>& a_texture);
+		// Main thread: the diffuse texture of Skyrim's geometry at a Minecraft point (a_kind 1 land, 2 an object; empty: none known).
+		std::string TextureAt(double a_x, double a_y, double a_z, int& a_kind);
+		// Every land texture, for the creative menu's Skyrim geo (kSkyGeo).
+		void Catalog(std::vector<proto::SkyItem>& a_items);
+	}
+
 	// SkyCraft+ : the SkyCraft+ settings screen in Minecraft's pause menu (Settings.cpp).
 	namespace Settings
 	{

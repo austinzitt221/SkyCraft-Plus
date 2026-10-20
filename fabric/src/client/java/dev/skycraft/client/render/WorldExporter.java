@@ -336,6 +336,7 @@ public final class WorldExporter {
 		SkyLink.writeRender(Proto.REN_CLEAR_ALL, ByteBuffer.allocate(0), null);
 		boolean ok = SkyLink.sendAtlas(atlas.width, atlas.height, atlas.pixels);
 		SkyCraft.LOG.info("SkyCraft: sent {}x{} texture atlas to Skyrim ({})", atlas.width, atlas.height, ok ? "ok" : "FAILED");
+		SkyGeoTextures.atlasSent(atlas);  // SkyCraft+ : Skyrim geo (its textures drawn into the new atlas)
 		SENT.clear();
 		LIT.clear();
 		SOLID.clear();
@@ -676,6 +677,10 @@ public final class WorldExporter {
 								blockRenderer.tesselateBlock(MESH, x, y, z, level, pos.immutable(), state, model, state.getSeed(pos));
 							}
 						}
+						// SkyCraft+ : Skyrim geo. Pieces of Skyrim and Skyrim-textured blocks (no model of their own).
+						if (state.is(dev.skycraft.world.SkyGeo.GEO) || state.is(dev.skycraft.world.SkyGeo.BLOCK)) {
+							geoFaces(level, pos.immutable(), x, y, z, key);
+						}
 						// SkyCraft+ : the End. End portals and gateways are drawn by a shader of Minecraft's
 						// own that never reaches Skyrim: a glowing obsidian surface stands in for them.
 						if (state.is(Blocks.END_PORTAL) || state.is(Blocks.END_GATEWAY)) {
@@ -926,6 +931,170 @@ public final class WorldExporter {
 		}
 	}
 
+	/** SkyCraft+ : Skyrim geo. How many blocks one of Skyrim's textures covers (its picture spread over 2x2 blocks). */
+	private static final float GEO_TILE = 2.0F;
+
+	/**
+	 * SkyCraft+ : Skyrim geo. A piece of Skyrim (SkyGeo): its surface's triangles, raised so its highest
+	 * point is the block's top, in Skyrim's own texture (SkyGeoTextures), over walls and a floor of the
+	 * Minecraft block it's made of; or a Skyrim-textured block: a cube in that texture. Faces against a
+	 * whole neighbour are left out. Section-relative cell.
+	 */
+	private static void geoFaces(ClientLevel level, BlockPos pos, int x, int y, int z, long key) {
+		if (!(level.getBlockEntity(pos) instanceof dev.skycraft.world.SkyGeo.GeoEntity entity)) {
+			return;
+		}
+		dev.skycraft.world.SkyGeo.Piece piece = entity.piece();
+		BlockState fill = dev.skycraft.world.SkyDig.materialState(piece.material() == Proto.DIG_GRASS ? Proto.DIG_DIRT : piece.material());
+		float[] fillRects = cubeFaces(Minecraft.getInstance(), fill);
+		float[] sky = piece.texture().isEmpty() ? null : SkyGeoTextures.uv(atlas, piece.texture(), key);
+		int[] tris = piece.tris();
+		// The texture's part for this block: its place in the 2x2 the picture spreads over.
+		float tu = Mth.positiveModulo(pos.getX(), (int) GEO_TILE) / GEO_TILE, tv = Mth.positiveModulo(pos.getZ(), (int) GEO_TILE) / GEO_TILE;
+		float ty = Mth.positiveModulo(pos.getY(), (int) GEO_TILE) / GEO_TILE;
+		if (!entity.geo() || tris.length < 3 || sky == null) {
+			// A whole cube: Skyrim's texture on every face (or what it's made of, with no texture known).
+			for (Direction d : Direction.values()) {
+				BlockPos next = pos.relative(d);
+				if (level.getBlockState(next).isSolidRender()) {
+					continue;
+				}
+				int light = geoLight(level, next);
+				float[] r = sky != null ? sky : d.getAxis() == Direction.Axis.Y ? java.util.Arrays.copyOfRange(fillRects, d == Direction.UP ? 4 : 8, d == Direction.UP ? 8 : 12)
+					: java.util.Arrays.copyOfRange(fillRects, 0, 4);
+				float a = d.getAxis() == Direction.Axis.X ? tv : tu, b = d.getAxis() == Direction.Axis.Y ? tv : ty;
+				float span = sky != null ? 1.0F / GEO_TILE : 1.0F;
+				if (sky == null) {
+					a = 0.0F;
+					b = 0.0F;
+				}
+				float u0 = r[0] + (r[2] - r[0]) * a, v0 = r[1] + (r[3] - r[1]) * b, u1 = u0 + (r[2] - r[0]) * span, v1 = v0 + (r[3] - r[1]) * span;
+				MESH.wall(cubeFace(d, x, y, z), new float[] { u0, v1, u1, v1, u1, v0, u0, v0 }, light, d);
+			}
+			return;
+		}
+		// The surface, raised to the top (a piece mined from low in its cell sits on the block, not inside it).
+		float top = 0.0F;
+		for (int p : tris) {
+			top = Math.max(top, dev.skycraft.world.SkyGeo.Piece.unpack(p, 1));
+		}
+		float lift = 1.0F - top;
+		int lightUp = geoLight(level, pos.above());
+		float du = (sky[2] - sky[0]) / GEO_TILE, dv = (sky[3] - sky[1]) / GEO_TILE;
+		for (int t = 0; t + 2 < tris.length; t += 3) {
+			float[] xyz = new float[9];
+			for (int k = 0; k < 3; k++) {
+				xyz[k * 3] = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + k], 0);
+				xyz[k * 3 + 1] = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + k], 1) + lift;
+				xyz[k * 3 + 2] = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + k], 2);
+			}
+			// Planar by its facing: from above (most of them), or from the side it faces.
+			float ax = xyz[3] - xyz[0], ay = xyz[4] - xyz[1], az = xyz[5] - xyz[2], bx = xyz[6] - xyz[0], by = xyz[7] - xyz[1], bz = xyz[8] - xyz[2];
+			float nx = Math.abs(ay * bz - az * by), ny = Math.abs(az * bx - ax * bz), nz = Math.abs(ax * by - ay * bx);
+			float[] uv = new float[6];
+			for (int k = 0; k < 3; k++) {
+				float lx = xyz[k * 3], ly = xyz[k * 3 + 1], lz = xyz[k * 3 + 2];
+				float s, r;
+				if (ny >= nx && ny >= nz) {
+					s = tu + lx / GEO_TILE;
+					r = tv + lz / GEO_TILE;
+				} else if (nx >= nz) {
+					s = tv + lz / GEO_TILE;
+					r = ty + (1.0F - ly) / GEO_TILE;
+				} else {
+					s = tu + lx / GEO_TILE;
+					r = ty + (1.0F - ly) / GEO_TILE;
+				}
+				uv[k * 2] = sky[0] + s * du * GEO_TILE;
+				uv[k * 2 + 1] = sky[1] + r * dv * GEO_TILE;
+			}
+			for (int k = 0; k < 3; k++) {
+				xyz[k * 3] += x;
+				xyz[k * 3 + 1] += y;
+				xyz[k * 3 + 2] += z;
+			}
+			MESH.tri(xyz, uv, lightUp);
+		}
+		// Under it, what it's made of: the sides up to the surface's height at each corner, and the floor.
+		if (fillRects == null) {
+			return;
+		}
+		float h00 = surfaceAt(tris, lift, 0.0F, 0.0F), h10 = surfaceAt(tris, lift, 1.0F, 0.0F), h11 = surfaceAt(tris, lift, 1.0F, 1.0F), h01 = surfaceAt(tris, lift, 0.0F, 1.0F);
+		float[][] sides = {
+			{ x, y, z, x, y + h00, z, x + 1, y + h10, z, x + 1, y, z },                     // north (z)
+			{ x, y, z + 1, x + 1, y, z + 1, x + 1, y + h11, z + 1, x, y + h01, z + 1 },     // south
+			{ x, y, z, x, y, z + 1, x, y + h01, z + 1, x, y + h00, z },                     // west (x)
+			{ x + 1, y, z, x + 1, y + h10, z, x + 1, y + h11, z + 1, x + 1, y, z + 1 },     // east
+		};
+		Direction[] faces = { Direction.NORTH, Direction.SOUTH, Direction.WEST, Direction.EAST };
+		float su0 = fillRects[0], sv0 = fillRects[1], su1 = fillRects[2], sv1 = fillRects[3];
+		for (int f = 0; f < 4; f++) {
+			BlockPos next = pos.relative(faces[f]);
+			if (level.getBlockState(next).isSolidRender()) {
+				continue;
+			}
+			float[] q = sides[f];
+			float hA = (q[4] - y), hB = (q[7] - y), hC = (q[10] - y), hD = (q[1] - y);
+			float[] uv = { su0, sv0 + (sv1 - sv0) * (1.0F - hD), su0, sv0 + (sv1 - sv0) * (1.0F - hA), su1, sv0 + (sv1 - sv0) * (1.0F - hB), su1,
+				sv0 + (sv1 - sv0) * (1.0F - hC) };
+			MESH.wall(q, uv, geoLight(level, next), faces[f]);
+		}
+		if (!level.getBlockState(pos.below()).isSolidRender()) {
+			float u0 = fillRects[8], v0 = fillRects[9], u1 = fillRects[10], v1 = fillRects[11];
+			MESH.wall(new float[] { x, y, z, x + 1, y, z, x + 1, y, z + 1, x, y, z + 1 }, new float[] { u0, v0, u1, v0, u1, v1, u0, v1 },
+				geoLight(level, pos.below()), Direction.DOWN);
+		}
+	}
+
+	/** SkyCraft+ : Skyrim geo. The light a face gets from the cell it faces. */
+	private static int geoLight(ClientLevel level, BlockPos pos) {
+		return net.minecraft.util.LightCoordsUtil.pack(level.getBrightness(net.minecraft.world.level.LightLayer.BLOCK, pos),
+			level.getBrightness(net.minecraft.world.level.LightLayer.SKY, pos));
+	}
+
+	/** SkyCraft+ : Skyrim geo. The raised surface's height over a corner of the cell (the nearest of its points where none covers it). */
+	private static float surfaceAt(int[] tris, float lift, float px, float pz) {
+		float best = -1.0F, nearest = Float.MAX_VALUE, nearestY = 1.0F;
+		for (int t = 0; t + 2 < tris.length; t += 3) {
+			float x0 = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t], 0), z0 = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t], 2);
+			float x1 = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + 1], 0), z1 = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + 1], 2);
+			float x2 = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + 2], 0), z2 = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + 2], 2);
+			float det = (z1 - z2) * (x0 - x2) + (x2 - x1) * (z0 - z2);
+			for (int k = 0; k < 3; k++) {
+				float vx = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + k], 0), vz = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + k], 2);
+				float d = (vx - px) * (vx - px) + (vz - pz) * (vz - pz);
+				if (d < nearest) {
+					nearest = d;
+					nearestY = dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + k], 1) + lift;
+				}
+			}
+			if (Math.abs(det) < 1.0E-6F) {
+				continue;
+			}
+			float a = ((z1 - z2) * (px - x2) + (x2 - x1) * (pz - z2)) / det;
+			float b = ((z2 - z0) * (px - x2) + (x0 - x2) * (pz - z2)) / det;
+			float c = 1.0F - a - b;
+			if (a >= -0.01F && b >= -0.01F && c >= -0.01F) {
+				float h = a * dev.skycraft.world.SkyGeo.Piece.unpack(tris[t], 1) + b * dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + 1], 1)
+					+ c * dev.skycraft.world.SkyGeo.Piece.unpack(tris[t + 2], 1) + lift;
+				best = Math.max(best, h);
+			}
+		}
+		return Math.clamp(best >= 0.0F ? best : nearestY, 0.0F, 1.0F);
+	}
+
+	/** SkyCraft+ : a whole block's face (section-relative), corners in the order wall() takes them. */
+	private static float[] cubeFace(Direction d, int x, int y, int z) {
+		return switch (d) {
+			case UP -> new float[] { x, y + 1, z, x, y + 1, z + 1, x + 1, y + 1, z + 1, x + 1, y + 1, z };
+			case DOWN -> new float[] { x, y, z, x + 1, y, z, x + 1, y, z + 1, x, y, z + 1 };
+			case NORTH -> new float[] { x + 1, y, z, x, y, z, x, y + 1, z, x + 1, y + 1, z };
+			case SOUTH -> new float[] { x, y, z + 1, x + 1, y, z + 1, x + 1, y + 1, z + 1, x, y + 1, z + 1 };
+			case WEST -> new float[] { x, y, z, x, y, z + 1, x, y + 1, z + 1, x, y + 1, z };
+			case EAST -> new float[] { x + 1, y, z + 1, x + 1, y, z, x + 1, y + 1, z, x + 1, y + 1, z + 1 };
+		};
+	}
+
 	/** Side, top and bottom atlas rects of a full-cube block's model, cached per block state. */
 	private static float[] cubeFaces(Minecraft minecraft, BlockState state) {
 		return CUBE_FACES.computeIfAbsent(state, s -> {
@@ -1086,6 +1255,15 @@ public final class WorldExporter {
 			int g = Math.min(255, Math.round(((argb >> 8) & 0xFF) / shade));
 			int b = Math.min(255, Math.round((argb & 0xFF) / shade));
 			return (argb & 0xFF000000) | (r << 16) | (g << 8) | b;
+		}
+
+		/** SkyCraft+ : Skyrim geo. An opaque triangle lit by its own normal (a piece of Skyrim's surface). */
+		void tri(float[] xyz, float[] uv, int light) {
+			this.ensure(3 * Proto.REN_VERTEX_BYTES);
+			int flags = 1 | (7 << 4);
+			for (int k = 0; k < 3; k++) {
+				this.vertex(xyz[k * 3], xyz[k * 3 + 1], xyz[k * 3 + 2], uv[k * 2], uv[k * 2 + 1], 0xFFFFFFFF, light, flags);
+			}
 		}
 
 		/** A dug hole's wall (DigWalls): an untinted opaque quad. */

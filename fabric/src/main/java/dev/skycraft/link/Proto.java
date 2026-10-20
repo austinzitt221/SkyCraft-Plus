@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 57; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE); v56, the settings screen (OFF_SKY_SETTINGS); v57, every shout in Minecraft mode (SHOT_PARALYZE.., SS_SELF_EFFECTS)
+	public static final int VERSION = 58; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE); v56, the settings screen (OFF_SKY_SETTINGS); v57, every shout in Minecraft mode (SHOT_PARALYZE.., SS_SELF_EFFECTS); v58, Skyrim geo (REN_SKYRIM_TEXTURE, STORE_TEXTURE_AT, SKY_GEO)
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -76,6 +76,7 @@ public final class Proto {
 		STORE_RES_DATA = STORE_REQ_DATA + STORE_REQUESTS * STORE_REQUEST_BYTES;
 	public static final int STORE_TAKE = 1, STORE_GIVE = 2, STORE_PICTURE = 3;
 	public static final int STORE_LEND_GEAR = 4, STORE_RETURN_GEAR = 5; // SkyCraft+ : v54, a Minecraft weapon or armor at Skyrim's enchanter
+	public static final int STORE_TEXTURE_AT = 6; // SkyCraft+ : v58, the texture of Skyrim's geometry at a point (name: its path; kind 1 land, 2 an object)
 	public static final int GEAR_SWORD = 1, GEAR_AXE = 2, GEAR_MACE = 3, GEAR_PICKAXE = 4, GEAR_BOW = 5, GEAR_CROSSBOW = 6, GEAR_HELMET = 7, GEAR_CHEST = 8,
 		GEAR_LEGS = 9, GEAR_BOOTS = 10, GEAR_SHIELD = 11;
 	public static final int BENCH_CREATE = 1, BENCH_SHARPEN = 2, BENCH_ENCHANT = 3, BENCH_ALCHEMY = 5, BENCH_ARMOR = 7; // SkyCraft+ : v54, SkyState workbench
@@ -91,7 +92,7 @@ public final class Proto {
 	public static final long INV_SEQ = 0x0, INV_COUNT = 0x4, INV_GENERATION = 0x8, INV_GOLD = 0xC, INV_CARRIED = 0x10, INV_CARRY_MAX = 0x14, INV_ITEMS = 0x40;
 	// SkyItem: formId 0, kind 4, sub 5, material 6, count 8, flags 12, weight 16, value 20, stat 24, stat2 28, name 32, localId 128, plugin 132 (v36)
 	public static final int SKY_WEAPON = 1, SKY_APPAREL = 2, SKY_POTION = 3, SKY_FOOD = 4, SKY_INGREDIENT = 5, SKY_BOOK = 6, SKY_KEY = 7, SKY_MISC = 8, SKY_AMMO = 9,
-		SKY_SCROLL = 10, SKY_SPELL = 20, SKY_SHOUT = 21, SKY_POWER = 22, SKY_ACTOR = 30; // SkyCraft+ : v48, SKY_ACTOR (the catalog only: sub 0 person, 1 creature)
+		SKY_SCROLL = 10, SKY_SPELL = 20, SKY_SHOUT = 21, SKY_POWER = 22, SKY_ACTOR = 30, SKY_GEO = 31; // SkyCraft+ : v48, SKY_ACTOR (the catalog only: sub 0 person, 1 creature); v58, SKY_GEO (the catalog only: a land texture, name its path)
 	public static final int W_HAND = 0, W_SWORD = 1, W_DAGGER = 2, W_WAR_AXE = 3, W_MACE = 4, W_GREATSWORD = 5, W_BATTLEAXE = 6, W_WARHAMMER = 7, W_BOW = 8, W_STAFF = 9,
 		W_CROSSBOW = 10, W_PICKAXE = 11, W_WOOD_AXE = 12;
 	public static final int A_BODY = 0, A_HEAD = 1, A_HANDS = 2, A_FEET = 3, A_SHIELD = 4, A_RING = 5, A_AMULET = 6, A_CIRCLET = 7;
@@ -220,6 +221,7 @@ public final class Proto {
 	// v35: a horizontal band of the atlas, so an atlas bigger than one render message still arrives.
 	// REN_ATLAS is now the size-only "begin"; the pixels follow as REN_ATLAS_CHUNK bands.
 	public static final int REN_ATLAS_CHUNK = 13;
+	public static final int REN_SKYRIM_TEXTURE = 14; // SkyCraft+ : v58, RenSkyrimTexture: Skyrim draws one of its textures into that atlas rect
 	public static final int PART_HEAD = 1, PART_BODY = 2, PART_RIGHT_ARM = 3, PART_LEFT_ARM = 4, PART_RIGHT_LEG = 5, PART_LEFT_LEG = 6;
 	public static final int LIGHT_STEADY = 0, LIGHT_FLAME = 1, LIGHT_LAVA = 2;
 	public static final int REN_VERTEX_BYTES = 32;

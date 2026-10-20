@@ -58,7 +58,8 @@ public final class SkyCreative {
 		MISC("misc", "Skyrim Misc", () -> new ItemStack(Items.EMERALD)),
 		SPELLS("spells", "Skyrim Spells", () -> new ItemStack(Items.ENCHANTED_BOOK)),
 		SHOUTS("shouts", "Skyrim Shouts", () -> new ItemStack(Items.DRAGON_BREATH)),
-		EGGS("spawn_eggs", "Skyrim Spawn Eggs", () -> new ItemStack(Items.VILLAGER_SPAWN_EGG));
+		EGGS("spawn_eggs", "Skyrim Spawn Eggs", () -> new ItemStack(Items.VILLAGER_SPAWN_EGG)),
+		GEO("geo", "Skyrim Geo", () -> new ItemStack(Items.GRASS_BLOCK));  // SkyCraft+ : Skyrim's ground as blocks (SkyGeo)
 
 		final String id;
 		final String title;
@@ -82,6 +83,7 @@ public final class SkyCreative {
 				case Proto.SKY_SPELL -> SPELLS;
 				case Proto.SKY_SHOUT -> SHOUTS;
 				case Proto.SKY_ACTOR -> EGGS;
+				case Proto.SKY_GEO -> GEO;
 				default -> null;
 			};
 		}

@@ -28,6 +28,10 @@ final class SkyAtlas {
 	private static final String[] ARROW_TEXTURES = { "arrow", "arrow_tipped", "arrow_spectral" };
 	private static final int ARROW_X = CRACK_STAGES * CRACK_SIZE;
 	private static final int ARROW_W = 32;
+	// SkyCraft+ : Skyrim geo. Slots under everything else that Skyrim fills with its own textures (SkyGeoTextures:
+	// it draws each one there itself from the texture's file), for Skyrim ground and rock placed as blocks.
+	static final int GEO_SLOTS = 32, GEO_SIZE = 128;
+	private final int geoY, geoPerRow;
 
 	/**
 	 * An animated sprite (water, lava, fire, portals, ...) where it sits in the combined atlas, with
@@ -52,9 +56,14 @@ final class SkyAtlas {
 		this.blockH = b.skycraft$height();
 		this.itemW = i.skycraft$width();
 		this.itemH = i.skycraft$height();
-		this.width = Math.max(Math.max(this.blockW, this.itemW), ARROW_X + ARROW_TEXTURES.length * ARROW_W);
-		this.height = this.blockH + this.itemH + CRACK_SIZE;
+		this.width = Math.max(Math.max(Math.max(this.blockW, this.itemW), ARROW_X + ARROW_TEXTURES.length * ARROW_W), GEO_SIZE * 4);
+		this.geoPerRow = this.width / GEO_SIZE;
+		this.geoY = this.blockH + this.itemH + CRACK_SIZE;
+		this.height = this.geoY + (GEO_SLOTS + this.geoPerRow - 1) / this.geoPerRow * GEO_SIZE;
 		this.pixels = ByteBuffer.allocateDirect(this.width * this.height * 4).order(ByteOrder.LITTLE_ENDIAN);
+		for (int o = this.geoY * this.width * 4; o < this.pixels.capacity(); o += 4) {
+			this.pixels.putInt(o, 0xFF808080);  // (grey until Skyrim draws its texture there)
+		}
 		for (TextureAtlasSprite sprite : b.skycraft$sprites().values()) {
 			this.copy(sprite, this.blockW, this.blockH, 0);
 		}
@@ -134,6 +143,18 @@ final class SkyAtlas {
 			x0 / this.width, y0 / this.height, (x0 + 16) / this.width, (y0 + 5) / this.height,
 			x0 / this.width, (y0 + 5) / this.height, (x0 + 5) / this.width, (y0 + 10) / this.height,
 		};
+	}
+
+	/** SkyCraft+ : Skyrim geo. A slot's place in pixels {x, y, w, h}. */
+	int[] geoRect(int slot) {
+		int s = Math.clamp(slot, 0, GEO_SLOTS - 1);
+		return new int[] { s % this.geoPerRow * GEO_SIZE, this.geoY + s / this.geoPerRow * GEO_SIZE, GEO_SIZE, GEO_SIZE };
+	}
+
+	/** SkyCraft+ : Skyrim geo. A slot's atlas rect {u0, v0, u1, v1}, half a texel in (no bleeding from its neighbours). */
+	float[] geoUv(int slot) {
+		int[] r = this.geoRect(slot);
+		return new float[] { (r[0] + 0.5F) / this.width, (r[1] + 0.5F) / this.height, (r[0] + r[2] - 0.5F) / this.width, (r[1] + r[3] - 0.5F) / this.height };
 	}
 
 	/** Atlas rect of crack stage 0-9. */

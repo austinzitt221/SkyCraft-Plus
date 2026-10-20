@@ -21,6 +21,8 @@ public final class SkyCraftingClient {
 	public static void register() {
 		BlockColorRegistry.register(List.of(BlockTintSources.constant(SkyConversionTable.TINT)), SkyConversionTable.BLOCK);
 		MenuScreens.register(SkyConversionTable.MENU, ConversionScreen::new);
+		// SkyCraft+ : Skyrim geo. A placed piece's data arrived after its block: its section drawn again with it.
+		dev.skycraft.world.SkyGeo.clientChanged = pos -> dev.skycraft.client.render.WorldExporter.markDirty(pos.getX() >> 4, pos.getY() >> 4, pos.getZ() >> 4);
 	}
 
 	/** A filled soul gem used with a Skyrim-enchanted Minecraft weapon in hand: its soul goes into the enchantment's charge (Skyrim gives the gem up). */

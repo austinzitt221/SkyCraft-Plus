@@ -304,10 +304,27 @@ namespace skycraft::Dig
 
 	RE::MATERIAL_ID LandMaterialAt(float a_x, float a_y)
 	{
+		bool land = false;
+		auto* texture = LandTextureAt(a_x, a_y, land);
+		if (!land) {
+			return RE::MATERIAL_ID::kNone;
+		}
+		if (!texture) {
+			// No texture of its own: Skyrim's default land texture (dirt).
+			return RE::MATERIAL_ID::kDirt;
+		}
+		return texture->materialType ? texture->materialType->materialID : RE::MATERIAL_ID::kNone;
+	}
+
+	// SkyCraft+ : the land's texture at a point (Skyrim units): the layer painted most strongly there, else the quad's
+	// base; null with a_land true where there's land with no texture (Skyrim's default dirt). a_land false: no land loaded there.
+	RE::TESLandTexture* LandTextureAt(float a_x, float a_y, bool& a_land)
+	{
+		a_land = false;
 		auto* tes = RE::TES::GetSingleton();
 		auto* grid = tes ? tes->gridCells : nullptr;
 		if (!grid || tes->interiorCell) {
-			return RE::MATERIAL_ID::kNone;
+			return nullptr;
 		}
 		constexpr float kCell = 4096.0f, kQuad = 2048.0f, kSpacing = 128.0f;
 		const int       cx = int(std::floor(a_x / kCell)), cy = int(std::floor(a_y / kCell));
@@ -322,8 +339,9 @@ namespace skycraft::Dig
 		auto* land = cell ? cell->GetRuntimeData().cellLand : nullptr;
 		auto* loaded = land ? land->loadedData : nullptr;
 		if (!loaded) {
-			return RE::MATERIAL_ID::kNone;
+			return nullptr;
 		}
+		a_land = true;
 		const float lx = a_x - cx * kCell, ly = a_y - cy * kCell;
 		const int   quad = (lx >= kQuad ? 1 : 0) + (ly >= kQuad ? 2 : 0);
 		const int   col = std::clamp(int(std::lround((lx - (quad & 1) * kQuad) / kSpacing)), 0, 16);
@@ -339,11 +357,7 @@ namespace skycraft::Dig
 				texture = loaded->quadTextures[quad][layer];
 			}
 		}
-		if (!texture) {
-			// No texture of its own: Skyrim's default land texture (dirt).
-			return RE::MATERIAL_ID::kDirt;
-		}
-		return texture->materialType ? texture->materialType->materialID : RE::MATERIAL_ID::kNone;
+		return texture;
 	}
 
 	// SkyCraft+ : Skyrim's ore veins (activators running MineOreScript: "Iron Ore Vein" and the like).

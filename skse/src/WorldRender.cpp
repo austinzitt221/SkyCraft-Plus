@@ -1022,6 +1022,149 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 		bool          atlasPending = false;    // a kRenAtlas began and its bands are still arriving
 		std::uint32_t atlasRowsDone = 0;       // rows of the pending atlas filled so far
 
+		// SkyCraft+ : Skyrim geo. One of Skyrim's own textures drawn into a rect of the atlas (GeoTextures), its
+		// whole picture squeezed in: Skyrim's ground and rock placed as Minecraft blocks sample it there.
+		constexpr char kBlitShader[] = R"(
+Texture2D source : register(t0);
+SamplerState linearSampler : register(s0);
+struct BlitV { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
+BlitV BlitVS(uint id : SV_VertexID)
+{
+	BlitV o;
+	float2 uv = float2((id << 1) & 2, id & 2);
+	o.uv = uv;
+	o.pos = float4(uv * float2(2.0, -2.0) + float2(-1.0, 1.0), 0.0, 1.0);
+	return o;
+}
+float4 BlitPS(BlitV i) : SV_Target
+{
+	float4 c = source.Sample(linearSampler, i.uv);
+	return float4(c.rgb, 1.0);
+}
+)";
+		ID3D11VertexShader*     blitVs = nullptr;
+		ID3D11PixelShader*      blitPs = nullptr;
+		ID3D11SamplerState*     blitSampler = nullptr;
+		ID3D11RenderTargetView* atlasRtv = nullptr;
+		bool                    blitFailed = false;
+
+		bool BlitReady()
+		{
+			if (blitVs && blitPs && blitSampler) {
+				return true;
+			}
+			if (blitFailed || !device) {
+				return false;
+			}
+			ID3DBlob *vsBlob = nullptr, *psBlob = nullptr, *errors = nullptr;
+			if (FAILED(D3DCompile(kBlitShader, sizeof(kBlitShader) - 1, "skycraft_geo", nullptr, nullptr, "BlitVS", "vs_5_0", 0, 0, &vsBlob, &errors)) ||
+				FAILED(D3DCompile(kBlitShader, sizeof(kBlitShader) - 1, "skycraft_geo", nullptr, nullptr, "BlitPS", "ps_5_0", 0, 0, &psBlob, &errors))) {
+				logger::error("geo: blit shader failed: {}", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
+				Release(errors);
+				Release(vsBlob);
+				blitFailed = true;
+				return false;
+			}
+			device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &blitVs);
+			device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &blitPs);
+			Release(vsBlob);
+			Release(psBlob);
+			D3D11_SAMPLER_DESC sd{};
+			sd.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+			sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+			sd.MaxLOD = D3D11_FLOAT32_MAX;
+			device->CreateSamplerState(&sd, &blitSampler);
+			return blitVs && blitPs && blitSampler;
+		}
+
+		void BlitIntoAtlas(ID3D11DeviceContext* a_context, ID3D11ShaderResourceView* a_source, std::uint32_t a_x, std::uint32_t a_y, std::uint32_t a_w, std::uint32_t a_h)
+		{
+			if (!atlasTex || !a_source || !BlitReady()) {
+				return;
+			}
+			if (!atlasRtv) {
+				D3D11_RENDER_TARGET_VIEW_DESC rd{};
+				rd.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				rd.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+				rd.Texture2D.MipSlice = 0;
+				if (FAILED(device->CreateRenderTargetView(atlasTex, &rd, &atlasRtv))) {
+					return;
+				}
+			}
+			// Skyrim's state, put back after.
+			ID3D11RenderTargetView*   oldRtv = nullptr;
+			ID3D11DepthStencilView*   oldDsv = nullptr;
+			D3D11_VIEWPORT            oldVp[D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE]{};
+			UINT                      vpCount = D3D11_VIEWPORT_AND_SCISSORRECT_OBJECT_COUNT_PER_PIPELINE;
+			ID3D11VertexShader*       oldVs = nullptr;
+			ID3D11PixelShader*        oldPs = nullptr;
+			ID3D11GeometryShader*     oldGs = nullptr;
+			ID3D11ShaderResourceView* oldSrv = nullptr;
+			ID3D11SamplerState*       oldSampler = nullptr;
+			ID3D11InputLayout*        oldLayout = nullptr;
+			ID3D11BlendState*         oldBlend = nullptr;
+			float                     oldFactor[4]{};
+			UINT                      oldMask = 0;
+			ID3D11DepthStencilState*  oldDepth = nullptr;
+			UINT                      oldRef = 0;
+			ID3D11RasterizerState*    oldRaster = nullptr;
+			D3D11_PRIMITIVE_TOPOLOGY  oldTopology{};
+			a_context->OMGetRenderTargets(1, &oldRtv, &oldDsv);
+			a_context->RSGetViewports(&vpCount, oldVp);
+			a_context->VSGetShader(&oldVs, nullptr, nullptr);
+			a_context->PSGetShader(&oldPs, nullptr, nullptr);
+			a_context->GSGetShader(&oldGs, nullptr, nullptr);
+			a_context->PSGetShaderResources(0, 1, &oldSrv);
+			a_context->PSGetSamplers(0, 1, &oldSampler);
+			a_context->IAGetInputLayout(&oldLayout);
+			a_context->IAGetPrimitiveTopology(&oldTopology);
+			a_context->OMGetBlendState(&oldBlend, oldFactor, &oldMask);
+			a_context->OMGetDepthStencilState(&oldDepth, &oldRef);
+			a_context->RSGetState(&oldRaster);
+
+			const D3D11_VIEWPORT vp{ float(a_x), float(a_y), float(a_w), float(a_h), 0.0f, 1.0f };
+			a_context->OMSetRenderTargets(1, &atlasRtv, nullptr);
+			a_context->RSSetViewports(1, &vp);
+			a_context->RSSetState(nullptr);
+			a_context->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFF);
+			a_context->OMSetDepthStencilState(nullptr, 0);
+			a_context->IASetInputLayout(nullptr);
+			a_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			a_context->VSSetShader(blitVs, nullptr, 0);
+			a_context->GSSetShader(nullptr, nullptr, 0);
+			a_context->PSSetShader(blitPs, nullptr, 0);
+			a_context->PSSetShaderResources(0, 1, &a_source);
+			a_context->PSSetSamplers(0, 1, &blitSampler);
+			a_context->Draw(3, 0);
+
+			ID3D11ShaderResourceView* none = nullptr;
+			a_context->PSSetShaderResources(0, 1, &none);  // (the atlas is read next; it can't be bound both ways)
+			a_context->OMSetRenderTargets(1, &oldRtv, oldDsv);
+			a_context->RSSetViewports(vpCount, oldVp);
+			a_context->VSSetShader(oldVs, nullptr, 0);
+			a_context->PSSetShader(oldPs, nullptr, 0);
+			a_context->GSSetShader(oldGs, nullptr, 0);
+			a_context->PSSetShaderResources(0, 1, &oldSrv);
+			a_context->PSSetSamplers(0, 1, &oldSampler);
+			a_context->IASetInputLayout(oldLayout);
+			a_context->IASetPrimitiveTopology(oldTopology);
+			a_context->OMSetBlendState(oldBlend, oldFactor, oldMask);
+			a_context->OMSetDepthStencilState(oldDepth, oldRef);
+			a_context->RSSetState(oldRaster);
+			Release(oldRtv);
+			Release(oldDsv);
+			Release(oldVs);
+			Release(oldPs);
+			Release(oldGs);
+			Release(oldSrv);
+			Release(oldSampler);
+			Release(oldLayout);
+			Release(oldBlend);
+			Release(oldDepth);
+			Release(oldRaster);
+			atlasMipsStale = true;
+		}
+
 		// An animated sprite's current frame (water, lava, fire, ...) into the atlas.
 		void OnAtlasRegion(ID3D11DeviceContext* a_context, const std::uint8_t* a_data, std::uint32_t a_bytes)
 		{
@@ -1052,6 +1195,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			if (!hdr->width || !hdr->height) {
 				return;
 			}
+			Release(atlasRtv);  // SkyCraft+ : (Skyrim geo's view of the old one)
 			Release(atlasSrv);
 			Release(atlasTex);
 			D3D11_TEXTURE2D_DESC td{};
@@ -1190,11 +1334,25 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 					case proto::kRenAtlasRegion:
 						OnAtlasRegion(a_context, a_data, a_bytes);
 						break;
+					case proto::kRenSkyrimTexture:
+						GeoTextures::Request(a_data, a_bytes);  // SkyCraft+ : (loaded on the main thread, drawn in below)
+						break;
 					default:
 						break;
 					}
 				},
 				48ull << 20);
+			// SkyCraft+ : Skyrim geo. Skyrim's textures loaded since: into their atlas slots.
+			{
+				std::uint32_t                x = 0, y = 0, w = 0, h = 0;
+				RE::NiPointer<RE::NiTexture> texture;
+				while (!atlasPending && GeoTextures::TakeReady(x, y, w, h, texture)) {
+					auto* source = netimmerse_cast<RE::NiSourceTexture*>(texture.get());
+					auto* renderer = source ? reinterpret_cast<std::uint8_t*>(source->rendererTexture) : nullptr;
+					auto* view = renderer ? *reinterpret_cast<ID3D11ShaderResourceView**>(renderer + 0x10) : nullptr;
+					BlitIntoAtlas(a_context, view, x, y, w, h);
+				}
+			}
 			if (std::exchange(atlasMipsStale, false) && atlasSrv) {
 				a_context->GenerateMips(atlasSrv);  // distant water and lava animate too
 			}

@@ -516,6 +516,7 @@ namespace skycraft::SkyInventory
 				items.push_back(item);
 				++(person ? people : creatures);
 			}
+			GeoTextures::Catalog(items);  // SkyCraft+ : Skyrim geo for the creative menu
 			Link::Get().WriteSkyCatalog(items.data(), static_cast<std::uint32_t>(items.size()), 1);
 			logger::info("Skyrim catalog: {} things for Minecraft's creative menu ({} people, {} creatures; {} in quests)", items.size(), people, creatures, quests);
 			items.swap(mine);
@@ -1030,6 +1031,14 @@ namespace skycraft::SkyInventory
 					LendGear(a_player, request);  // SkyCraft+
 				} else if (request.op == proto::kStoreReturnGear) {
 					ReturnGear(a_player, request);  // SkyCraft+
+				} else if (request.op == proto::kStoreTextureAt) {
+					// SkyCraft+ : Skyrim geo. Which texture a dug surface has (the point in health, charge and soul's bits).
+					int        kind = 0;
+					const auto path = GeoTextures::TextureAt(request.health, request.charge, std::bit_cast<float>(request.soul), kind);
+					proto::SkyStoreResult result = Refusal(request.id, path.empty() ? proto::kStoreNone : proto::kStoreOk);
+					result.kind = static_cast<std::uint8_t>(kind);
+					std::strncpy(result.name, path.c_str(), sizeof(result.name) - 1);
+					unsent.push_back(result);
 				}
 			}
 			while (!unsent.empty() && link.PushStoreResult(unsent.front())) {

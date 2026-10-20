@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 57;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed); v54, Minecraft's things at Skyrim's workbenches (SkyState::workbench, kStoreLendGear/kStoreReturnGear, kEvEnchantHit); v55, arrows across the games (kShotArrow), Skyrim mode's Activate (McState::useDistance); v56, the SkyCraft+ settings screen (SkySettingsText, SettingsEdit); v57, every shout in Minecraft mode (kShotParalyze..kShotWither, SkyrimShot::seconds, SkyState::selfEffects)
+	inline constexpr std::uint32_t kVersion = 58;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed); v54, Minecraft's things at Skyrim's workbenches (SkyState::workbench, kStoreLendGear/kStoreReturnGear, kEvEnchantHit); v55, arrows across the games (kShotArrow), Skyrim mode's Activate (McState::useDistance); v56, the SkyCraft+ settings screen (SkySettingsText, SettingsEdit); v57, every shout in Minecraft mode (kShotParalyze..kShotWither, SkyrimShot::seconds, SkyState::selfEffects); v58, Skyrim geo (kRenSkyrimTexture, kStoreTextureAt, kSkyGeo)
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -656,7 +656,17 @@ namespace skycraft::proto
 		kRenAtlasChunk = 13,  // RenAtlasChunk + RGBA8 pixels: one horizontal band of the atlas begun by
 		                      // kRenAtlas, top row first. Bands arrive in order; the last one
 		                      // (y + rows == height) completes the atlas and its mipmaps.
+		kRenSkyrimTexture = 14,  // SkyCraft+ (v58): RenSkyrimTexture: Skyrim draws one of its own textures (by its path)
+		                         // into that rect of the atlas (Skyrim geo placed as Minecraft blocks)
 	};
+
+	// SkyCraft+ (v58): kRenSkyrimTexture.
+	struct RenSkyrimTexture
+	{
+		std::uint32_t x, y, w, h;  // atlas pixels
+		char          path[240];   // as Skyrim's texture sets give it ("textures\landscape\dirt02.dds"), zero-terminated
+	};
+	static_assert(sizeof(RenSkyrimTexture) == 256);
 
 	struct RenSolids
 	{
@@ -935,6 +945,7 @@ namespace skycraft::proto
 		kSkyShout = 21,
 		kSkyPower = 22,      // sub: 1 lesser power
 		kSkyActor = 30,      // SkyCraft+ (v48), the SkyCatalog only: a person or creature (sub: 0 person, 1 creature) for a spawn egg
+		kSkyGeo = 31,        // SkyCraft+ (v58), the SkyCatalog only: a land texture (name: its diffuse path; material: DigMaterial)
 	};
 
 	enum SkyWeaponType : std::uint8_t
@@ -1116,6 +1127,8 @@ namespace skycraft::proto
 		kStorePicture = 3,  // draw plugin/localId's picture too for a while (SkyIcons; the result's formId is its key)
 		// SkyCraft+ (v54): a Minecraft weapon or piece of armor at Skyrim's enchanter.
 		kStoreLendGear = 4,    // give a Skyrim stand-in for it: soul = GearKind, plugin = its Minecraft name (the stand-in's)
+		kStoreTextureAt = 6,   // SkyCraft+ (v58): the texture of Skyrim's geometry at health/charge/bits of soul (MC x, y, z: a
+		                       // dug surface's point): kStoreOk, name its diffuse texture's path, kind 1 land or 2 an object
 		kStoreReturnGear = 5,  // take the stand-in back: kStoreOk with its enchantment if it was enchanted (formId the
 		                       // EnchantmentItem, charge its charge, health its most, stat its cost a hit, name its effects
 		                       // as "kind magnitude seconds;..."), else kStoreNone

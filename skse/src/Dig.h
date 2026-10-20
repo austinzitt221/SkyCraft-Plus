@@ -44,6 +44,8 @@ namespace skycraft::Dig
 	// The land's material at a point (Skyrim units, x y): from the texture painted there (grass,
 	// dirt, snow, rock...). kNone outside loaded exterior cells. Main thread.
 	RE::MATERIAL_ID LandMaterialAt(float a_x, float a_y);
+	// SkyCraft+ : Skyrim geo. The land texture there (see Dig.cpp); a_land false where no land is loaded.
+	RE::TESLandTexture* LandTextureAt(float a_x, float a_y, bool& a_land);
 
 	// ---- the parts ----------------------------------------------------------------------------
 	void Install();  // Havok hooks (DigPhysics.cpp)

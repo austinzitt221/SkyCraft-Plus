@@ -1,0 +1,18 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "skycraft:skyrim_block",
+          "functions": [
+            { "function": "minecraft:copy_components", "source": "block_entity", "include": [ "minecraft:custom_data", "minecraft:custom_name", "minecraft:custom_model_data" ] }
+          ]
+        }
+      ],
+      "conditions": [ { "condition": "minecraft:survives_explosion" } ]
+    }
+  ]
+}

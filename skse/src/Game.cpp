@@ -1545,6 +1545,7 @@ namespace skycraft
 			SkyInventory::PerFrame(a_player, haveMc && (mc.flags & proto::kMcWantsSkyInventory) != 0, a_delta);  // SkyCraft+
 			Workbench::PerFrame(a_delta);  // SkyCraft+
 			Settings::PerFrame();  // SkyCraft+ : the settings screen
+			GeoTextures::PerFrameMain();  // SkyCraft+ : Skyrim geo
 			if (haveMc && st.mcInWorld) {
 				MinecraftEnemies::StopShotsAtBlocks(a_player);  // SkyCraft+
 			}

@@ -205,8 +205,8 @@ public final class SkyStorageClient {
 			TO_GIVE.poll();
 		}
 		for (SkyLink.StoreResult result : SkyLink.popStoreResults()) {
-			if (SkyLendingClient.onStoreResult(result)) {
-				continue;  // SkyCraft+ : lent to a Skyrim workbench
+			if (SkyLendingClient.onStoreResult(result) || SkyGeoClient.onStoreResult(result)) {
+				continue;  // SkyCraft+ : lent to a Skyrim workbench; Skyrim geo's texture
 			}
 			String pictureOf = PICTURE_ASKS.remove(result.id());
 			if (pictureOf != null) {
