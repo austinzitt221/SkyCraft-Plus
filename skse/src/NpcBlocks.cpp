@@ -698,8 +698,43 @@ namespace skycraft
 			lastZ = mc.z;
 			haveLast = true;
 
+			// SkyCraft+ : why no step was taken, while a step is right by the body (every 3 s at most): the log says which check stopped it.
+			static float whyTimer = 0.0f;
+			static int   whyLogged = 0;
+			whyTimer = std::max(0.0f, whyTimer - a_delta);
+			const auto whyNot = [&](const char* a_reason) {
+				if (whyTimer > 0.0f || whyLogged >= 20) {
+					return;
+				}
+				std::vector<BlockBox> around;
+				GatherBoxes(int(std::floor(mc.x - 1.0)), int(std::floor(mc.x + 1.0)), int(std::floor(mc.y)), int(std::floor(mc.y + cfg.height)), int(std::floor(mc.z - 1.0)),
+					int(std::floor(mc.z + 1.0)), around);
+				for (const auto& b : around) {
+					const double qx = std::clamp(mc.x, double(b.lo[0]), double(b.hi[0])), qz = std::clamp(mc.z, double(b.lo[2]), double(b.hi[2]));
+					if (b.hi[1] > mc.y + 0.02 && b.hi[1] <= mc.y + cfg.height + 1e-3 && std::hypot(qx - mc.x, qz - mc.z) < 0.9) {
+						whyTimer = 3.0f;
+						++whyLogged;
+						const auto* controls = RE::PlayerControls::GetSingleton();
+						const auto& state = a_player->AsActorState()->actorState1;
+						logger::info("Step up: none taken by a step {:.2f} blocks up, {:.2f} away: {} (feet {:.2f}, state {}, input ({:.2f}, {:.2f}) prev ({:.2f}, {:.2f}) "
+									 "moving f{} b{} l{} r{}, body {:.2f})",
+							b.hi[1] - mc.y, std::hypot(qx - mc.x, qz - mc.z), a_reason, mc.y, (a_player->GetCharController() ? int(a_player->GetCharController()->context.currentState) : -1), controls ? controls->data.moveInputVec.x : 0.0f,
+							controls ? controls->data.moveInputVec.y : 0.0f, controls ? controls->data.prevMoveVec.x : 0.0f, controls ? controls->data.prevMoveVec.y : 0.0f,
+							int(state.movingForward), int(state.movingBack), int(state.movingLeft), int(state.movingRight), BodyRadius(a_player));
+						return;
+					}
+				}
+			};
+
 			auto* controller = a_player->GetCharController();
-			if (!controller || controller->context.currentState != RE::hkpCharacterStateType::kOnGround || cooldown > 0.0f) {
+			if (!controller) {
+				return;
+			}
+			if (controller->context.currentState != RE::hkpCharacterStateType::kOnGround) {
+				whyNot("not on the ground");
+				return;
+			}
+			if (cooldown > 0.0f) {
 				return;
 			}
 
@@ -711,7 +746,20 @@ namespace skycraft
 					inputNoted = true;
 					logger::info("Step up: the movement input is readable, so the step is taken in the way the player is pushing");
 				}
+				// SkyCraft+ : the input is often already used up (zero) by the time this runs: then last frame's, then the way
+				// Skyrim says the body is walking (still set while it walks into a stair it can't climb).
 				if (std::sqrt(inX * inX + inY * inY) < 0.2f) {
+					const auto& prev = RE::PlayerControls::GetSingleton()->data.prevMoveVec;
+					inX = prev.x;
+					inY = prev.y;
+				}
+				if (std::sqrt(inX * inX + inY * inY) < 0.2f) {
+					const auto& state = a_player->AsActorState()->actorState1;
+					inY = float(int(state.movingForward) - int(state.movingBack));
+					inX = float(int(state.movingRight) - int(state.movingLeft));
+				}
+				if (std::sqrt(inX * inX + inY * inY) < 0.2f) {
+					whyNot("no movement input read");
 					return;
 				}
 				const double h = a_player->GetAngleZ();
@@ -782,6 +830,7 @@ namespace skycraft
 				}
 			}
 			if (bestTop < 0.0) {
+				whyNot("not ahead in the way you are pushing, out of reach, or no room above it");
 				static int missLogged = 0;
 				if (missed < radius + cfg.reach + 0.3 && missLogged < 6) {
 					++missLogged;
