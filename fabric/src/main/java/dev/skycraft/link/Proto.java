@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 54; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT)
+	public static final int VERSION = 55; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE)
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -45,7 +45,7 @@ public final class Proto {
 	public static final int MAX_SKYRIM_SHOTS = 64, SKYRIM_SHOT_BYTES = 48;
 	public static final long SHOTS_SEQ = 0x0, SHOTS_COUNT = 0x4, SHOTS_RECORDS = 0x40;
 	public static final int SHOT_PATH = 1, SHOT_BEAM = 1 << 1, SHOT_CONE = 1 << 2, SHOT_EXPLOSION = 1 << 3, SHOT_STOPS = 1 << 4, SHOT_SPRAY = 1 << 5, SHOT_REPEATS = 1 << 6,
-		SHOT_FIRE = 1 << 8, SHOT_FROST = 1 << 9, SHOT_SHOCK = 1 << 10, SHOT_PUSH = 1 << 11;
+		SHOT_FIRE = 1 << 8, SHOT_FROST = 1 << 9, SHOT_SHOCK = 1 << 10, SHOT_PUSH = 1 << 11, SHOT_ARROW = 1 << 12; // SkyCraft+ : v55, SHOT_ARROW: from a bow (not a spell)
 	public static final long OFF_RENDER_RING = OFF_OVERLAY_PIXELS + OVERLAY_SLOT_BYTES * OVERLAY_SLOTS;
 	public static final long RENDER_RING_BYTES = 64L << 20;
 	// SkyCraft+ : v35, Skyrim's inventory (Skyrim -> MC, seqlock), see SkyInventory

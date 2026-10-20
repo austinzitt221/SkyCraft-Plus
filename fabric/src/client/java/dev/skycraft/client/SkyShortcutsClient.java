@@ -61,7 +61,7 @@ public final class SkyShortcutsClient {
 
 	/** True while the player has shortcuts (or Skyrim armor may go in Minecraft's slots): Skyrim keeps its list current. */
 	static boolean wanted() {
-		return anyShortcuts || SkyArmorClient.enabled() && SkyLink.active() || SkyLendingClient.busy();
+		return anyShortcuts || SkyArmorClient.enabled() && SkyLink.active() || SkyLendingClient.busy() || SkyArrowsClient.wantsInventory();
 	}
 
 	/** The count drawn on a shortcut (GuiGraphicsShortcutMixin): Skyrim's, for things there's more than one of. */
@@ -294,7 +294,7 @@ public final class SkyShortcutsClient {
 		for (int i = 0; i < items.getContainerSize() && !any; i++) {
 			any = SkyShortcuts.isShortcut(items.getItem(i));
 		}
-		anyShortcuts = any || SkyInventoryPanels.wantsSkyInventory(minecraft.gui.screen()) || SkyArmorClient.enabled();
+		anyShortcuts = any || SkyInventoryPanels.wantsSkyInventory(minecraft.gui.screen()) || SkyArmorClient.enabled() || SkyLendingClient.busy() || SkyArrowsClient.wantsInventory();
 		if (anyShortcuts) {
 			SkyIconTextures.tick(minecraft);
 		}

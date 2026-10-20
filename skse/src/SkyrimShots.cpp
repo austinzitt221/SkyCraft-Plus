@@ -93,6 +93,9 @@ namespace skycraft::SkyrimShots
 					if (type == RE::FormType::ProjectileArrow || type == RE::FormType::ProjectileMissile) {
 						shot.flags |= proto::kShotStops;
 					}
+					if (type == RE::FormType::ProjectileArrow && !runtime.spell) {
+						shot.flags |= proto::kShotArrow;  // SkyCraft+ : from a bow (Minecraft arrows lent to it: SkyArrows)
+					}
 				}
 				if (runtime.spell) {
 					ReadSpell(runtime.spell, runtime.power, shot);

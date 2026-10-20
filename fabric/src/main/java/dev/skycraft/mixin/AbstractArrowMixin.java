@@ -44,6 +44,14 @@ public abstract class AbstractArrowMixin {
 		this.skycraft$hitAt = hitResult.getLocation();
 	}
 
+	/** SkyCraft+ : arrows across the games. A Skyrim arrow from a Minecraft bow: its frost or shock on what it hit. */
+	@Inject(method = "onHitEntity", at = @At("TAIL"))
+	private void skycraft$skyrimArrowHit(EntityHitResult hitResult, CallbackInfo ci) {
+		if (hitResult.getEntity() instanceof LivingEntity target && target.isAlive()) {
+			dev.skycraft.combat.SkyArrows.hit((AbstractArrow) (Object) this, target);
+		}
+	}
+
 	/**
 	 * Where Minecraft counts an arrow as stuck in a creature (it hurt it and didn't pierce): if that
 	 * creature is a Skyrim NPC's stand-in, Skyrim pins the arrow to the NPC's skeleton.

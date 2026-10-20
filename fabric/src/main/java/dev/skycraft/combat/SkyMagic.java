@@ -111,6 +111,9 @@ public final class SkyMagic {
 	}
 
 	private static void apply(ServerPlayer player, SkyLink.Shot shot) {
+		if ((shot.flags() & Proto.SHOT_ARROW) != 0) {
+			SkyArrows.skyrimShot(player, shot.id());  // SkyCraft+ : a Minecraft arrow lent to Skyrim's bow used up
+		}
 		Map<Integer, Integer> hit = HIT.computeIfAbsent(key(player, shot), k -> new HashMap<>());
 		int now = player.level().getServer().getTickCount();
 		boolean repeats = (shot.flags() & Proto.SHOT_REPEATS) != 0;
@@ -228,6 +231,9 @@ public final class SkyMagic {
 		}
 		if (shot.damage() > 0.0F) {
 			e.hurtServer(level, player.damageSources().indirectMagic(player, player), shot.damage());
+		}
+		if ((flags & Proto.SHOT_ARROW) != 0) {
+			SkyArrows.skyrimArrowHit(player, e);  // SkyCraft+ : a tipped or spectral Minecraft arrow's effect
 		}
 		if ((flags & Proto.SHOT_PUSH) != 0 && shot.push() > 0.0F) {
 			Vec3 away = e.position().subtract(from);

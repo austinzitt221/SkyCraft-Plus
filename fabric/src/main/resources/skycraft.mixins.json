@@ -3,6 +3,7 @@
   "package": "dev.skycraft.mixin",
   "compatibilityLevel": "JAVA_25",
   "mixins": [
+    "AbstractArrowAccessor",
     "AbstractArrowMixin",
     "BlockCollisionsMixin",
     "BlockStateBaseMixin",
@@ -27,8 +28,10 @@
     "PathNavigationMixin",
     "PathTypeCacheMixin",
     "PlayerEdgeMixin",
+    "PlayerProjectileMixin",
     "PressurePlateMixin",
     "ProjectileMixin",
+    "ProjectileWeaponItemMixin",
     "ProjectileUtilMixin",
     "ServerExplosionMixin",
     "ServerGamePacketListenerMixin",
