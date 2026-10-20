@@ -88,6 +88,7 @@ namespace skycraft
 		// SkyCraft+ : hunger points Skyrim food and stamina potions gave (SkyState::fed; [Combat] bSkyrimFoodFeeds).
 		std::atomic<std::uint32_t> fedPoints{ 0 };
 		bool                       skyrimFoodFeeds{ true };
+		float                      skyrimFoodHunger{ 1.5f };  // SkyCraft+ : [Combat] fSkyrimFoodHunger
 		// SkyCraft+ : Minecraft loot chests in Skyrim's dungeons ([Worlds] bLootChests).
 		bool                       lootChestsOption{ true };
 		// SkyCraft+ : the underground. Skyrim's land is more than two blocks above the player (a mine).

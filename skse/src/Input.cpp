@@ -143,6 +143,7 @@ namespace skycraft
 			State().minecraftFootsteps = ini.GetBoolValue("Controls", "bMinecraftFootsteps", true);  // SkyCraft+
 			State().animalsFollowFood = ini.GetBoolValue("Controls", "bAnimalsFollowFood", true);  // SkyCraft+
 			State().skyrimFoodFeeds = ini.GetBoolValue("Combat", "bSkyrimFoodFeeds", true);  // SkyCraft+
+			State().skyrimFoodHunger = std::clamp(static_cast<float>(ini.GetDoubleValue("Combat", "fSkyrimFoodHunger", 1.5)), 0.0f, 10.0f);  // SkyCraft+
 			logger::info("riding Skyrim's horses: {}", State().rideAsMinecraft ? "as Minecraft's player" : "as Skyrim's");
 
 			// SkyCraft+ : the Nether and the End.

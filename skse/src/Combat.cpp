@@ -110,6 +110,8 @@ namespace skycraft
 				} else if (stamina > 0.0f) {
 					points = std::clamp(static_cast<int>(std::lround(stamina / 12.5f)), 1, 20);
 				}
+				// fSkyrimFoodHunger: 1.5 gives half as much again (the points above felt stingy).
+				points = std::min(20, static_cast<int>(std::lround(static_cast<float>(points) * State().skyrimFoodHunger)));
 				if (points > 0) {
 					State().fedPoints += static_cast<std::uint32_t>(points);
 					logger::info("hunger: {} gives Minecraft {} hunger points", item->GetName(), points);
