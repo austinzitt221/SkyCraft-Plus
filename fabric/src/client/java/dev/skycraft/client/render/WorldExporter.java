@@ -9,6 +9,7 @@ import dev.skycraft.link.SkyLink;
 import dev.skycraft.world.SkyClip;
 import it.unimi.dsi.fastutil.longs.Long2LongMap;
 import it.unimi.dsi.fastutil.longs.Long2LongOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongArrayList;
 import it.unimi.dsi.fastutil.longs.LongLinkedOpenHashSet;
 import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import java.nio.ByteBuffer;
@@ -368,9 +369,13 @@ public final class WorldExporter {
 	private static void meshDirtySections(ClientLevel level) {
 		// Chunk loads and light updates dirty thousands of all-air sections; those cost a lookup.
 		// Real meshing is limited per frame.
+		dropIdle(level);
+		long[] order = nearestFirst();
+		// SkyCraft+ : the time is counted from here: counted from before the sorting, a hundred thousand
+		// waiting took the whole budget to sort, nothing was meshed again, and every block placed or
+		// broken stayed as it was in Skyrim (only its collision changed).
 		long deadline = System.nanoTime() + 3_000_000L;
 		int meshed = 0;
-		long[] order = nearestFirst();
 		for (int i = 0; i < order.length && meshed < SECTIONS_PER_FRAME && System.nanoTime() < deadline; i++) {
 			long key = order[i];
 			synchronized (DIRTY) {
@@ -382,6 +387,52 @@ public final class WorldExporter {
 			if (meshSection(level, key)) {
 				meshedTotal++;
 				meshed++;
+			}
+		}
+	}
+
+	/**
+	 * SkyCraft+ : the oldest waiting sections that have nothing to send (all air that Skyrim holds
+	 * nothing for, or in a chunk not loaded) leave the queue, about 2 ms a frame while it is long, so
+	 * sorting it every frame stays cheap. The same as meshSection would decide for them.
+	 */
+	private static void dropIdle(ClientLevel level) {
+		long[] oldest;
+		synchronized (DIRTY) {
+			if (DIRTY.size() <= 2048) {
+				return;
+			}
+			oldest = new long[Math.min(DIRTY.size(), 32768)];
+			var it = DIRTY.iterator();
+			for (int i = 0; i < oldest.length; i++) {
+				oldest[i] = it.nextLong();
+			}
+		}
+		long deadline = System.nanoTime() + 2_000_000L;
+		LongArrayList idle = new LongArrayList();
+		for (int i = 0; i < oldest.length && ((i & 63) != 0 || System.nanoTime() < deadline); i++) {
+			long key = oldest[i];
+			if (URGENT.contains(key)) {
+				continue;
+			}
+			int sx = SectionPos.x(key), sy = SectionPos.y(key), sz = SectionPos.z(key);
+			LevelChunk chunk = level.getChunkSource().getChunk(sx, sz, ChunkStatus.FULL, false);
+			if (chunk == null) {
+				idle.add(key); // unloaded: Skyrim keeps what it has (a chunk loading marks itself again)
+				continue;
+			}
+			LevelChunkSection section = sectionAt(level, chunk, sy);
+			if ((section == null || section.hasOnlyAir()) && !SENT.contains(key) && !LIT.contains(key) && !SOLID.contains(key) && !DUG.contains(key)
+				&& dev.skycraft.client.SkyDigClient.dugBits(chunk, sy) == null) {
+				idle.add(key);
+			}
+		}
+		synchronized (DIRTY) {
+			for (int i = 0; i < idle.size(); i++) {
+				long key = idle.getLong(i);
+				if (!URGENT.contains(key)) {
+					DIRTY.remove(key);
+				}
 			}
 		}
 	}
