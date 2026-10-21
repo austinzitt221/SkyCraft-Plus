@@ -152,17 +152,22 @@ public final class SkyMaterials {
 	private static int byNameGeneration = -2;
 
 	/** The Skyrim thing a Minecraft item is, from Skyrim's catalog (this Skyrim's), or null. */
-	public static synchronized SkyLink.@Nullable SkyItem skyrimItem(Item item) {
+	public static SkyLink.@Nullable SkyItem skyrimItem(Item item) {
 		String name = skyrimOf(item);
-		if (name == null) {
-			return null;
-		}
+		return name == null ? null : skyrimItemByName(name);
+	}
+
+	private static synchronized SkyLink.@Nullable SkyItem skyrimItemByName(String name) {
 		int generation = SkyLink.skyCatalogGeneration();
 		if (generation != byNameGeneration && generation > 0) {
 			List<SkyLink.SkyItem> items = SkyLink.readSkyCatalog();
 			if (items != null) {
 				Map<String, SkyLink.SkyItem> names = new HashMap<>();
+				Map<String, Integer> forms = new HashMap<>();
 				for (SkyLink.SkyItem i : items) {
+					if (!i.plugin().isEmpty()) {
+						forms.put(i.plugin().toLowerCase(Locale.ROOT) + "|" + i.localId(), i.formId());
+					}
 					if (i.kind() < Proto.SKY_SPELL && !i.plugin().isEmpty()) {
 						String n = i.name().toLowerCase(Locale.ROOT).trim();
 						// Skyrim.esm's own first: a mod's look-alike of the same name stays a mod's.
@@ -172,10 +177,20 @@ public final class SkyMaterials {
 					}
 				}
 				byName = names;
+				byForm = forms;
 				byNameGeneration = generation;
 			}
 		}
-		return byName.get(name);
+		return name.isEmpty() ? null : byName.get(name);
+	}
+
+	// SkyCraft+ : this Skyrim's form IDs by plugin and local ID (from the same catalog).
+	private static volatile Map<String, Integer> byForm = Map.of();
+
+	/** This Skyrim's form ID of plugin's localId (0: not in its catalog). */
+	public static int formIdOf(String plugin, int localId) {
+		skyrimItemByName("");  // (the catalog read, if it's new)
+		return byForm.getOrDefault(plugin.toLowerCase(Locale.ROOT) + "|" + localId, 0);
 	}
 
 	/** A stored Skyrim item (SkyStorage) of the Skyrim thing a Minecraft item is, looking like that item; EMPTY if Skyrim has none. */

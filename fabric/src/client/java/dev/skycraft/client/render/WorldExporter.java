@@ -824,8 +824,48 @@ public final class WorldExporter {
 		return out;
 	}
 
+	// SkyCraft+ : arrows across the games. Skyrim's arrows standing in for Minecraft's (SHOT_LENT): where each was last frame.
+	private static final List<SkyLink.Shot> SHOTS = new ArrayList<>();
+	private static final java.util.Map<Integer, float[]> LENT_WAS = new java.util.HashMap<>();
+
+	private static int parseOr(String number) {
+		try {
+			return Integer.parseInt(number);
+		} catch (NumberFormatException e) {
+			return 0;
+		}
+	}
+
+	/** Minecraft's arrow where each Skyrim arrow shot for a Minecraft one flies (Skyrim hides its own), facing the way it goes. */
+	private static void exportLentArrows() {
+		if (atlas == null || !SkyLink.readSkyrimShots(SHOTS)) {
+			return;
+		}
+		float[] uv = atlas.arrowUv(0);
+		java.util.Set<Integer> seen = new java.util.HashSet<>();
+		for (SkyLink.Shot shot : SHOTS) {
+			if ((shot.flags() & Proto.SHOT_LENT) == 0 || uv == null || ENTITIES.size() >= Proto.MAX_WORLD_ENTITIES) {
+				continue;
+			}
+			seen.add(shot.id());
+			float[] was = LENT_WAS.get(shot.id());
+			float dx = shot.x1() - (was != null ? was[0] : shot.x0()), dy = shot.y1() - (was != null ? was[1] : shot.y0()), dz = shot.z1() - (was != null ? was[2] : shot.z0());
+			float[] facing = was != null && was.length > 3 ? new float[] { was[3], was[4] } : null;
+			if (dx * dx + dy * dy + dz * dz > 1.0e-4F) {
+				facing = new float[] { (float) Math.toDegrees(Math.atan2(dx, dz)), (float) Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz))) };
+			}
+			if (facing == null) {
+				continue;
+			}
+			LENT_WAS.put(shot.id(), new float[] { shot.x1(), shot.y1(), shot.z1(), facing[0], facing[1] });
+			ENTITIES.add(new SkyLink.WorldEntity(Proto.WE_ARROW, shot.id(), shot.x1(), shot.y1(), shot.z1(), facing[0], facing[1], 1.0F, null, uv, 0));
+		}
+		LENT_WAS.keySet().retainAll(seen);
+	}
+
 	private static void exportEntities(Minecraft minecraft, ClientLevel level, float partialTick) {
 		ENTITIES.clear();
+		exportLentArrows();
 		int lockableMobs = 0;
 		Vec3 eye = minecraft.player.getEyePosition(partialTick);
 		for (Entity e : level.entitiesForRendering()) {
@@ -838,6 +878,13 @@ public final class WorldExporter {
 				int kind = trident ? Proto.WE_TRIDENT : Proto.WE_ARROW;
 				float yaw = Mth.rotLerp(partialTick, arrow.yRotO, arrow.getYRot());
 				float pitch = Mth.lerp(partialTick, arrow.xRotO, arrow.getXRot());
+				// SkyCraft+ : arrows across the games. A Skyrim arrow from a Minecraft bow: Skyrim draws that arrow there (tint: its form ID).
+				String[] skyrim = trident ? null : dev.skycraft.combat.SkyArrows.skyrimArrowOf(arrow);
+				int form = skyrim == null ? 0 : dev.skycraft.craft.SkyMaterials.formIdOf(skyrim[0], parseOr(skyrim[1]));
+				if (form != 0) {
+					ENTITIES.add(new SkyLink.WorldEntity(Proto.WE_SKYRIM_ARROW, e.getId(), (float) p.x, (float) p.y, (float) p.z, yaw, pitch, 1.0F, null, null, form));
+					continue;
+				}
 				// Arrows use Minecraft's arrow model and entity texture; tridents their item icon.
 				float[] uv = trident ? ICONS.computeIfAbsent(Items.TRIDENT, i -> iconUv(minecraft, level, new ItemStack(i)))
 					: atlas.arrowUv(arrow instanceof SpectralArrow ? 2 : arrow instanceof Arrow tippable && tippable.getColor() > 0 ? 1 : 0);

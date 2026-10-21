@@ -13,7 +13,7 @@
 namespace skycraft::proto
 {
 	inline constexpr std::uint32_t kMagic = 0x43594B53;  // "SKYC"
-	inline constexpr std::uint32_t kVersion = 60;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed); v54, Minecraft's things at Skyrim's workbenches (SkyState::workbench, kStoreLendGear/kStoreReturnGear, kEvEnchantHit); v55, arrows across the games (kShotArrow), Skyrim mode's Activate (McState::useDistance); v56, the SkyCraft+ settings screen (SkySettingsText, SettingsEdit); v57, every shout in Minecraft mode (kShotParalyze..kShotWither, SkyrimShot::seconds, SkyState::selfEffects); v58, Skyrim geo (kRenSkyrimTexture, kStoreTextureAt, kSkyGeo); v59, beds (kEvSlept, kEvGoToBed), bow enchantments (kEvBowEnchants); v60, Minecraft arrows on the Skyrim bow (kEvBowEnchants flag 4)
+	inline constexpr std::uint32_t kVersion = 61;  // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, kSkyItemDestroy; v53, taming and feeding (kEvTame, kEvGrowBaby, kActorTamed); v54, Minecraft's things at Skyrim's workbenches (SkyState::workbench, kStoreLendGear/kStoreReturnGear, kEvEnchantHit); v55, arrows across the games (kShotArrow), Skyrim mode's Activate (McState::useDistance); v56, the SkyCraft+ settings screen (SkySettingsText, SettingsEdit); v57, every shout in Minecraft mode (kShotParalyze..kShotWither, SkyrimShot::seconds, SkyState::selfEffects); v58, Skyrim geo (kRenSkyrimTexture, kStoreTextureAt, kSkyGeo); v59, beds (kEvSlept, kEvGoToBed), bow enchantments (kEvBowEnchants); v60, Minecraft arrows on the Skyrim bow (kEvBowEnchants flag 4); v61, kShotLent, Skyrim arrows from a Minecraft bow (kWeSkyrimArrow)
 	inline constexpr wchar_t       kMappingName[] = L"Local\\SkyCraft_v1";
 
 	// 1 Minecraft block == 70 Skyrim units (Skyrim player ~128 units tall, MC player 1.8 blocks).
@@ -540,6 +540,8 @@ namespace skycraft::proto
 		kWeMob = 7,      // a Minecraft mob Skyrim's player may lock on to (not drawn: Minecraft draws it). id = entity id, (x, y, z) = its feet,
 		                 // scale = its height in blocks, ext[0] = health 0..1 (< 0: unknown), ext[1] = its width in blocks, and its name is
 		                 // zero-ended UTF-8 in the first 32 bytes of uv (kMobNameBytes)
+		kWeSkyrimArrow = 8,  // SkyCraft+ (v61): a Skyrim arrow from a Minecraft bow (facing as kWeArrow): Skyrim draws that arrow's own
+		                     // model there; tint = its form ID
 	};
 
 	struct WorldEntity
@@ -599,6 +601,8 @@ namespace skycraft::proto
 		kShotCalm = 1u << 16,      // Kyne's Peace, Animal Allegiance, Bend Will, calm: leaves the player alone
 		kShotFrenzy = 1u << 17,    // frenzy: attacks whatever is near
 		kShotWither = 1u << 18,    // Marked for Death: its armor down and health draining
+		kShotLent = 1u << 19,      // SkyCraft+ (v61): an arrow standing in for a Minecraft arrow (kEvBowEnchants flag 4): Skyrim hides
+		                           // its own, Minecraft draws its arrow there (x0 where it was first seen, x1 now)
 	};
 
 	struct SkyrimShot

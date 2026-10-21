@@ -183,6 +183,24 @@ public final class SkyArrows {
 		SkyStorage.Stored stored = new SkyStorage.Stored(tag.getStringOr("plugin", ""), tag.getIntOr("id", 0), Proto.SKY_AMMO, 0, 0, 0, 1.0F, -1.0F, 0, 0.0F, 0, damage,
 			0.0F, name, "minecraft:arrow", 0, false);
 		((dev.skycraft.mixin.AbstractArrowAccessor) arrow).skycraft$setPickupItemStack(SkyStorage.make(stored, 1));
+		// SkyCraft+ : which Skyrim arrow it is, for its look (Skyrim draws that arrow there: WorldExporter, Proto.WE_SKYRIM_ARROW).
+		// An entity's name is what reaches every client; an arrow's is never shown.
+		arrow.setCustomName(Component.literal(SKYRIM_ARROW_NAME + stored.plugin() + "|" + stored.localId()));
+		arrow.setCustomNameVisible(false);
+	}
+
+	/** The start of the name a Minecraft arrow made from a Skyrim one carries: "plugin|localId" follows. */
+	public static final String SKYRIM_ARROW_NAME = "skycraft:skyrim_arrow|";
+
+	/** Which Skyrim arrow a Minecraft arrow stands for, from its name: {plugin, localId}, or null. */
+	public static String @Nullable [] skyrimArrowOf(net.minecraft.world.entity.Entity arrow) {
+		Component name = arrow.getCustomName();
+		String text = name == null ? "" : name.getString();
+		if (!text.startsWith(SKYRIM_ARROW_NAME)) {
+			return null;
+		}
+		String[] parts = text.substring(SKYRIM_ARROW_NAME.length()).split("\\|");
+		return parts.length == 2 ? parts : null;
 	}
 
 	/** AbstractArrowMixin: a Skyrim arrow from a Minecraft bow hit this: frost slows it, shock hurts it more. */

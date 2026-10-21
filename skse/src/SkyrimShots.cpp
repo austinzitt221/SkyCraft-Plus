@@ -41,6 +41,111 @@ namespace skycraft::SkyrimShots
 		std::unordered_set<std::uint32_t> lentShots;
 		std::vector<RE::ProjectileHandle> spent;
 
+		// SkyCraft+ : arrows across the games. A Skyrim arrow shot from a Minecraft bow is Minecraft's arrow, which
+		// it lists as kWeSkyrimArrow: that arrow's own Skyrim model is hung in the cell where it flies.
+		struct Shown
+		{
+			RE::NiPointer<RE::NiNode> node;
+			RE::NiPointer<RE::NiNode> parent;
+			bool                      seen = false;
+		};
+		std::unordered_map<std::uint32_t, Shown> shown;  // by Minecraft entity id
+		proto::WorldEntities                     shownEntities;
+
+		void HideShown(Shown& a_shown)
+		{
+			if (a_shown.node && a_shown.parent) {
+				a_shown.parent->DetachChild(a_shown.node.get());
+			}
+			a_shown = {};
+		}
+
+		RE::NiPointer<RE::NiNode> ArrowModel(RE::FormID a_ammo)
+		{
+			auto* ammo = RE::TESForm::LookupByID<RE::TESAmmo>(a_ammo);
+			auto* projectile = ammo ? ammo->GetRuntimeData().data.projectile : nullptr;
+			const char* path = projectile ? projectile->GetModel() : nullptr;
+			if (!path || !*path) {
+				return nullptr;
+			}
+			RE::BSModelDB::DBTraits::ArgsType args{};
+			RE::NiPointer<RE::NiNode>         root;
+			RE::BSModelDB::Demand(path, root, args);
+			if (!root) {
+				RE::BSModelDB::Demand((std::string("Meshes\\") + path).c_str(), root, args);
+			}
+			auto* copy = root ? root->Clone() : nullptr;
+			auto* node = copy ? copy->AsNode() : nullptr;
+			static int logged = 0;
+			if (logged++ < 10) {
+				logger::info("shots: {} from a Minecraft bow drawn with {}{}", ammo->GetName(), path, node ? "" : " (it didn't load)");
+			}
+			return RE::NiPointer<RE::NiNode>(node);
+		}
+
+		void ShowSkyrimArrows(RE::PlayerCharacter* a_player, bool a_active)
+		{
+			auto* cell = a_active && a_player ? a_player->GetParentCell() : nullptr;
+			auto* loaded = cell ? cell->GetRuntimeData().loadedData : nullptr;
+			RE::NiPointer<RE::NiNode> parent = loaded ? loaded->cell3D : nullptr;
+			if (!parent || !Link::Get().ReadWorldEntities(shownEntities)) {
+				if (!parent) {
+					for (auto& [id, s] : shown) {
+						HideShown(s);
+					}
+					shown.clear();
+				}
+				return;
+			}
+			for (auto& [id, s] : shown) {
+				s.seen = false;
+			}
+			for (std::uint32_t i = 0; i < shownEntities.count; ++i) {
+				const auto& e = shownEntities.entities[i];
+				if (e.kind != proto::kWeSkyrimArrow) {
+					continue;
+				}
+				auto& s = shown[e.id];
+				if (s.parent != parent) {
+					HideShown(s);
+					s.node = ArrowModel(e.tint);
+					if (s.node) {
+						parent->AttachChild(s.node.get(), true);
+						s.parent = parent;
+					}
+				}
+				s.seen = true;
+				if (!s.node) {
+					continue;
+				}
+				// Minecraft's arrow faces (sin yaw cos pitch, sin pitch, cos yaw cos pitch); Skyrim's model points along its +Y.
+				const float  yaw = e.yaw * std::numbers::pi_v<float> / 180.0f, pitch = e.pitch * std::numbers::pi_v<float> / 180.0f;
+				RE::NiPoint3 f{ std::sin(yaw) * std::cos(pitch), -std::cos(yaw) * std::cos(pitch), std::sin(pitch) };  // Minecraft -> Skyrim axes
+				RE::NiPoint3 x = f.Cross(RE::NiPoint3{ 0.0f, 0.0f, 1.0f });
+				if (x.Length() < 1e-3f) {
+					x = { 1.0f, 0.0f, 0.0f };
+				}
+				x.Unitize();
+				const RE::NiPoint3 z = x.Cross(f);
+				auto&              m = s.node->local.rotate.entry;
+				m[0][0] = x.x, m[1][0] = x.y, m[2][0] = x.z;
+				m[0][1] = f.x, m[1][1] = f.y, m[2][1] = f.z;
+				m[0][2] = z.x, m[1][2] = z.y, m[2][2] = z.z;
+				s.node->local.translate = McToSky(e.x, e.y, e.z);
+				s.node->local.scale = 1.0f;
+				RE::NiUpdateData update{};
+				s.node->Update(update);
+			}
+			for (auto it = shown.begin(); it != shown.end();) {
+				if (!it->second.seen) {
+					HideShown(it->second);
+					it = shown.erase(it);
+				} else {
+					++it;
+				}
+			}
+		}
+
 		McVec ToMc(const RE::NiPoint3& a_pos) { return SkyToMc(a_pos); }
 
 		// What a spell does to whatever it hits, from its effects.
@@ -271,6 +376,7 @@ namespace skycraft::SkyrimShots
 
 	void PerFrame(RE::PlayerCharacter* a_player, bool a_active, float a_delta)
 	{
+		ShowSkyrimArrows(a_player, a_active);  // SkyCraft+
 		if (!a_active || !a_player) {
 			if (!tracked.empty()) {
 				tracked.clear();
@@ -299,9 +405,16 @@ namespace skycraft::SkyrimShots
 					if (fresh && (bowEnchants & 4) && (t.shot.flags & proto::kShotArrow)) {
 						lentShots.insert(id);
 					}
-					if (lentShots.contains(id) && !projectile->GetProjectileRuntimeData().impacts.empty()) {
-						lentShots.erase(id);
-						spent.push_back(handle);
+					if (lentShots.contains(id)) {
+						// (Minecraft draws its own arrow there instead: kShotLent.)
+						t.shot.flags |= proto::kShotLent;
+						if (auto* root = projectile->Get3D(); root && !root->GetAppCulled()) {
+							root->SetAppCulled(true);
+						}
+						if (!projectile->GetProjectileRuntimeData().impacts.empty()) {
+							lentShots.erase(id);
+							spent.push_back(handle);
+						}
 					}
 					if (fresh && (bowEnchants & 3) && (t.shot.flags & proto::kShotArrow) && !extraArrows.erase(id)) {
 						auto& runtime = projectile->GetProjectileRuntimeData();
