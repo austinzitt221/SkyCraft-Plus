@@ -85,6 +85,51 @@ namespace skycraft::Animals
 		// there by us alone, as a Minecraft mob is pulled, with Skyrim's AI paused meanwhile (nothing
 		// to fight): over Minecraft's blocks (a step up or down) and along Skyrim's land, turning as
 		// it goes, till it's there; then it's Skyrim's again.
+		// Skyrim's AI paused by us: walked the Minecraft way, a pet sitting, a follower held through its
+		// swing (MobFights). With it off Skyrim leaves the body's animation where it was (a walk frozen
+		// mid-step), and left on it ran them on the spot (a sitting wolf, or a follower's swing broken
+		// off for a run, as its follow package had it go after the player): so it's off, and the body
+		// is played on here each frame (PerFrame). Why it's paused, as bits: one can be for more than one.
+		enum : std::uint8_t
+		{
+			kPauseWalk = 1,
+			kPauseSit = 2,
+			kPauseHold = 4
+		};
+		std::unordered_map<RE::FormID, std::uint8_t> paused;
+
+		void Pause(RE::Actor* a_actor, std::uint8_t a_why, bool a_on)
+		{
+			const auto          id = a_actor->GetFormID();
+			const auto          it = paused.find(id);
+			const std::uint8_t  was = it != paused.end() ? it->second : 0;
+			const std::uint8_t  now = a_on ? std::uint8_t(was | a_why) : std::uint8_t(was & ~a_why);
+			if (now == was) {
+				return;
+			}
+			if (now) {
+				paused[id] = now;
+			} else {
+				paused.erase(id);
+			}
+			if (!was) {
+				a_actor->EnableAI(false);
+			} else if (!now) {
+				a_actor->EnableAI(true);
+				a_actor->EvaluatePackage(true, false);
+			}
+		}
+
+		void AnimatePaused(float a_delta)
+		{
+			for (const auto& [id, why] : paused) {
+				auto* actor = RE::TESForm::LookupByID<RE::Actor>(id);
+				if (actor && !actor->IsDead() && actor->Get3D()) {
+					actor->UpdateAnimation(a_delta);
+				}
+			}
+		}
+
 		struct Walk
 		{
 			RE::NiPoint3 at;               // where we last put it
@@ -103,8 +148,9 @@ namespace skycraft::Animals
 			}
 			a_walk.driving = false;
 			a_actor->SetGraphVariableFloat("Speed", 0.0f);
-			a_actor->EnableAI(true);
-			a_actor->EvaluatePackage(true, false);
+			a_actor->SetGraphVariableFloat("SpeedSampled", 0.0f);
+			a_actor->NotifyAnimationGraph("moveStop");
+			Pause(a_actor, kPauseWalk, false);
 		}
 
 		void Steer(RE::Actor* a_actor, const RE::NiPoint3& a_goal, double a_keepBlocks, float a_delta)
@@ -125,7 +171,9 @@ namespace skycraft::Animals
 				walk.driving = true;
 				walk.at = pos;
 				walk.blocked = 0.0f;
-				a_actor->EnableAI(false);
+				Pause(a_actor, kPauseWalk, true);
+				a_actor->SetGraphVariableFloat("Direction", 0.0f);
+				a_actor->NotifyAnimationGraph("moveStart");  // (its walk or run plays: AnimatePaused)
 				static int logged = 0;
 				if (logged++ < 20) {
 					logger::info("animals: {} walked the Minecraft way ({:.0f} blocks to go)", a_actor->GetName(), distance);
@@ -181,7 +229,8 @@ namespace skycraft::Animals
 				RE::NiUpdateData update;
 				root->Update(update);
 			}
-			a_actor->SetGraphVariableFloat("Speed", float(speed) * float(proto::kUnitsPerBlock));  // (its walk, if its graph takes it)
+			a_actor->SetGraphVariableFloat("Speed", float(speed) * float(proto::kUnitsPerBlock));  // (walking, or running when far behind)
+			a_actor->SetGraphVariableFloat("SpeedSampled", float(speed) * float(proto::kUnitsPerBlock));
 		}
 
 		// Done with it: Skyrim's again.
@@ -391,6 +440,14 @@ namespace skycraft::Animals
 				}
 			}
 		}
+		// (And those paused for anything else: a sitting pet is paused again the next frame.)
+		for (const auto& [id, why] : paused) {
+			driven.push_back(id);
+			if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(id)) {
+				actor->EnableAI(true);
+			}
+		}
+		paused.clear();
 		if (driven.empty() || !a_intfc->OpenRecord(kWalksRecord, 1)) {
 			return;
 		}
@@ -406,6 +463,13 @@ namespace skycraft::Animals
 	{
 		walks.clear();
 		approaching.clear();
+		paused.clear();
+	}
+
+	void HoldForAttack(RE::Actor* a_actor, bool a_hold)
+	{
+		HoldStill(a_actor, a_hold);
+		Pause(a_actor, kPauseHold, a_hold);
 	}
 
 	void LoadWalks(SKSE::SerializationInterface* a_intfc)
@@ -592,6 +656,7 @@ namespace skycraft::Animals
 				if (!actor || actor->IsDead()) {
 					if (actor) {
 						Unwalk(actor);
+						Pause(actor, kPauseSit, false);
 						logger::info("pets: {} died", actor->GetName());
 					}
 					it = pets.erase(it);
@@ -604,9 +669,12 @@ namespace skycraft::Animals
 					HoldStill(actor, pet.sitting);
 				}
 				KeepPeace(a_player, actor);
-				if (pet.sitting && actor->Get3D() && (pet.poseTimer -= a_delta) <= 0.0f) {
-					pet.poseTimer = 1.5f;
-					SitPose(actor, true);
+				if (pet.sitting && actor->Get3D()) {
+					Pause(actor, kPauseSit, true);  // (its sitting not fought by a run after the player)
+					if ((pet.poseTimer -= a_delta) <= 0.0f) {
+						pet.poseTimer = 1.5f;
+						SitPose(actor, true);
+					}
 				}
 				if (pet.sitting || leads.contains(it->first) || State().parked) {
 					++it;
@@ -658,6 +726,9 @@ namespace skycraft::Animals
 		it->second.poseTimer = 0.0f;
 		Unwalk(actor);
 		HoldStill(actor, it->second.sitting);
+		if (!it->second.sitting) {
+			Pause(actor, kPauseSit, false);
+		}
 		KeepPeace(a_player, actor);
 		const bool posed = SitPose(actor, it->second.sitting);
 		logger::info("pets: {} {}{}", actor->GetName(), it->second.sitting ? "sits" : "stands", posed ? "" : " (no sitting pose of its own)");
@@ -730,6 +801,7 @@ namespace skycraft::Animals
 			Steer(actor, to->GetPosition(), 1.0, a_delta);
 			++it;
 		}
+		AnimatePaused(a_delta);
 		timer -= a_delta;
 		if (timer > 0.0f) {
 			return;

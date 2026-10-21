@@ -466,6 +466,9 @@ namespace skycraft
 		bool PathTo(RE::Actor* a_actor, RE::TESObjectREFR* a_to);
 		// SkyCraft+ : Papyrus SetDontMove (a follower held still through its attack on a Minecraft mob).
 		void HoldStill(RE::Actor* a_actor, bool a_hold);
+		// SkyCraft+ : held still through its attack, its AI paused (its follow package ran it on the spot,
+		// breaking off the swing) and its body played on by us.
+		void HoldForAttack(RE::Actor* a_actor, bool a_hold);
 		// Main thread, every frame: Skyrim's animals that like the food held follow (McState::heldFood).
 		void PerFrame(RE::PlayerCharacter* a_player, std::uint32_t a_heldFood, bool a_driving, float a_delta);
 		// Skyrim's own KeepOffsetFromActor / ClearKeepOffsetFromActor on an actor.

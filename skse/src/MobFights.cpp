@@ -21,7 +21,7 @@ namespace skycraft::MobFights
 			auto [it, added] = held.try_emplace(a_actor->GetFormID(), 0);
 			it->second = GetTickCount64() + a_ms;
 			if (added) {
-				Animals::HoldStill(a_actor, true);
+				Animals::HoldForAttack(a_actor, true);
 			}
 		}
 
@@ -29,7 +29,7 @@ namespace skycraft::MobFights
 		{
 			if (held.erase(a_actor)) {
 				if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(a_actor)) {
-					Animals::HoldStill(actor, false);
+					Animals::HoldForAttack(actor, false);
 				}
 			}
 		}
