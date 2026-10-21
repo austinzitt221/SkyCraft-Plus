@@ -566,12 +566,77 @@ namespace skycraft
 		// (Skyrim's fShoutTime1 and fShoutTime2: a word more held this long.)
 		int WhirlwindCharged(std::uint64_t a_held) { return a_held < 200 ? 1 : a_held < 900 ? 2 : 3; }
 
+		// SkyCraft+ : every shout in Minecraft mode. An aimed shout Skyrim shouts itself; one it doesn't
+		// (the dragons' own, as Fire Ball, which has no words a player learns) is cast by hand along the
+		// aim if Skyrim hasn't shouted a moment after the key came up.
+		struct
+		{
+			RE::TESShout* shout = nullptr;
+			std::uint64_t pressAt = 0, releaseAt = 0;
+		} aimed;
+
+		void AimedKey(RE::PlayerCharacter* a_player, bool a_down, std::uint64_t a_now)
+		{
+			auto* voice = a_player ? a_player->GetActorRuntimeData().selectedPower : nullptr;
+			auto* shout = voice ? voice->As<RE::TESShout>() : nullptr;
+			if (a_down) {
+				aimed = {};
+				if (shout && a_player->GetActorRuntimeData().voiceTimer <= 0.0f) {
+					aimed.shout = shout;
+					aimed.pressAt = a_now;
+				}
+			} else if (aimed.shout == shout && aimed.pressAt != 0) {
+				aimed.releaseAt = a_now;
+			}
+		}
+
+		void AimedFallback(RE::PlayerCharacter* a_player)
+		{
+			if (!aimed.shout || aimed.releaseAt == 0 || GetTickCount64() - aimed.releaseAt < 1500) {
+				return;
+			}
+			auto* shout = aimed.shout;
+			const int charged = WhirlwindCharged(aimed.releaseAt - aimed.pressAt);
+			aimed = {};
+			if (a_player->GetActorRuntimeData().voiceTimer > 0.0f) {
+				return;  // (Skyrim shouted it)
+			}
+			// The words unlocked, or for a shout with none a player learns, as many as were held.
+			int words = 0, withWords = 0;
+			for (const auto& variation : shout->variations) {
+				withWords += variation.word ? 1 : 0;
+				words += variation.word && (variation.word->formFlags & RE::TESForm::RecordFlags::kUnlocked) != 0 ? 1 : 0;
+			}
+			if (withWords > 0 && words == 0) {
+				return;
+			}
+			int use = std::min(withWords > 0 ? words : 3, charged);
+			while (use > 1 && !shout->variations[use - 1].spell) {
+				--use;
+			}
+			const auto& variation = shout->variations[use - 1];
+			auto* caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+			if (!variation.spell || !caster) {
+				logger::info("{}: Skyrim didn't shout it and it has no spell to cast", shout->GetName());
+				return;
+			}
+			caster->CastSpellImmediate(variation.spell, false, nullptr, 1.0f, false, 0.0f, a_player);
+			a_player->GetActorRuntimeData().voiceTimer = std::max(variation.recoveryTime, 1.0f) *
+			                                             std::max(0.0f, a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kShoutRecoveryMult));
+			whirlwind.cooldown = a_player->GetActorRuntimeData().voiceTimer;
+			logger::info("{} ({} word{}): Skyrim didn't shout it; cast by hand for Minecraft mode (recovery {:.0f} s)", shout->GetName(), use, use > 1 ? "s" : "",
+				variation.recoveryTime);
+		}
+
 		// The Shout key went down or up (Input.cpp).
 		void WhirlwindKey(bool a_down)
 		{
 			auto* player = RE::PlayerCharacter::GetSingleton();
 			auto* shout = player && State().puppeting ? WhirlwindSprint(player) : nullptr;
 			const auto now = GetTickCount64();
+			if (player && State().puppeting && !shout) {
+				AimedKey(player, a_down, now);
+			}
 			if (!a_down) {
 				if (whirlwind.pressAt != 0 && shout) {
 					ShoutWhirlwind(player, shout, std::min(whirlwind.words, WhirlwindCharged(now - whirlwind.pressAt)));
@@ -611,6 +676,9 @@ namespace skycraft
 			} else if (shoutMeterPct >= 0.0f) {
 				shoutMeterPct = -1.0f;
 				whirlwind.cooldown = 0.0f;
+			}
+			if (State().puppeting) {
+				AimedFallback(a_player);
 			}
 			if (whirlwind.pressAt == 0) {
 				return;

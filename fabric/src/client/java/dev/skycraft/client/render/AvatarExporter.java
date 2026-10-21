@@ -117,6 +117,8 @@ final class AvatarExporter implements SubmitNodeCollector {
 	private SkyAtlas atlas;
 	// Added to every position (particles and their groups come relative to the camera).
 	private float offX, offY, offZ;
+	// SkyCraft+ : every shout in Minecraft mode. The entity being captured glows (Aura Whisper, a spectral arrow): drawn lit and pale.
+	private boolean glowing;
 
 	private AvatarExporter() {
 	}
@@ -347,13 +349,16 @@ final class AvatarExporter implements SubmitNodeCollector {
 			}
 			try {
 				EntityRenderState state = dispatcher.extractEntity(e, partialTick);
+				this.glowing = e.isCurrentlyGlowing();
 				dispatcher.submit(state, cameraState, state.x - origin[0], state.y - origin[1], state.z - origin[2], pose, this);
+				this.capture.flush();
 			} catch (RuntimeException ex) {
 				if (!warnedEntity) {
 					warnedEntity = true;
 					SkyCraft.LOG.warn("SkyCraft: couldn't capture {} for Skyrim", e, ex);
 				}
 			}
+			this.glowing = false;
 		}
 		submitBlockEntities(minecraft, level, cam, origin, partialTick, cameraState, pose);
 		// Particles were extracted this frame relative to Minecraft's camera.
@@ -522,6 +527,11 @@ final class AvatarExporter implements SubmitNodeCollector {
 				argb = (argb & 0xFF000000) | (r << 16) | (g << 8) | b;
 			}
 			if ((overlay & 0xFFFF) >= 8) {
+				light = 0xF000F0;
+			}
+			if (AvatarExporter.this.glowing) {
+				int r = 128 + (((argb >> 16) & 0xFF) >> 1), g = 112 + (((argb >> 8) & 0xFF) >> 1), b = 80 + ((argb & 0xFF) >> 1);
+				argb = (argb & 0xFF000000) | (r << 16) | (g << 8) | b;
 				light = 0xF000F0;
 			}
 			int o = this.count * 8;
