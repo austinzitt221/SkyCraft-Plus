@@ -475,6 +475,14 @@ public final class SkyInventoryPanels {
 				}
 			});
 			ScreenMouseEvents.allowMouseClick(screen).register((s, event) -> {
+				// SkyCraft+ : Skyrim items carried in Minecraft. A Skyrim food, potion or ingredient right-clicked in the
+				// player's own inventory is eaten or drunk, as on the Skyrim panel (not picked up by half).
+				if (event.button() == InputConstants.MOUSE_BUTTON_RIGHT && inventory.getMenu().getCarried().isEmpty() && minecraft.player != null) {
+					Slot under = slotAt(inventory, accessor, event.x(), event.y());
+					if (under != null && under.container instanceof Inventory && SkyStorageClient.useStoredAt(minecraft.player, inventoryIndex(minecraft, under))) {
+						return false;
+					}
+				}
 				// SkyCraft+ : Skyrim armor. A shortcut put on an Extra slot puts its thing on; a click takes it off.
 				Extra extra = state.extraAt(event.x(), event.y());
 				if (extra != null) {
@@ -531,7 +539,7 @@ public final class SkyInventoryPanels {
 				// (SkyCraft+ : a thing carried in Minecraft: all of it out of Skyrim into the inventory.)
 				if (event.hasShiftDown()) {
 					SkyLink.SkyItem item = panel.itemAt(event.x(), event.y());
-					if (item != null && !creative && SkyStorageClient.carries(item)) {
+					if (item != null && SkyStorageClient.carries(item)) {
 						SkyStorageClient.store(item, item.count(), dev.skycraft.net.SkyStorage.OWN_INVENTORY, false);
 					} else if (item != null) {
 						quickShortcut(minecraft, item);
@@ -569,9 +577,9 @@ public final class SkyInventoryPanels {
 						}
 					} else if (slot != null && slot.container instanceof Inventory) {
 						int index = inventoryIndex(minecraft, slot);
-						if ((index < 36 || index == 40) && !creative && SkyStorageClient.carries(item)) {
+						if ((index < 36 || index == 40) && SkyStorageClient.carries(item)) {
 							// SkyCraft+ : carried in Minecraft: a stack of it out of Skyrim into that slot (the only ones now).
-							SkyStorageClient.store(item, Math.min(item.count(), 64), slot.index, false);
+							SkyStorageClient.store(item, Math.min(item.count(), 64), dev.skycraft.net.SkyStorage.INVENTORY_INDEX + index, false);
 						} else if ((index < 36 || index == 40) && (slot.getItem().isEmpty() || SkyShortcuts.isShortcut(slot.getItem()))) {
 							SkyShortcutsClient.make(item, index);
 						} else if (index >= 36 && index <= 39) {

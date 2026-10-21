@@ -173,16 +173,21 @@ public final class SkyStorage {
 
 	/** Deposit.slot for anywhere in the player's own inventory (a thing carried in Minecraft, shift-clicked out of the Skyrim panel). */
 	public static final int OWN_INVENTORY = 9999;
+	/** Deposit.slot for this index of the player's own inventory plus this (creative's inventory tab numbers its slots its own way). */
+	public static final int INVENTORY_INDEX = 10000;
 
 	public static boolean carriedInMinecraft(Stored s) {
 		return carriedInMinecraft(s.kind(), s.sub(), s.flags(), s.name());
 	}
 
-	/** SkyCraft+ : Skyrim items carried in Minecraft. Client -> server: the stored food, potion or ingredient in that hand is used: one goes back into Skyrim for it. */
-	public record UseStored(boolean offHand) implements CustomPacketPayload {
+	/**
+	 * SkyCraft+ : Skyrim items carried in Minecraft. Client -> server: the stored food, potion or ingredient at this index of the
+	 * player's inventory (a hand's, or right-clicked in the inventory screen) is used: one goes back into Skyrim for it.
+	 */
+	public record UseStored(int index) implements CustomPacketPayload {
 		public static final Type<UseStored> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "storage_use"));
-		public static final StreamCodec<RegistryFriendlyByteBuf, UseStored> CODEC = StreamCodec.of((buf, u) -> buf.writeBoolean(u.offHand),
-			buf -> new UseStored(buf.readBoolean()));
+		public static final StreamCodec<RegistryFriendlyByteBuf, UseStored> CODEC = StreamCodec.of((buf, u) -> buf.writeVarInt(u.index),
+			buf -> new UseStored(buf.readVarInt()));
 
 		@Override
 		public Type<? extends CustomPacketPayload> type() {
@@ -202,8 +207,11 @@ public final class SkyStorage {
 		}
 	}
 
-	private static void useStored(ServerPlayer player, boolean offHand) {
-		ItemStack held = player.getItemInHand(offHand ? net.minecraft.world.InteractionHand.OFF_HAND : net.minecraft.world.InteractionHand.MAIN_HAND);
+	private static void useStored(ServerPlayer player, int index) {
+		if (index < 0 || index >= player.getInventory().getContainerSize()) {
+			return;
+		}
+		ItemStack held = player.getInventory().getItem(index);
 		Stored stored = stored(held);
 		if (stored == null || !(stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
 			|| !ServerPlayNetworking.canSend(player, GiveAndUse.TYPE)) {
@@ -402,6 +410,22 @@ public final class SkyStorage {
 				if (carried && !chunk.isEmpty()) {
 					player.getInventory().add(chunk);  // (the rest beside it)
 				}
+			} else if (carried && deposit.slot() >= INVENTORY_INDEX && deposit.slot() - INVENTORY_INDEX < player.getInventory().getContainerSize()) {
+				// SkyCraft+ : dragged onto that slot of the player's own inventory (on it, or beside it if it's taken).
+				Inventory inventory = player.getInventory();
+				int index = deposit.slot() - INVENTORY_INDEX;
+				ItemStack there = inventory.getItem(index);
+				if (there.isEmpty()) {
+					inventory.setItem(index, chunk);
+					chunk = ItemStack.EMPTY;
+				} else if (ItemStack.isSameItemSameComponents(there, chunk)) {
+					int moved = Math.min(chunk.getCount(), there.getMaxStackSize() - there.getCount());
+					there.grow(moved);
+					chunk.shrink(moved);
+				}
+				if (!chunk.isEmpty()) {
+					inventory.add(chunk);
+				}
 			} else if (carried && deposit.slot() == OWN_INVENTORY) {
 				player.getInventory().add(chunk);  // SkyCraft+ : shift-clicked out of the Skyrim panel
 			} else {
@@ -519,7 +543,7 @@ public final class SkyStorage {
 		PayloadTypeRegistry.clientboundPlay().register(GiveAndUse.TYPE, GiveAndUse.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(UseStored.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
-			context.server().execute(() -> useStored(player, payload.offHand()));
+			context.server().execute(() -> useStored(player, payload.index()));
 		});
 		ServerPlayNetworking.registerGlobalReceiver(Deposit.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();

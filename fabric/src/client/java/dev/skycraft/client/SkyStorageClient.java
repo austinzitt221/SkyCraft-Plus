@@ -137,10 +137,21 @@ public final class SkyStorageClient {
 				ClientPlayNetworking.send(new dev.skycraft.net.SkyFeeding.Feed(hit.getEntity().getId(), foods, stored.plugin(), stored.localId()));
 				return true;
 			}
-			ClientPlayNetworking.send(new SkyStorage.UseStored(hand == net.minecraft.world.InteractionHand.OFF_HAND));
+			ClientPlayNetworking.send(new SkyStorage.UseStored(hand == net.minecraft.world.InteractionHand.OFF_HAND ? 40 : player.getInventory().getSelectedSlot()));
 			return true;
 		}
 		return false;
+	}
+
+	/** SkyCraft+ : Skyrim items carried in Minecraft. Right-clicked in the inventory screen (this index of the player's inventory): eaten or drunk, as on the Skyrim panel (true). */
+	static boolean useStoredAt(net.minecraft.world.entity.player.Player player, int index) {
+		SkyStorage.Stored stored = index >= 0 && index < player.getInventory().getContainerSize() ? SkyStorage.stored(player.getInventory().getItem(index)) : null;
+		if (stored == null || !(stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
+			|| !ClientPlayNetworking.canSend(SkyStorage.UseStored.TYPE)) {
+			return false;
+		}
+		ClientPlayNetworking.send(new SkyStorage.UseStored(index));
+		return true;
 	}
 
 	/** A block a right click does something with (a container, door, bed, button...). */
