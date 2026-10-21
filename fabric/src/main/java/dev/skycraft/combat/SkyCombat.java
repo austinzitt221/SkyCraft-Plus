@@ -98,16 +98,20 @@ public final class SkyCombat {
 			return;
 		}
 		targets.sort(java.util.Comparator.comparingDouble(e -> e.distanceToSqr(player)));
-		if (!power) {
+		// SkyCraft+ : enchanting across the games. Minecraft enchantments on the Skyrim weapon: sharpness, smite, knockback, fire aspect...
+		var enchanted = enchantedShortcut(player, (flags & Proto.SKYRIM_HIT_LEFT) != 0);
+		// (Sweeping Edge: an ordinary swing also catches the others in its arc, with that share of the damage.)
+		int sweeping = bash || power ? 0 : SkyArrows.level(enchanted, net.minecraft.world.item.enchantment.Enchantments.SWEEPING_EDGE);
+		LivingEntity first = targets.get(0);
+		if (!power && sweeping == 0) {
 			targets = targets.subList(0, 1);
 		}
 		var source = player.damageSources().playerAttack(player);
 		double kx = net.minecraft.util.Mth.sin(player.getYRot() * (float) (Math.PI / 180.0));
 		double kz = -net.minecraft.util.Mth.cos(player.getYRot() * (float) (Math.PI / 180.0));
-		// SkyCraft+ : enchanting across the games. Minecraft enchantments on the Skyrim weapon: sharpness, smite, knockback, fire aspect...
-		var enchanted = enchantedShortcut(player, (flags & Proto.SKYRIM_HIT_LEFT) != 0);
 		for (LivingEntity e : targets) {
-			float dealt = enchanted.isEmpty() ? damage : net.minecraft.world.item.enchantment.EnchantmentHelper.modifyDamage(level, enchanted, e, source, damage);
+			float base = sweeping > 0 && e != first ? damage * sweeping / (sweeping + 1.0F) : damage;
+			float dealt = enchanted.isEmpty() ? base : net.minecraft.world.item.enchantment.EnchantmentHelper.modifyDamage(level, enchanted, e, source, base);
 			if (e.hurtServer(level, source, dealt)) {
 				float push = bash ? 1.2F : power ? 0.8F : 0.4F;
 				if (!enchanted.isEmpty()) {

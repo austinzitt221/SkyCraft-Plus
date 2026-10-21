@@ -157,6 +157,30 @@ public final class SkyMagic {
 			// A path or a beam: what its swept width passes through, nearest first.
 			LivingEntity nearest = null;
 			double best = Double.MAX_VALUE;
+			// SkyCraft+ : Piercing on the Skyrim bow: an arrow goes through that many more.
+			int pierce = (flags & Proto.SHOT_ARROW) != 0 ? SkyArrows.piercing(player) : 0;
+			if (pierce > 0) {
+				int already = 0;
+				for (var at : hit.keySet()) {
+					already += at != STOPPED ? 1 : 0;
+				}
+				List<LivingEntity> through = new ArrayList<>();
+				for (LivingEntity e : candidates) {
+					AABB box = e.getBoundingBox().inflate(reach);
+					if (box.contains(a) || box.clip(a, b).isPresent()) {
+						through.add(e);
+					}
+				}
+				through.sort(java.util.Comparator.comparingDouble(e -> e.distanceToSqr(a)));
+				for (LivingEntity e : through) {
+					if (already++ > pierce) {
+						hit.put(STOPPED, now);
+						break;
+					}
+					targets.add(e);
+				}
+				candidates = List.of();
+			}
 			for (LivingEntity e : candidates) {
 				AABB box = e.getBoundingBox().inflate(reach);
 				var at = box.contains(a) ? java.util.Optional.of(a) : box.clip(a, b);
@@ -229,8 +253,12 @@ public final class SkyMagic {
 		if ((flags & Proto.SHOT_FROST) != 0) {
 			e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 80, 1), player);
 		}
-		if (shot.damage() > 0.0F) {
-			e.hurtServer(level, player.damageSources().indirectMagic(player, player), shot.damage());
+		float damage = shot.damage();
+		if ((flags & Proto.SHOT_ARROW) != 0) {
+			damage = SkyArrows.bowHit(player, e, damage);  // SkyCraft+ : Power, Punch, Flame on the Skyrim bow
+		}
+		if (damage > 0.0F) {
+			e.hurtServer(level, player.damageSources().indirectMagic(player, player), damage);
 		}
 		if ((flags & Proto.SHOT_ARROW) != 0) {
 			SkyArrows.skyrimArrowHit(player, e);  // SkyCraft+ : a tipped or spectral Minecraft arrow's effect

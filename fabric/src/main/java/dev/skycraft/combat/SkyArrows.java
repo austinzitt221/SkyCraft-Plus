@@ -205,15 +205,100 @@ public final class SkyArrows {
 
 	private static final Map<UUID, Set<Integer>> SHOTS_SEEN = new HashMap<>();
 
-	/** Whether this player's Skyrim holds a bow and their off hand Minecraft arrows (lent to it: SkyArrowsClient). */
-	private static boolean lending(ServerPlayer player) {
+	public static boolean minecraftArrows(ItemStack stack) {
+		return stack.is(Items.ARROW) || stack.is(Items.TIPPED_ARROW) || stack.is(Items.SPECTRAL_ARROW);
+	}
+
+	/**
+	 * The Minecraft arrows a Skyrim bow shoots (lent to it: SkyArrowsClient), or EMPTY: the off hand's;
+	 * or, when Skyrim has no arrows of its own, the first ones in the inventory (as a Minecraft bow
+	 * takes them). The same on both sides: the client lends them, the server uses them up.
+	 */
+	public static ItemStack lentArrows(Player player, boolean skyrimHasArrows) {
+		if (!enabled) {
+			return ItemStack.EMPTY;
+		}
 		ItemStack off = player.getOffhandItem();
-		return enabled && (off.is(Items.ARROW) || off.is(Items.TIPPED_ARROW) || off.is(Items.SPECTRAL_ARROW)) && skyrimBow(player);
+		if (minecraftArrows(off)) {
+			return off;
+		}
+		if (skyrimHasArrows || dev.skycraft.net.SkyShortcuts.isShortcut(off)) {
+			return ItemStack.EMPTY;  // (a Skyrim arrow's shortcut in the off hand: those)
+		}
+		var items = player.getInventory().getNonEquipmentItems();
+		for (int i = 0; i < items.size(); i++) {
+			if (minecraftArrows(items.get(i))) {
+				return items.get(i);
+			}
+		}
+		return ItemStack.EMPTY;
+	}
+
+	/** The arrows this player's Skyrim bow is shooting from Minecraft (EMPTY: none). */
+	private static ItemStack lending(ServerPlayer player) {
+		if (!skyrimBow(player)) {
+			return ItemStack.EMPTY;
+		}
+		return lentArrows(player, AMMO.getOrDefault(player.getUUID(), Ammo.NONE).count() > 0);
 	}
 
 	private static boolean skyrimBow(ServerPlayer player) {
 		int kinds = dev.skycraft.net.SkyNet.isHost(player) ? SkyCombat.rightHandKind | SkyCombat.leftHandKind << 8 : dev.skycraft.net.SkyNet.guestHandsAndKinds(player) >> 8;
-		return (kinds & 0xFF) == Proto.HAND_BOW || (kinds >> 8 & 0xFF) == Proto.HAND_BOW;
+		return (kinds & 0xFF) == Proto.HAND_BOW || (kinds >> 8 & 0xFF) == Proto.HAND_BOW || (kinds & 0xFF) == Proto.HAND_CROSSBOW;
+	}
+
+	// ---- Minecraft enchantments on Skyrim's bows (enchanting across the games) ---------------
+
+	/** The Skyrim bow's shortcut in a hand, if it holds Minecraft enchantments (EMPTY: none). */
+	public static ItemStack enchantedSkyrimBow(Player player) {
+		for (ItemStack held : new ItemStack[] { player.getMainHandItem(), player.getOffhandItem() }) {
+			var ref = dev.skycraft.net.SkyShortcuts.ref(held);
+			var enchantments = ref != null && ref.kind() == Proto.SKY_WEAPON ? held.get(DataComponents.ENCHANTMENTS) : null;
+			if (enchantments != null && !enchantments.isEmpty()) {
+				return held;
+			}
+		}
+		return ItemStack.EMPTY;
+	}
+
+	/** This enchantment's level on a stack (0: none). */
+	public static int level(ItemStack stack, net.minecraft.resources.ResourceKey<net.minecraft.world.item.enchantment.Enchantment> enchantment) {
+		var enchantments = stack.isEmpty() ? null : stack.get(DataComponents.ENCHANTMENTS);
+		if (enchantments == null) {
+			return 0;
+		}
+		for (var entry : enchantments.entrySet()) {
+			if (entry.getKey().is(enchantment)) {
+				return entry.getIntValue();
+			}
+		}
+		return 0;
+	}
+
+	/**
+	 * SkyMagic: a Skyrim arrow from an enchanted Skyrim bow hit a Minecraft mob: Power more damage,
+	 * Punch further back, Flame alight (Infinity and Multishot are Skyrim's: SkyrimShots). Returns the damage.
+	 */
+	public static float bowHit(ServerPlayer player, LivingEntity target, float damage) {
+		ItemStack bow = enchantedSkyrimBow(player);
+		if (bow.isEmpty()) {
+			return damage;
+		}
+		int power = level(bow, net.minecraft.world.item.enchantment.Enchantments.POWER);
+		int punch = level(bow, net.minecraft.world.item.enchantment.Enchantments.PUNCH);
+		if (level(bow, net.minecraft.world.item.enchantment.Enchantments.FLAME) > 0) {
+			target.igniteForSeconds(5.0F);
+		}
+		if (punch > 0) {
+			double yaw = player.getYRot() * (Math.PI / 180.0);
+			target.knockback(0.6 * punch, Math.sin(yaw), -Math.cos(yaw), player.damageSources().playerAttack(player), damage);
+		}
+		return power > 0 ? damage * (1.0F + 0.25F * (power + 1)) : damage;
+	}
+
+	/** SkyMagic: how many more mobs a Skyrim arrow goes through (Piercing on a Skyrim crossbow or bow). */
+	public static int piercing(ServerPlayer player) {
+		return level(enchantedSkyrimBow(player), net.minecraft.world.item.enchantment.Enchantments.PIERCING);
 	}
 
 	/** SkyMagic: a Skyrim arrow shot (new this frame): one of the off hand's Minecraft arrows is used up for it. */
@@ -226,11 +311,16 @@ public final class SkyArrows {
 			seen.clear();
 			seen.add(shotId);
 		}
-		if (!lending(player)) {
+		ItemStack lent = lending(player);
+		if (lent.isEmpty()) {
+			return;
+		}
+		// (Infinity on the Skyrim bow: Skyrim gives its arrow back, and the Minecraft one stays.)
+		if (level(enchantedSkyrimBow(player), net.minecraft.world.item.enchantment.Enchantments.INFINITY) > 0 && lent.is(Items.ARROW)) {
 			return;
 		}
 		if (!player.hasInfiniteMaterials()) {
-			player.getOffhandItem().shrink(1);
+			lent.shrink(1);
 		}
 		if (ServerPlayNetworking.canSend(player, Shot.TYPE)) {
 			ServerPlayNetworking.send(player, new Shot(1));
@@ -239,10 +329,10 @@ public final class SkyArrows {
 
 	/** SkyMagic: a Skyrim arrow hit a Minecraft mob: the off hand's tipped arrows' effects, or a spectral arrow's glow, go on it. */
 	public static void skyrimArrowHit(ServerPlayer player, LivingEntity target) {
-		if (!lending(player)) {
+		ItemStack off = lending(player);
+		if (off.isEmpty()) {
 			return;
 		}
-		ItemStack off = player.getOffhandItem();
 		if (off.is(Items.SPECTRAL_ARROW)) {
 			target.addEffect(new MobEffectInstance(MobEffects.GLOWING, 200, 0), player);
 		}

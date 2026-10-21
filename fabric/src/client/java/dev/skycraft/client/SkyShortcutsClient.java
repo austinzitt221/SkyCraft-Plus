@@ -193,6 +193,12 @@ public final class SkyShortcutsClient {
 		return SkyShortcuts.isShortcut(stack) && equips(resolve(stack));
 	}
 
+	/** SkyCraft+ : a Skyrim arrow's shortcut (a bow's ammunition, not held). */
+	static boolean ammoShortcut(ItemStack stack) {
+		SkyShortcuts.Ref ref = SkyShortcuts.ref(stack);
+		return ref != null && ref.kind() == Proto.SKY_AMMO;
+	}
+
 	/** A shortcut right click uses (MinecraftShortcutUseMixin), or null. */
 	public static boolean use(LocalPlayer player) {
 		for (ItemStack stack : new ItemStack[] { player.getMainHandItem(), player.getOffhandItem() }) {
@@ -201,6 +207,11 @@ public final class SkyShortcutsClient {
 			}
 			SkyLink.SkyItem item = resolve(stack);
 			if (item == null) {
+				continue;
+			}
+			// SkyCraft+ : arrows across the games. Skyrim arrows in the off hand are the bow's: the right
+			// click draws the bow in the main hand (Minecraft's, or Skyrim's), not readies them again.
+			if (item.kind() == Proto.SKY_AMMO && stack == player.getOffhandItem()) {
 				continue;
 			}
 			if (feed(item)) {

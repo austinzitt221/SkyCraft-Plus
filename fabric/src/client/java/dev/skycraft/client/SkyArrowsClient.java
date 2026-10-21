@@ -73,11 +73,7 @@ public final class SkyArrowsClient {
 
 	private static boolean skyrimBow() {
 		SkyLink.SkyState sky = SkyClient.sky();
-		return sky.rightHandKind == Proto.HAND_BOW || sky.leftHandKind == Proto.HAND_BOW;
-	}
-
-	private static boolean minecraftArrows(ItemStack stack) {
-		return stack.is(Items.ARROW) || stack.is(Items.TIPPED_ARROW) || stack.is(Items.SPECTRAL_ARROW);
+		return sky.rightHandKind == Proto.HAND_BOW || sky.leftHandKind == Proto.HAND_BOW || sky.rightHandKind == Proto.HAND_CROSSBOW;
 	}
 
 	static void tick(Minecraft minecraft) {
@@ -92,6 +88,21 @@ public final class SkyArrowsClient {
 		tellAmmo(player, inventory);
 		lendToSkyrimBow(player, inventory);
 		readyOffHandSkyrimArrows(player);
+		tellBowEnchantments(player);
+	}
+
+	private static int sentBow = -1, sentBowAt;
+
+	/** Infinity and Multishot on the Skyrim bow in hand (Minecraft's enchanting table): Skyrim acts them out (SkyrimShots). */
+	private static void tellBowEnchantments(LocalPlayer player) {
+		ItemStack bow = skyrimBow() ? SkyArrows.enchantedSkyrimBow(player) : ItemStack.EMPTY;
+		int bits = (SkyArrows.level(bow, net.minecraft.world.item.enchantment.Enchantments.INFINITY) > 0 ? 1 : 0)
+			| (SkyArrows.level(bow, net.minecraft.world.item.enchantment.Enchantments.MULTISHOT) > 0 ? 2 : 0);
+		if (bits != sentBow || bits != 0 && ticks - sentBowAt >= 40) {
+			SkyLink.pushEvent(Proto.EV_BOW_ENCHANTS, 0, 0.0F, 0.0F, 0.0F, 0.0F, bits);
+			sentBow = bits;
+			sentBowAt = ticks;
+		}
 	}
 
 	/** Which Skyrim arrows a Minecraft bow would shoot: told to the server when it changes. */
@@ -120,10 +131,13 @@ public final class SkyArrowsClient {
 		}
 	}
 
-	/** Minecraft arrows in the off hand with a Skyrim bow: Skyrim holds as many iron arrows for them, readied. */
+	/**
+	 * Minecraft arrows with a Skyrim bow (the off hand's, or with no Skyrim arrows the inventory's:
+	 * SkyArrows.lentArrows): Skyrim holds as many iron arrows for them, readied.
+	 */
 	private static void lendToSkyrimBow(LocalPlayer player, SkyLink.@Nullable SkyInventory inventory) {
-		ItemStack off = player.getOffhandItem();
-		if (!skyrimBow() || !minecraftArrows(off)) {
+		ItemStack off = skyrimBow() ? SkyArrows.lentArrows(player, SkyArrows.clientAmmo.count() > 0) : ItemStack.EMPTY;
+		if (off.isEmpty()) {
 			if (lending) {
 				giveBack();
 			}

@@ -387,6 +387,16 @@ public final class SkyClient {
 		// SkyCraft+ : Skyrim shortcuts. One that goes into a hand is Skyrim's there, not a Minecraft item:
 		// picking it equips the Skyrim thing, which the change mustn't take out again.
 		boolean rightShortcut = SkyShortcutsClient.equipsShortcut(right), leftShortcut = SkyShortcutsClient.equipsShortcut(left);
+		// SkyCraft+ : arrows across the games. Arrows in the off hand (Minecraft's, or a Skyrim arrow's
+		// shortcut) are a bow's ammunition, not something held: they leave a Skyrim bow both hands.
+		var offHand = player.getOffhandItem();
+		if (offHand.getItem() instanceof net.minecraft.world.item.ArrowItem || SkyShortcutsClient.ammoShortcut(offHand)) {
+			if (rightMain) {
+				leftShortcut = true;
+			} else {
+				rightShortcut = true;
+			}
+		}
 		if (rightShortcut) {
 			right = net.minecraft.world.item.ItemStack.EMPTY;
 		}

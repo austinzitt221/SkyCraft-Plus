@@ -270,6 +270,8 @@ namespace skycraft
 		void PerFrame(RE::PlayerCharacter* a_player, bool a_active, float a_delta);
 		// SkyCraft+ : the shouts and spells on the player Minecraft acts out (proto::SelfEffects).
 		std::uint32_t SelfEffects(RE::PlayerCharacter* a_player);
+		// SkyCraft+ : Minecraft enchantments on the Skyrim bow in hand (kEvBowEnchants flags).
+		void SetBowEnchants(std::uint32_t a_flags);
 	}
 
 	namespace BlockLights

@@ -1203,6 +1203,9 @@ namespace skycraft
 				case proto::kEvGoToBed:
 					Game::GoToBed(a_player, ev);  // SkyCraft+ : beds
 					break;
+				case proto::kEvBowEnchants:
+					SkyrimShots::SetBowEnchants(ev.flags);  // SkyCraft+ : enchanting across the games
+					break;
 				case proto::kEvCropGrown:
 					Crops::OnGrown(a_player, ev.formId, ev.a, ev.b, ev.c);  // SkyCraft+
 					break;

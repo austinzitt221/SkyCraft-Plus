@@ -24,6 +24,19 @@ namespace skycraft::SkyrimShots
 		};
 		std::unordered_map<std::uint32_t, Tracked> tracked;
 
+		// SkyCraft+ : Minecraft enchantments on the Skyrim bow (kEvBowEnchants): Infinity gives each
+		// arrow shot back, Multishot sends two more beside it (not themselves given back or multiplied).
+		std::uint32_t                   bowEnchants = 0;
+		std::unordered_set<std::uint32_t> extraArrows;
+		struct Fired
+		{
+			RE::TESAmmo*                  ammo;
+			RE::TESObjectWEAP*            weapon;
+			RE::NiPoint3                  at;
+			RE::Projectile::ProjectileRot angles;
+		};
+		std::vector<Fired> fired;
+
 		McVec ToMc(const RE::NiPoint3& a_pos) { return SkyToMc(a_pos); }
 
 		// What a spell does to whatever it hits, from its effects.
@@ -210,6 +223,14 @@ namespace skycraft::SkyrimShots
 		return bits;
 	}
 
+	void SetBowEnchants(std::uint32_t a_flags)
+	{
+		if (a_flags != bowEnchants) {
+			logger::info("shots: the Skyrim bow's Minecraft enchantments: {}{}{}", a_flags & 1 ? "Infinity " : "", a_flags & 2 ? "Multishot" : "", a_flags ? "" : "none");
+		}
+		bowEnchants = a_flags;
+	}
+
 	void PerFrame(RE::PlayerCharacter* a_player, bool a_active, float a_delta)
 	{
 		if (!a_active || !a_player) {
@@ -235,9 +256,38 @@ namespace skycraft::SkyrimShots
 					if (t.gone >= 0.0f) {
 						t = Tracked{};  // SkyCraft+ : a finished shot's form ID used again by a new one
 					}
+					const bool fresh = t.shot.id == 0;
 					Describe(projectile.get(), id, t);
+					if (fresh && bowEnchants && (t.shot.flags & proto::kShotArrow) && !extraArrows.erase(id)) {
+						auto& runtime = projectile->GetProjectileRuntimeData();
+						if (runtime.ammoSource) {
+							fired.push_back({ runtime.ammoSource, runtime.weaponSource, projectile->GetPosition(), { projectile->data.angle.x, projectile->data.angle.z } });
+						}
+					}
 				}
 			}
+		}
+		// SkyCraft+ : the bow's Minecraft enchantments, once the projectile lists are let go.
+		for (const auto& f : fired) {
+			if (bowEnchants & 1) {
+				a_player->AddObjectToContainer(f.ammo, nullptr, 1, nullptr);
+				if (!a_player->GetCurrentAmmo()) {
+					RE::ActorEquipManager::GetSingleton()->EquipObject(a_player, f.ammo);  // (the last one was shot: readied again)
+				}
+			}
+			if ((bowEnchants & 2) && f.weapon) {
+				for (const float turn : { -0.17f, 0.17f }) {
+					RE::ProjectileHandle handle;
+					RE::Projectile::LaunchArrow(&handle, a_player, f.ammo, f.weapon, f.at, { f.angles.x, f.angles.z + turn });
+					if (auto extra = handle.get()) {
+						extraArrows.insert(extra->GetFormID());
+					}
+				}
+			}
+		}
+		fired.clear();
+		if (extraArrows.size() > 64) {
+			extraArrows.clear();
 		}
 		std::vector<proto::SkyrimShot> shots;
 		for (auto it = tracked.begin(); it != tracked.end();) {
