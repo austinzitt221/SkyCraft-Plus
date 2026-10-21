@@ -932,15 +932,15 @@ public final class WorldExporter {
 	}
 
 	/**
-	 * SkyCraft+ : Skyrim blocks. How many blocks one of Skyrim's textures covers: 4x4, near Skyrim's own
+	 * SkyCraft+ : Skyrim blocks. How many blocks one of Skyrim's textures covers: 5x5, as Skyrim's own
 	 * scale (its ground textures repeat every five or so blocks), so a wall or floor of them looks like
 	 * Skyrim's ground, not a close-up of it.
 	 */
-	private static final int GEO_TILE = 4;
+	private static final int GEO_TILE = 5;
 
 	/**
 	 * SkyCraft+ : Skyrim blocks. A Skyrim-textured block (SkyGeo): a cube in its Skyrim texture
-	 * (SkyGeoTextures), each block its part of the 4x4 the picture spreads over, sampled smooth (as
+	 * (SkyGeoTextures), each block its part of the 5x5 the picture spreads over, sampled smooth (as
 	 * Skyrim draws it); with no texture known yet, in what it's made of. Faces against a whole
 	 * neighbour are left out. Section-relative cell.
 	 */
@@ -955,7 +955,7 @@ public final class WorldExporter {
 		if (sky == null && fillRects == null) {
 			return;
 		}
-		// The texture's part for this block: its place in the 4x4 the picture spreads over.
+		// The texture's part for this block: its place in the 5x5 the picture spreads over.
 		float tu = Mth.positiveModulo(pos.getX(), GEO_TILE) / (float) GEO_TILE, tv = Mth.positiveModulo(pos.getZ(), GEO_TILE) / (float) GEO_TILE;
 		float ty = Mth.positiveModulo(-pos.getY() - 1, GEO_TILE) / (float) GEO_TILE;
 		for (Direction d : Direction.values()) {
