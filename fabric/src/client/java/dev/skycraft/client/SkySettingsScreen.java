@@ -194,6 +194,11 @@ public final class SkySettingsScreen extends Screen {
 
 	// ---- the screen --------------------------------------------------------------------------
 
+	/** How many settings fit at once: up to ROWS, fewer on a short screen (a big GUI scale), so nothing goes off it. */
+	private int rows() {
+		return Math.clamp((this.height - 150) / 24, 3, ROWS);
+	}
+
 	@Override
 	protected void init() {
 		if (this.pages.isEmpty() || SkyLink.settingsGeneration() != this.seenGeneration) {
@@ -219,17 +224,17 @@ public final class SkySettingsScreen extends Screen {
 			}
 		}
 		List<Setting> settings = this.pages.getOrDefault(this.page, List.of());
-		this.scroll = Math.max(0, Math.min(this.scroll, Math.max(0, settings.size() - ROWS)));
-		for (int i = this.scroll; i < Math.min(settings.size(), this.scroll + ROWS); i++) {
+		this.scroll = Math.max(0, Math.min(this.scroll, Math.max(0, settings.size() - this.rows())));
+		for (int i = this.scroll; i < Math.min(settings.size(), this.scroll + this.rows()); i++) {
 			this.addRow(settings.get(i));
 		}
 		LinearLayout paging = this.layout.addChild(LinearLayout.horizontal().spacing(4));
-		Button up = paging.addChild(Button.builder(Component.literal("Up"), b -> this.move(-ROWS)).width(40).build());
-		paging.addChild(new StringWidget(Component.literal(settings.isEmpty() ? "" : (this.scroll + 1) + "-" + Math.min(settings.size(), this.scroll + ROWS) + " of " + settings.size()),
+		Button up = paging.addChild(Button.builder(Component.literal("Up"), b -> this.move(-this.rows())).width(40).build());
+		paging.addChild(new StringWidget(Component.literal(settings.isEmpty() ? "" : (this.scroll + 1) + "-" + Math.min(settings.size(), this.scroll + this.rows()) + " of " + settings.size()),
 			this.font));
-		Button down = paging.addChild(Button.builder(Component.literal("Down"), b -> this.move(ROWS)).width(40).build());
+		Button down = paging.addChild(Button.builder(Component.literal("Down"), b -> this.move(this.rows())).width(40).build());
 		up.active = this.scroll > 0;
-		down.active = this.scroll + ROWS < settings.size();
+		down.active = this.scroll + this.rows() < settings.size();
 		if (this.status != null) {
 			this.layout.addChild(new StringWidget(this.status, this.font));
 		}
