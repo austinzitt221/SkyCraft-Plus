@@ -272,6 +272,8 @@ namespace skycraft
 		std::uint32_t SelfEffects(RE::PlayerCharacter* a_player);
 		// SkyCraft+ : Minecraft enchantments on the Skyrim bow in hand (kEvBowEnchants flags).
 		void SetBowEnchants(std::uint32_t a_flags);
+		// SkyCraft+ : a shout on the player that reaches all around them, for Minecraft's mobs.
+		void AroundPlayer(RE::PlayerCharacter* a_player, RE::MagicItem* a_spell);
 	}
 
 	namespace BlockLights

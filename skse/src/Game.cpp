@@ -554,6 +554,7 @@ namespace skycraft
 			logger::info("{}: {} sound(s), {} screen effect(s)", a_shout->GetName(), sounds, screens);
 			if (!IsWhirlwind(a_shout)) {
 				logger::info("{} ({} word{}) shouted for Minecraft mode (recovery {:.0f} s)", a_shout->GetName(), a_words, a_words > 1 ? "s" : "", variation.recoveryTime);
+				SkyrimShots::AroundPlayer(a_player, variation.spell);
 				return;
 			}
 			// (Minecraft plays Skyrim's own dash for the words, SkyDash: its root motion, 7, 14, 21 or 29

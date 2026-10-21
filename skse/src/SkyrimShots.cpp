@@ -223,6 +223,39 @@ namespace skycraft::SkyrimShots
 		return bits;
 	}
 
+	// SkyCraft+ : every shout in Minecraft mode. A shout on the player that reaches all around them
+	// (Animal Allegiance, Kyne's Peace...) has no projectile to follow: Minecraft is told of it as a
+	// burst where the player stands, as wide as its area, doing what it does (calm, fear...).
+	void AroundPlayer(RE::PlayerCharacter* a_player, RE::MagicItem* a_spell)
+	{
+		if (!a_player || !a_spell) {
+			return;
+		}
+		std::uint32_t area = 0;
+		for (auto* effect : a_spell->effects) {
+			area = std::max(area, effect ? effect->effectItem.area : 0u);
+		}
+		if (area == 0) {
+			return;
+		}
+		static std::uint32_t next = 0xF0000000u;
+		Tracked t{};
+		ReadSpell(a_spell, 1.0f, t.shot);
+		if (t.shot.damage <= 0.0f && !(t.shot.flags & (proto::kShotPush | proto::kShotFire | proto::kShotFrost | proto::kShotParalyze | proto::kShotDisarm | proto::kShotFear |
+		                                                 proto::kShotCalm | proto::kShotFrenzy | proto::kShotWither))) {
+			return;
+		}
+		const auto at = ToMc(a_player->GetPosition());
+		t.shot.id = ++next;
+		t.shot.flags |= proto::kShotExplosion;
+		t.shot.x0 = t.shot.x1 = float(at.x), t.shot.y0 = t.shot.y1 = float(at.y + 1.0), t.shot.z0 = t.shot.z1 = float(at.z);
+		t.shot.radius = std::clamp(area * 21.33f / float(proto::kUnitsPerBlock), 2.0f, 48.0f);  // (its area is in feet)
+		t.seen = true;
+		t.gone = 0.0f;  // (listed a moment, then gone)
+		tracked[t.shot.id] = t;
+		logger::info("shots: {} reaches {:.0f} blocks around the player (flags {:X})", a_spell->GetName(), t.shot.radius, t.shot.flags);
+	}
+
 	void SetBowEnchants(std::uint32_t a_flags)
 	{
 		if (a_flags != bowEnchants) {
