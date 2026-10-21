@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 61; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE); v56, the settings screen (OFF_SKY_SETTINGS); v57, every shout in Minecraft mode (SHOT_PARALYZE.., SS_SELF_EFFECTS); v58, Skyrim geo (REN_SKYRIM_TEXTURE, STORE_TEXTURE_AT, SKY_GEO); v59, beds (EV_SLEPT, EV_GO_TO_BED), bow enchantments (EV_BOW_ENCHANTS); v60, Minecraft arrows on the Skyrim bow (EV_BOW_ENCHANTS flag 4); v61, SHOT_LENT, Skyrim arrows from a Minecraft bow (WE_SKYRIM_ARROW)
+	public static final int VERSION = 61; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE); v56, the settings screen (OFF_SKY_SETTINGS); v57, every shout in Minecraft mode (SHOT_PARALYZE.., SS_SELF_EFFECTS); v58, Skyrim geo (REN_SKYRIM_TEXTURE, STORE_TEXTURE_AT, SKY_GEO); v59, beds (EV_SLEPT, EV_GO_TO_BED), bow enchantments (EV_BOW_ENCHANTS); v60, Minecraft arrows on the Skyrim bow (EV_BOW_ENCHANTS flag 4); v61, SHOT_LENT, Skyrim arrows from a Minecraft bow (WE_SKYRIM_ARROW), Skyrim blocks' item pictures (STORE_TEXTURE_PICTURE)
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -78,6 +78,7 @@ public final class Proto {
 	public static final int STORE_TAKE = 1, STORE_GIVE = 2, STORE_PICTURE = 3;
 	public static final int STORE_LEND_GEAR = 4, STORE_RETURN_GEAR = 5; // SkyCraft+ : v54, a Minecraft weapon or armor at Skyrim's enchanter
 	public static final int STORE_TEXTURE_AT = 6; // SkyCraft+ : v58, the texture of Skyrim's geometry at a point (name: its path; kind 1 land, 2 an object)
+	public static final int STORE_TEXTURE_PICTURE = 7; // SkyCraft+ : v61, draw this texture's picture too for a while (plugin: its path; the result's formId is its key)
 	public static final int GEAR_SWORD = 1, GEAR_AXE = 2, GEAR_MACE = 3, GEAR_PICKAXE = 4, GEAR_BOW = 5, GEAR_CROSSBOW = 6, GEAR_HELMET = 7, GEAR_CHEST = 8,
 		GEAR_LEGS = 9, GEAR_BOOTS = 10, GEAR_SHIELD = 11;
 	public static final int BENCH_CREATE = 1, BENCH_SHARPEN = 2, BENCH_ENCHANT = 3, BENCH_ALCHEMY = 5, BENCH_ARMOR = 7; // SkyCraft+ : v54, SkyState workbench

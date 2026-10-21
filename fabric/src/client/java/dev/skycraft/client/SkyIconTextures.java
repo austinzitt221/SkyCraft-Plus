@@ -109,6 +109,12 @@ public final class SkyIconTextures {
 		texture.upload();
 	}
 
+	/** SkyCraft+ : the texture Skyrim's picture of this is in, or null if there's none yet (Skyrim blocks: SkyBlockItemRenderer). */
+	static @org.jspecify.annotations.Nullable Identifier texture(int key) {
+		Integer slot = SLOT_OF.get(key);
+		return slot == null ? null : IDS[slot];
+	}
+
 	/** True if Skyrim has drawn this (SkyItem::formId, or SKY_ICON_CATEGORY + n). */
 	public static boolean has(int key) {
 		return SLOT_OF.containsKey(key);

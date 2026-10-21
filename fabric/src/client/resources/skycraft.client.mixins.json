@@ -3,6 +3,7 @@
   "package": "dev.skycraft.client.mixin",
   "compatibilityLevel": "JAVA_25",
   "client": [
+    "SpecialModelRenderersAccessor",
     "ArmedEntityStandInMixin",
     "CameraZoomMixin",
     "ChatComponentMixin",

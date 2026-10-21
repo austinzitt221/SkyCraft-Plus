@@ -38,6 +38,7 @@ namespace skycraft::IconRender
 			std::uint32_t                key = 0;
 			std::uint32_t                slot = 0;
 			std::string                  name;
+			RE::NiPointer<RE::NiTexture> flat;  // SkyCraft+ : a texture's picture (a Skyrim block's item): drawn flat, filling it
 			RE::NiPointer<RE::NiNode>    root;
 			std::vector<Part>            parts;
 			RE::NiPoint3                 center;
@@ -65,6 +66,7 @@ namespace skycraft::IconRender
 		std::array<std::uint64_t, proto::kMaxSkyIcons> lastUse{};
 		std::uint64_t                                  tick = 0;
 		std::unordered_map<RE::SpellItem*, RE::TESObjectBOOK*> tomes;
+		std::unordered_map<std::uint32_t, std::string>  texturePaths;  // SkyCraft+ : a texture picture's key -> the texture
 		bool                                           tomesBuilt = false;
 
 		// ---- main thread -> render thread ----
@@ -74,6 +76,8 @@ namespace skycraft::IconRender
 		// ---- render thread ----
 		ID3D11VertexShader*       vs = nullptr;
 		ID3D11PixelShader*        ps = nullptr;
+		ID3D11VertexShader*       flatVs = nullptr;  // SkyCraft+ : a texture drawn flat over the whole picture
+		ID3D11PixelShader*        flatPs = nullptr;
 		ID3DBlob*                 vsBlob = nullptr;
 		ID3D11Buffer*             constants = nullptr;
 		ID3D11SamplerState*       sampler = nullptr;
@@ -147,6 +151,21 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 	float shade = 0.5 + 0.6 * saturate(dot(n, l));
 	return float4(saturate(c.rgb * shade), 1);
 }
+)";
+
+		// SkyCraft+ : a texture over the whole target (one triangle past its corners).
+		constexpr char kFlatShader[] = R"(
+Texture2D tex : register(t0);
+SamplerState samp : register(s0);
+struct VO { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
+VO FlatVS(uint id : SV_VertexID) {
+	VO o;
+	float2 uv = float2((id << 1) & 2, id & 2);
+	o.uv = uv;
+	o.pos = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);
+	return o;
+}
+float4 FlatPS(VO i) : SV_Target { return float4(tex.Sample(samp, i.uv).rgb, 1); }
 )";
 
 		template <class T>
@@ -551,6 +570,17 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 			a_device->CreateVertexShader(vsBlob->GetBufferPointer(), vsBlob->GetBufferSize(), nullptr, &vs);
 			a_device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &ps);
 			SafeRelease(psBlob);
+			ID3DBlob* flatVsBlob = nullptr;
+			if (SUCCEEDED(D3DCompile(kFlatShader, sizeof(kFlatShader) - 1, "skycraft_flat", nullptr, nullptr, "FlatVS", "vs_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &flatVsBlob, &errors)) &&
+				SUCCEEDED(D3DCompile(kFlatShader, sizeof(kFlatShader) - 1, "skycraft_flat", nullptr, nullptr, "FlatPS", "ps_5_0", D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &psBlob, &errors))) {
+				a_device->CreateVertexShader(flatVsBlob->GetBufferPointer(), flatVsBlob->GetBufferSize(), nullptr, &flatVs);
+				a_device->CreatePixelShader(psBlob->GetBufferPointer(), psBlob->GetBufferSize(), nullptr, &flatPs);
+			} else {
+				logger::warn("icons: the texture pictures' shader didn't compile: {}", errors ? static_cast<const char*>(errors->GetBufferPointer()) : "?");
+			}
+			SafeRelease(flatVsBlob);
+			SafeRelease(psBlob);
+			SafeRelease(errors);
 
 			D3D11_BUFFER_DESC cb{ sizeof(Constants), D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0, 0 };
 			a_device->CreateBuffer(&cb, nullptr, &constants);
@@ -1065,6 +1095,30 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 			}
 			drawnName[w.key] = w.nameHash;
 			++loads;
+			// SkyCraft+ : a texture's picture (a Skyrim block's item): the texture itself, drawn flat.
+			if (const auto texture = texturePaths.find(w.key); texture != texturePaths.end()) {
+				Model model;
+				model.key = w.key;
+				model.name = texture->second;
+				RE::BSShaderManager::GetTexture(texture->second.c_str(), true, model.flat, false);
+				if (!model.flat && !texture->second.starts_with("textures\\")) {
+					RE::BSShaderManager::GetTexture(("textures\\" + texture->second).c_str(), true, model.flat, false);
+				}
+				if (!model.flat) {
+					noModel.insert(w.key);
+					keyIn[slot] = 0;
+					slotOf.erase(w.key);
+					if (logged++ < 40) {
+						logger::info("icons: texture {} wasn't found", texture->second);
+					}
+					continue;
+				}
+				model.slot = slot;
+				lastUse[model.slot] = tick;
+				std::scoped_lock guard(lock);
+				queue.push_back(std::move(model));
+				continue;
+			}
 			const bool   category = w.key >= proto::kSkyIconCategory;
 			RE::TESForm* form = category ? CategoryForm(w.key - proto::kSkyIconCategory) : RE::TESForm::LookupByID(w.formId);
 			const char*  path = ModelOf(form);
@@ -1122,6 +1176,34 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 				job.waited = 0;
 				job.refits = 0;
 			}
+			if (job.stage == 0 && job.model.flat) {
+				// SkyCraft+ : a texture's picture: drawn over the whole final picture, then handed on as any is.
+				ID3D11ShaderResourceView* view = flatVs && flatPs ? ViewOf(job.model.flat.get()) : nullptr;
+				if (!view) {
+					{
+						std::scoped_lock guard(lock);
+						failedKeys.push_back(job.model.key);
+					}
+					Release(job.model);
+					job.busy = false;
+					continue;
+				}
+				BeginPass(a_context, rtvB, dsvB);
+				D3D11_VIEWPORT vp{ 0, 0, float(kFinal), float(kFinal), 0, 1 };
+				a_context->RSSetViewports(1, &vp);
+				a_context->IASetInputLayout(nullptr);
+				a_context->VSSetShader(flatVs, nullptr, 0);
+				a_context->PSSetShader(flatPs, nullptr, 0);
+				a_context->PSSetShaderResources(0, 1, &view);
+				a_context->Draw(3, 0);
+				ID3D11ShaderResourceView* none = nullptr;
+				a_context->PSSetShaderResources(0, 1, &none);
+				view->Release();
+				a_context->CopyResource(job.stagingB, rtB);
+				job.stage = 2;
+				job.waited = 0;
+				continue;
+			}
 			if (job.stage == 0) {
 				BeginPass(a_context, rtvA, dsvA);
 				for (int axis = 0; axis < 3; ++axis) {
@@ -1173,5 +1255,21 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 			}
 		}
 		saved.Restore(a_context);
+	}
+
+	// SkyCraft+ : Skyrim blocks' items. A key no form has (FDF00000 up: the last plugin index, past what load orders reach), by the path.
+	std::uint32_t TextureKey(std::string_view a_path)
+	{
+		std::string path(a_path);
+		std::ranges::transform(path, path.begin(), [](unsigned char c) { return char(std::tolower(c)); });
+		const auto key = 0xFDF00000u | static_cast<std::uint32_t>(Hash(path) & 0xFFFFFu);
+		texturePaths[key] = std::move(path);
+		return key;
+	}
+
+	const char* TexturePath(std::uint32_t a_key)
+	{
+		const auto it = texturePaths.find(a_key);
+		return it != texturePaths.end() ? it->second.c_str() : nullptr;
 	}
 }

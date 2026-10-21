@@ -13,6 +13,8 @@ namespace skycraft::SkyInventory
 		std::vector<proto::SkyItem> items;
 		// SkyCraft+ : Skyrim items in Minecraft's containers whose pictures Minecraft asked for, and when.
 		std::unordered_map<RE::FormID, std::uint64_t> pictures;
+		// SkyCraft+ : Skyrim blocks' items. Pictures of textures Minecraft asked for (kStoreTexturePicture): key -> when.
+		std::unordered_map<std::uint32_t, std::uint64_t> texturePictures;
 		float                       timer = 0.0f;
 		bool                        dirty = true;
 		std::uint64_t               lastHash = 0;
@@ -580,6 +582,19 @@ namespace skycraft::SkyInventory
 				askedAt.push_back(it->second);
 				++it;
 			}
+			for (auto it = texturePictures.begin(); it != texturePictures.end();) {
+				const char* path = now - it->second < 60000 ? IconRender::TexturePath(it->first) : nullptr;
+				if (!path) {
+					it = texturePictures.erase(it);
+					continue;
+				}
+				proto::SkyItem icon{};
+				icon.formId = it->first;
+				SetName(icon, path);
+				icons.push_back(icon);
+				askedAt.push_back(it->second);
+				++it;
+			}
 			IconRender::Want(icons.data(), icons.size(), askedAt.data());
 			Link::Get().WriteSkyInventory(items.data(), static_cast<std::uint32_t>(items.size()), generation, gold, carried, carryMax);
 		}
@@ -1027,6 +1042,16 @@ namespace skycraft::SkyInventory
 					Give(a_player, request);
 				} else if (request.op == proto::kStorePicture) {
 					Picture(request);
+				} else if (request.op == proto::kStoreTexturePicture) {
+					// SkyCraft+ : Skyrim blocks' items. A picture of a texture (its path in plugin); the result's formId is its key.
+					const std::string_view path(request.plugin, strnlen(request.plugin, sizeof(request.plugin)));
+					const auto             key = path.empty() ? 0u : IconRender::TextureKey(path);
+					proto::SkyStoreResult  result = Refusal(request.id, key ? proto::kStoreOk : proto::kStoreMissing);
+					result.formId = key;
+					if (key) {
+						texturePictures[key] = GetTickCount64();
+					}
+					unsent.push_back(result);
 				} else if (request.op == proto::kStoreLendGear) {
 					LendGear(a_player, request);  // SkyCraft+
 				} else if (request.op == proto::kStoreReturnGear) {

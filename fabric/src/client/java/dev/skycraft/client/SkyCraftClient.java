@@ -17,6 +17,7 @@ public final class SkyCraftClient implements ClientModInitializer {
 		SkyShortcutsClient.register(); // SkyCraft+ : Skyrim shortcuts
 		ClientTickEvents.END_CLIENT_TICK.register(SkyShortcutsClient::tick);
 		SkyStorageClient.register(); // SkyCraft+ : Skyrim items in Minecraft's containers
+		SkyBlockItemRenderer.register(); // SkyCraft+ : Skyrim blocks with their own texture as items
 		ClientTickEvents.END_CLIENT_TICK.register(SkyStorageClient::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(SkyArmorClient::tick); // SkyCraft+ : Skyrim armor in Minecraft's armor slots
 		ClientTickEvents.END_CLIENT_TICK.register(SkyDash::tick); // SkyCraft+ : Whirlwind Sprint
