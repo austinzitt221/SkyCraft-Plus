@@ -41,6 +41,7 @@ namespace skycraft
 		// SkyCraft+ : the Nether and the End. After a save loads or Minecraft connects, the save's
 		// place wins: Minecraft's player is brought back from a world of its own (kSkyBringBack).
 		bool           homeCheck = true;
+		bool           saveLoading = false;  // SkyCraft+ : a save is loading (OnRevert until OnGameLoaded)
 		float          bringingBack = 0.0f;  // seconds left to wait for Minecraft to come back
 		// SkyCraft+ : a save made in the Nether or the End: Minecraft's world and place then (the SKSE
 		// co-save), and seconds left for Minecraft's player to get back there after the save loads.
@@ -480,13 +481,33 @@ namespace skycraft
 			float         cooldown = 0.0f;  // the recovery it started (for the compass's shout meter)
 		} whirlwind;
 
-		RE::TESShout* WhirlwindSprint(RE::PlayerCharacter* a_player)
+		bool IsWhirlwind(RE::TESShout* a_shout)
 		{
 			constexpr RE::FormID kWhirlwindSprint = 0x2F7BA;  // Skyrim.esm's shout
-			auto*                voice = a_player->GetActorRuntimeData().selectedPower;
-			auto*                shout = voice ? voice->As<RE::TESShout>() : nullptr;
-			const char*          name = shout ? shout->GetName() : nullptr;
-			return shout && (shout->GetFormID() == kWhirlwindSprint || (name && std::string_view(name).find("Whirlwind") != std::string_view::npos)) ? shout : nullptr;
+			const char*          name = a_shout ? a_shout->GetName() : nullptr;
+			return a_shout && (a_shout->GetFormID() == kWhirlwindSprint || (name && std::string_view(name).find("Whirlwind") != std::string_view::npos));
+		}
+
+		// SkyCraft+ : every shout in Minecraft mode. Not only Whirlwind Sprint: no shout on the player
+		// themselves came either (Slow Time, Aura Whisper, Become Ethereal, Elemental Fury, Dragon
+		// Aspect, Storm Call... tested), while the aimed ones (the breaths, Unrelenting Force) do.
+		// Those on the player are shouted here the same way.
+		RE::TESShout* WhirlwindSprint(RE::PlayerCharacter* a_player)
+		{
+			auto* voice = a_player->GetActorRuntimeData().selectedPower;
+			auto* shout = voice ? voice->As<RE::TESShout>() : nullptr;
+			if (!shout) {
+				return nullptr;
+			}
+			if (IsWhirlwind(shout)) {
+				return shout;
+			}
+			for (const auto& variation : shout->variations) {
+				if (variation.spell && variation.spell->GetDelivery() == RE::MagicSystem::Delivery::kSelf) {
+					return shout;
+				}
+			}
+			return nullptr;
 		}
 
 		void ShoutWhirlwind(RE::PlayerCharacter* a_player, RE::TESShout* a_shout, int a_words)
@@ -530,7 +551,11 @@ namespace skycraft
 			}
 			a_player->GetActorRuntimeData().voiceTimer = variation.recoveryTime * std::max(0.0f, a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kShoutRecoveryMult));
 			whirlwind.cooldown = a_player->GetActorRuntimeData().voiceTimer;
-			logger::info("Whirlwind Sprint: {} sound(s), {} screen effect(s)", sounds, screens);
+			logger::info("{}: {} sound(s), {} screen effect(s)", a_shout->GetName(), sounds, screens);
+			if (!IsWhirlwind(a_shout)) {
+				logger::info("{} ({} word{}) shouted for Minecraft mode (recovery {:.0f} s)", a_shout->GetName(), a_words, a_words > 1 ? "s" : "", variation.recoveryTime);
+				return;
+			}
 			// (Minecraft plays Skyrim's own dash for the words, SkyDash: its root motion, 7, 14, 21 or 29
 			// blocks in 0.567 s.)
 			Link::Get().PushInput(proto::kInDash, static_cast<std::uint16_t>(a_words));
@@ -562,7 +587,7 @@ namespace skycraft
 			}
 			const float recovering = player->GetActorRuntimeData().voiceTimer;
 			if (words == 0 || recovering > 0.0f) {
-				logger::info("Whirlwind Sprint: {}", words == 0 ? "no word of it unlocked yet (Skyrim wouldn't shout it either)" : std::format("still recovering ({:.0f} s)", recovering));
+				logger::info("{}: {}", shout->GetName(), words == 0 ? "no word of it unlocked yet (Skyrim wouldn't shout it either)" : std::format("still recovering ({:.0f} s)", recovering));
 				return;
 			}
 			whirlwind = { now, words };
@@ -2057,13 +2082,21 @@ namespace skycraft
 				static RE::NiPoint3 lastWithCell;
 				static bool         haveLastWithCell = false;
 				static int          rescues = 0;
+				static float        sinceDead = 1000.0f;
 				bool                offWorld = false;
 				auto*               ui = RE::UI::GetSingleton();
+				// SkyCraft+ : not while a save is loading. Skyrim's reload after a death drops the
+				// player's cell before its loading screen shows: put back where they died, mid-load,
+				// Skyrim crashed there instead (SkyrimSE+0x757322 again).
+				sinceDead = a_this->IsDead() ? 0.0f : sinceDead + a_delta;
+				if (saveLoading || sinceDead < 30.0f) {
+					haveLastWithCell = false;
+				}
 				if (auto* cell = a_this->GetParentCell()) {
 					lastWithCell = a_this->GetPosition();
-					haveLastWithCell = !cell->IsInteriorCell();  // (only out in the open world)
+					haveLastWithCell = !cell->IsInteriorCell() && !saveLoading && sinceDead >= 30.0f;  // (only out in the open world)
 				} else if (haveLastWithCell && State().puppeting && !State().parked && State().mcWorld == proto::kDimTamriel && a_this->Is3DLoaded() && ui &&
-						   !ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME)) {
+						   !ui->IsMenuOpen(RE::LoadingMenu::MENU_NAME) && a_this->GetWorldspace()) {
 					if (++rescues <= 5) {
 						logger::warn("Skyrim's player is off its world (no cell): back to ({:.0f}, {:.0f}, {:.0f})", lastWithCell.x, lastWithCell.y, lastWithCell.z);
 					}
@@ -2377,6 +2410,70 @@ namespace skycraft
 		// SkyCraft+ : Whirlwind Sprint (see WhirlwindKey).
 		void ShoutKey(bool a_down) { WhirlwindKey(a_down); }
 
+		// SkyCraft+ : beds. Slept the night through in a Minecraft bed: Skyrim's clock goes on to 6 am
+		// (Skyrim's time is Minecraft's, so Minecraft's own skip to morning was undone).
+		void SleptInMinecraft()
+		{
+			auto* calendar = RE::Calendar::GetSingleton();
+			if (!calendar || !calendar->gameHour || !calendar->gameDaysPassed) {
+				return;
+			}
+			const float hour = calendar->GetHour();
+			const float hours = hour >= 18.0f ? 30.0f - hour : hour < 6.0f ? 6.0f - hour : 0.0f;
+			if (hours <= 0.0f) {
+				logger::info("beds: slept in Minecraft at {:.1f} o'clock; it's day already", hour);
+				return;
+			}
+			// (Past 24 the calendar turns over to the next day itself, as when a script sets GameHour.)
+			calendar->gameHour->value += hours;
+			calendar->gameDaysPassed->value += hours / 24.0f;
+			logger::info("beds: slept in Minecraft at {:.1f} o'clock: {:.1f} hours on, to 6 am", hour, hours);
+		}
+
+		// SkyCraft+ : beds. After a death Skyrim reloads the last save; Minecraft's player came back at
+		// its bed: Skyrim's goes there too (into the interior or worldspace it was slept in), and
+		// Minecraft follows as after any of Skyrim's moves. Loading the save again goes back to its place.
+		void GoToBed(RE::PlayerCharacter* a_player, const proto::McEvent& a_ev)
+		{
+			if (!a_player || a_player->IsDead() || saveLoading) {
+				return;
+			}
+			const auto           pos = McToSky(a_ev.a, a_ev.b, a_ev.c);
+			RE::TESObjectCELL*   intoCell = nullptr;
+			RE::TESWorldSpace*   into = nullptr;
+			if (auto* form = a_ev.formId ? RE::TESForm::LookupByID(a_ev.formId) : nullptr) {
+				if (auto* cell = form->As<RE::TESObjectCELL>(); cell && cell->IsInteriorCell()) {
+					intoCell = cell;
+				} else {
+					into = form->As<RE::TESWorldSpace>();
+				}
+			}
+			if (!intoCell && !into && a_ev.flags == proto::kDimTamriel) {
+				into = RE::TESForm::LookupByID<RE::TESWorldSpace>(0x3C);
+			}
+			RE::TESObjectREFR* anchor = nullptr;
+			if (!intoCell && into && into->persistentCell) {
+				into->persistentCell->ForEachReference([&](RE::TESObjectREFR* a_ref) {
+					if (a_ref && a_ref->GetWorldspace() == into) {
+						anchor = a_ref;
+						return RE::BSContainer::ForEachResult::kStop;
+					}
+					return RE::BSContainer::ForEachResult::kContinue;
+				});
+			}
+			if (!intoCell && !anchor) {
+				logger::warn("beds: don't know where Minecraft's bed is in Skyrim ({:08X}, world {}); staying at the save's place", a_ev.formId, a_ev.flags);
+				return;
+			}
+			logger::info("beds: back at the Minecraft bed: into {} {:08X} at ({:.0f}, {:.0f}, {:.0f})", intoCell ? "interior" : "worldspace",
+				intoCell ? intoCell->GetFormID() : into->GetFormID(), pos.x, pos.y, pos.z);
+			using MoveToFn = void (*)(RE::TESObjectREFR*, const RE::ObjectRefHandle&, RE::TESObjectCELL*, RE::TESWorldSpace*, const RE::NiPoint3&, const RE::NiPoint3&);
+			static REL::Relocation<MoveToFn> moveTo{ RELOCATION_ID(56227, 56626) };
+			const RE::ObjectRefHandle anchorHandle = anchor ? anchor->CreateRefHandle() : RE::ObjectRefHandle{};
+			moveTo(a_player, anchorHandle, intoCell ? intoCell : anchor->GetParentCell(), intoCell ? nullptr : into, pos, RE::NiPoint3(0.0f, 0.0f, McYawToHeading(a_ev.d)));
+			RE::SendHUDMessage::ShowHUDMessage("Back at your bed. Load your save again to go back to where it was made.");
+		}
+
 		void ReportPause()
 		{
 			auto*      ui = RE::UI::GetSingleton();
@@ -2412,6 +2509,7 @@ namespace skycraft
 
 		void OnGameLoaded()
 		{
+			saveLoading = false;  // SkyCraft+
 			MapMarkers::OnGameLoaded();
 			MinecraftEnemies::OnGameLoaded();
 			MobFights::OnGameLoaded();  // SkyCraft+
@@ -2478,6 +2576,7 @@ namespace skycraft
 
 		void OnRevert(SKSE::SerializationInterface*)
 		{
+			saveLoading = true;  // SkyCraft+ : until OnGameLoaded
 			Animals::ClearBabies();  // SkyCraft+
 			Animals::ClearWalks();  // SkyCraft+
 			Animals::ClearPets();  // SkyCraft+

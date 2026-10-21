@@ -1137,6 +1137,10 @@ namespace skycraft
 						SkyInventory::Apply(a_player, ev);  // SkyCraft+
 					} else if (ev.type == proto::kEvDragonSoul) {
 						GiveDragonSoul(a_player);  // SkyCraft+
+					} else if (ev.type == proto::kEvSlept) {
+						Game::SleptInMinecraft();  // SkyCraft+ : beds
+					} else if (ev.type == proto::kEvGoToBed) {
+						Game::GoToBed(a_player, ev);  // SkyCraft+ : beds
 					}
 				}
 				pendingExplosions.clear();
@@ -1192,6 +1196,12 @@ namespace skycraft
 					break;
 				case proto::kEvEnchantHit:
 					Workbench::EnchantHit(a_player, ev.formId, ev.flags);  // SkyCraft+
+					break;
+				case proto::kEvSlept:
+					Game::SleptInMinecraft();  // SkyCraft+ : beds
+					break;
+				case proto::kEvGoToBed:
+					Game::GoToBed(a_player, ev);  // SkyCraft+ : beds
 					break;
 				case proto::kEvCropGrown:
 					Crops::OnGrown(a_player, ev.formId, ev.a, ev.b, ev.c);  // SkyCraft+

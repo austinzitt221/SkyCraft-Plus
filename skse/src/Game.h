@@ -148,6 +148,9 @@ namespace skycraft
 		void ReportPause();
 		// SkyCraft+ : Whirlwind Sprint. Skyrim's Shout key went down or up (acted on in Minecraft mode).
 		void ShoutKey(bool a_down);
+		// SkyCraft+ : beds (kEvSlept, kEvGoToBed).
+		void SleptInMinecraft();
+		void GoToBed(RE::PlayerCharacter* a_player, const proto::McEvent& a_ev);
 		// Called from Present: logs rendered camera vs Minecraft eye when a check is due.
 		void CheckRenderedCamera();
 		// Third-person diagnostics, from where the blocks are drawn: the camera Skyrim renders this

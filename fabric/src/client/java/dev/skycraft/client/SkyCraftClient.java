@@ -27,6 +27,7 @@ public final class SkyCraftClient implements ClientModInitializer {
 		SkyRestoreClient.register(); // SkyCraft+ : the restoration brush
 		SkySettingsScreen.register(); // SkyCraft+ : the SkyCraft+ settings screen
 		SkyArrowsClient.register(); // SkyCraft+ : arrows across the games
+		SkyBedsClient.register(); // SkyCraft+ : beds
 		ClientTickEvents.END_CLIENT_TICK.register(SkyArrowsClient::tick);
 		ClientTickEvents.END_CLIENT_TICK.register(SkyLendingClient::tick);
 		// Multiplayer without editing files: the host opens their world to LAN (O, Open to LAN) and

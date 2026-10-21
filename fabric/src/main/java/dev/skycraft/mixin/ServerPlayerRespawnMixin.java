@@ -17,6 +17,8 @@ public abstract class ServerPlayerRespawnMixin {
 		TeleportTransition instead = SkyMinecraftWorlds.comingBack((ServerPlayer) (Object) this, cir.getReturnValue());
 		if (instead != null) {
 			cir.setReturnValue(instead);
+		} else {
+			dev.skycraft.world.SkyBeds.respawning((ServerPlayer) (Object) this, cir.getReturnValue());  // SkyCraft+ : beds
 		}
 	}
 }

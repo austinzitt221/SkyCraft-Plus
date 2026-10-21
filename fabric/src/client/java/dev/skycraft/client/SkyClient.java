@@ -186,6 +186,7 @@ public final class SkyClient {
 		SkyCombat.leftHandKind = sky.leftHandKind;
 		// SkyCraft+ : every shout in Minecraft mode. The shouts on the player (Become Ethereal, Slow Time...): a guest tells the host's server.
 		dev.skycraft.combat.SkyShouts.hostSelf = sky.selfEffects;
+		SkyBedsClient.tick(minecraft, player, sky); // SkyCraft+ : beds
 		if (sky.selfEffects != sentSelf && minecraft.getSingleplayerServer() == null
 			&& net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking.canSend(dev.skycraft.net.SkyNet.Act.TYPE)) {
 			sentSelf = sky.selfEffects;

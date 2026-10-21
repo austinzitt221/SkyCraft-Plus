@@ -158,6 +158,7 @@ public final class SkySettingsScreen extends Screen {
 		{ "World", "destruction", "true", "Mining Skyrim's ground and rocks, and explosions, dig into Skyrim's world (holes already dug stay)." },
 		{ "World", "holdMobsWithoutGround", "true", "Mobs are held still where Skyrim's ground isn't known yet, so they don't fall out of the world." },
 		{ "World", "mobWanderFix", "true", "Mobs don't pile up on high spots when they wander." },
+		{ "World", "bedsInSkyrim", "true", "Sleeping the night through in a Minecraft bed moves Skyrim's clock to the morning; after a death and the reload you're taken to your bed (load the save again to go back)." },
 		{ "Items & combat", "skyrimArmorSlots", "true", "Skyrim armor goes in Minecraft's armor slots (and more slots for gauntlets, necklace, ring)." },
 		{ "Items & combat", "skyrimStorage", "true", "Skyrim items can be put in Minecraft's chests, barrels, bundles and the like." },
 		{ "Items & combat", "crossCrafting", "true", "Skyrim materials count in Minecraft's recipes (Skyrim iron makes a Minecraft sword)." },
@@ -167,7 +168,7 @@ public final class SkySettingsScreen extends Screen {
 		{ "Items & combat", "skyrimFightsMobs", "true", "Your followers fight Minecraft's monsters; anyone a mob hurts hits back." },
 		{ "Items & combat", "petsThroughDoors", "true", "Your pets and led animals come through Skyrim's doors with you." },
 		{ "Items & combat", "starterKit", "false", "New players get a Minecraft starter kit (sword, pickaxe, bow, food)." },
-		{ "Items & combat", "silkTouchSkyrimGeo", "true", "Mining Skyrim's ground or rock with silk touch gives that piece of Skyrim as a block (else its Minecraft block)." },
+		{ "Items & combat", "silkTouchSkyrimGeo", "true", "Mining Skyrim's ground or rock with silk touch gives a block with that Skyrim texture (else its Minecraft block)." },
 		{ "Items & combat", "skyrimFoodForAnimals", "true", "Skyrim food feeds animals (Skyrim's and Minecraft's), and bones tame Skyrim's dogs and wolves." },
 	};
 
