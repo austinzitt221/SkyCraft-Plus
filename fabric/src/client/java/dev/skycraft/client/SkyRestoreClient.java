@@ -52,6 +52,17 @@ public final class SkyRestoreClient {
 			BlockState state = level.getBlockState(cell);
 			boolean dug = SkyDig.isDug(level, world, cell);
 			if (!state.isAir() && !state.canBeReplaced()) {
+				// SkyCraft+ : a block an earlier brush filled a dug cell of a house or rock with (it once
+				// filled any cell no surface passed through: wood planks in Whiterun's walls): taken away,
+				// and the Skyrim object's geometry back. (The server checks it's that block.)
+				if (dug && !player.getBoundingBox().intersects(new AABB(cell))) {
+					probe.around(cell.getX(), cell.getY(), cell.getZ(), cell.getX() + 1, cell.getY() + 1, cell.getZ() + 1);
+					int material = probe.test(cell.getX() + 0.5, cell.getY() + 0.5, cell.getZ() + 0.5);
+					if (material > 0 && !underLand(probe, cell)) {
+						ClientPlayNetworking.send(new SkyRestore.Restore(world, cell, -2 - material, !player.getMainHandItem().is(SkyRestore.ITEM)));
+						return true;
+					}
+				}
 				break;  // a block in the way
 			}
 			if (!dug) {
@@ -73,7 +84,9 @@ public final class SkyRestoreClient {
 			if (surfaces.isEmpty()) {
 				probe.around(cell.getX(), cell.getY(), cell.getZ(), cell.getX() + 1, cell.getY() + 1, cell.getZ() + 1);
 				int material = probe.test(cell.getX() + 0.5, cell.getY() + 0.5, cell.getZ() + 0.5);
-				fill = material > 0 ? material : -1;
+				// (Only under the land, where Skyrim draws nothing: inside a house's wall or a rock, its own
+				// geometry comes back, as everywhere else.)
+				fill = material > 0 && underLand(probe, cell) ? material : -1;
 			}
 			boolean offHand = !player.getMainHandItem().is(SkyRestore.ITEM);
 			ClientPlayNetworking.send(new SkyRestore.Restore(world, cell, fill, offHand));
@@ -81,5 +94,12 @@ public final class SkyRestoreClient {
 		}
 		player.sendOverlayMessage(Component.literal("Nothing dug out of Skyrim here to put back"));
 		return false;
+	}
+
+	/** Whether a cell is under Skyrim's land (or deep in the underground): a tunnel, where Skyrim draws nothing. */
+	private static boolean underLand(SkyDig.Probe probe, BlockPos cell) {
+		double x = cell.getX() + 0.5, y = cell.getY() + 0.5, z = cell.getZ() + 0.5;
+		double ground = probe.landHeight(x, z);
+		return Double.isNaN(ground) ? dev.skycraft.world.SkyUnderground.deep(x, y, z) : y < ground;
 	}
 }

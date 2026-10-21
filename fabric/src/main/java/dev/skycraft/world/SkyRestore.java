@@ -104,10 +104,16 @@ public final class SkyRestore extends Item {
 			return;
 		}
 		BlockState here = level.getBlockState(pos);
-		if (!here.isAir() && !here.canBeReplaced()) {
+		if (restore.fill() <= -2) {
+			// SkyCraft+ : the block an earlier brush filled a house's or a rock's dug cell with: gone, and the geometry back.
+			if (!here.is(SkyDig.blockFor(level, pos, -2 - restore.fill()).getBlock()) || !SkyDig.unmarkDug(level, restore.world(), pos)) {
+				return;
+			}
+			level.removeBlock(pos, false);
+			level.playSound(null, pos, SoundEvents.BRUSH_GENERIC, SoundSource.BLOCKS, 1.0F, 1.0F);
+		} else if (!here.isAir() && !here.canBeReplaced()) {
 			return;
-		}
-		if (restore.fill() >= 0) {
+		} else if (restore.fill() >= 0) {
 			// Deep in the ground: the block it was, as a revealed one is (still dug: Skyrim has nothing here to draw).
 			if (!level.getEntities(null, new AABB(pos)).stream().noneMatch(e -> e.isAlive() && e.blocksBuilding)) {
 				return;
@@ -126,6 +132,6 @@ public final class SkyRestore extends Item {
 		}
 		level.sendParticles(ParticleTypes.HAPPY_VILLAGER, pos.getX() + 0.5, pos.getY() + 0.7, pos.getZ() + 0.5, 6, 0.35, 0.3, 0.35, 0.0);
 		brush.hurtAndBreak(1, player, hand);
-		SkyCraft.LOG.info("SkyCraft: {} restored {} at {}", player.getPlainTextName(), restore.fill() >= 0 ? "a block deep in the ground" : "Skyrim's geometry", pos);
+		SkyCraft.LOG.info("SkyCraft: {} restored {} at {}", player.getPlainTextName(), restore.fill() >= 0 ? "a block deep in the ground" : restore.fill() <= -2 ? "Skyrim's geometry (a filled block taken away)" : "Skyrim's geometry", pos);
 	}
 }
