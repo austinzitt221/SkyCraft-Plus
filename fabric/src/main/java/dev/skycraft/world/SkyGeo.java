@@ -265,6 +265,28 @@ public final class SkyGeo {
 		protected RenderShape getRenderShape(BlockState state) {
 			return RenderShape.INVISIBLE;
 		}
+
+		/**
+		 * SkyCraft+ : broken, the block with its own texture back (the loot table's copy of its data came out
+		 * empty: a plain "Skyrim Block" that looked like stone).
+		 */
+		@Override
+		protected List<ItemStack> getDrops(BlockState state, net.minecraft.world.level.storage.loot.LootParams.Builder params) {
+			BlockEntity entity = params.getOptionalParameter(net.minecraft.world.level.storage.loot.parameters.LootContextParams.BLOCK_ENTITY);
+			if (entity instanceof GeoEntity geo && !geo.piece().texture().isEmpty()) {
+				return List.of(stack(geo.piece(), false, 1));
+			}
+			return super.getDrops(state, params);
+		}
+
+		/** Creative's pick block: the block with its texture too. */
+		@Override
+		protected ItemStack getCloneItemStack(net.minecraft.world.level.LevelReader level, BlockPos pos, BlockState state, boolean includeData) {
+			if (level.getBlockEntity(pos) instanceof GeoEntity geo && !geo.piece().texture().isEmpty()) {
+				return stack(geo.piece(), false, 1);
+			}
+			return super.getCloneItemStack(level, pos, state, includeData);
+		}
 	}
 
 	/** A placed piece: its data, from the item it was placed from (and back into what it drops). */
