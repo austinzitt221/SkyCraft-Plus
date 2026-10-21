@@ -30,7 +30,7 @@ final class SkyAtlas {
 	private static final int ARROW_W = 32;
 	// SkyCraft+ : Skyrim geo. Slots under everything else that Skyrim fills with its own textures (SkyGeoTextures:
 	// it draws each one there itself from the texture's file), for Skyrim ground and rock placed as blocks.
-	static final int GEO_SLOTS = 32, GEO_SIZE = 128;
+	static final int GEO_SLOTS = 32, GEO_SIZE = 256;  // (256: smooth over the 4x4 blocks one spreads across)
 	private final int geoY, geoPerRow;
 
 	/**

@@ -44,10 +44,9 @@ public final class SkyCreativeClient {
 		for (SkyLink.SkyItem item : sorted) {
 			SkyCreative.Tab tab = SkyCreative.Tab.of(item.kind());
 			if (item.kind() == Proto.SKY_GEO) {
-				// SkyCraft+ : Skyrim geo. Each texture Skyrim's land is painted with: a piece of that ground, and a block of it.
+				// SkyCraft+ : Skyrim blocks. Each texture Skyrim's land is painted with: a block of it.
 				var piece = dev.skycraft.world.SkyGeo.flat(item.material(), item.name());
-				byTab.computeIfAbsent(tab, t -> new ArrayList<>()).add(dev.skycraft.world.SkyGeo.stack(piece, true, 1));
-				byTab.get(tab).add(dev.skycraft.world.SkyGeo.stack(piece, false, 1));
+				byTab.computeIfAbsent(tab, t -> new ArrayList<>()).add(dev.skycraft.world.SkyGeo.stack(piece, false, 1));
 				continue;
 			}
 			if (tab == null || item.plugin().isEmpty()) {

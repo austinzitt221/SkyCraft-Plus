@@ -59,7 +59,7 @@ public final class SkyCreative {
 		SPELLS("spells", "Skyrim Spells", () -> new ItemStack(Items.ENCHANTED_BOOK)),
 		SHOUTS("shouts", "Skyrim Shouts", () -> new ItemStack(Items.DRAGON_BREATH)),
 		EGGS("spawn_eggs", "Skyrim Spawn Eggs", () -> new ItemStack(Items.VILLAGER_SPAWN_EGG)),
-		GEO("geo", "Skyrim Geo", () -> new ItemStack(Items.GRASS_BLOCK));  // SkyCraft+ : Skyrim's ground as blocks (SkyGeo)
+		GEO("geo", "Skyrim Blocks", () -> new ItemStack(Items.GRASS_BLOCK));  // SkyCraft+ : Skyrim's textures as blocks (SkyGeo)
 
 		final String id;
 		final String title;

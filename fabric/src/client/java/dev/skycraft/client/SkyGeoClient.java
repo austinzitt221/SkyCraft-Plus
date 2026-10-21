@@ -6,7 +6,6 @@ import dev.skycraft.link.SkyLink;
 import dev.skycraft.world.SkyCollision;
 import dev.skycraft.world.SkyGeo;
 import dev.skycraft.world.SkyTri;
-import it.unimi.dsi.fastutil.ints.IntArrayList;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -17,10 +16,10 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.world.phys.AABB;
 
 /**
- * The miner's side of Skyrim geo (SkyGeo): mining a Skyrim cell with silk touch asks this player's
+ * The miner's side of Skyrim blocks (SkyGeo): mining a Skyrim cell with silk touch asks this player's
  * Skyrim, as soon as the mining starts, which texture is there (the land's painted one, or the rock's
- * or road's own); when the cell comes out, its surface (Skyrim's triangles cut to the cell) goes with
- * it, and the server drops that piece instead of its Minecraft block.
+ * or road's own: whichever was hit); when the cell comes out, the server drops a block with that
+ * texture instead of its Minecraft block.
  */
 public final class SkyGeoClient {
 	private SkyGeoClient() {
@@ -38,7 +37,8 @@ public final class SkyGeoClient {
 		if (!silkTouch(minecraft) || TEXTURES.containsKey(pos.asLong())) {
 			return;
 		}
-		int id = SkyLink.pushStoreRequest(Proto.STORE_TEXTURE_AT, 0, 0, (float) x, (float) y, Float.floatToRawIntBits((float) z), 0, "");
+		// (count: what was hit, 1 Skyrim's land, 2 something on it: a road, rock, wall; 0 not known.)
+		int id = SkyLink.pushStoreRequest(Proto.STORE_TEXTURE_AT, 0, surfaceKind(x, y, z), (float) x, (float) y, Float.floatToRawIntBits((float) z), 0, "");
 		if (id != 0) {
 			ASKED.put(id, pos.asLong());
 		}
@@ -64,52 +64,35 @@ public final class SkyGeoClient {
 		if (!silkTouch(minecraft) || !ClientPlayNetworking.canSend(SkyGeo.Mine.TYPE) || !dev.skycraft.SkySettings.flag("silkTouchSkyrimGeo", true)) {
 			return false;
 		}
-		int[] tris = capture(pos);
+		// A block with the texture Skyrim had there (its answer came while it was mined); none known: its Minecraft block.
 		String texture = TEXTURES.getOrDefault(pos.asLong(), "");
-		ClientPlayNetworking.send(new SkyGeo.Mine(world, pos, material, tris, texture));
+		if (texture.isEmpty()) {
+			return false;
+		}
+		ClientPlayNetworking.send(new SkyGeo.Mine(world, pos, material, new int[0], texture));
 		return true;
 	}
 
-	/** Skyrim's surfaces in the cell (as they were before it was dug), cut to it, in the cell's own 0..1 (packed: SkyGeo.Piece). */
-	static int[] capture(BlockPos pos) {
-		AABB cell = new AABB(pos);
+	/** Whether the surface at a point is Skyrim's land (1) or something standing on it (2): the nearest original surface's. */
+	private static int surfaceKind(double x, double y, double z) {
 		List<SkyTri> found = new ArrayList<>();
-		SkyCollision.originalSurfacesNear(cell, found);
-		IntArrayList out = new IntArrayList();
+		SkyCollision.originalSurfacesNear(new AABB(x - 0.3, y - 0.3, z - 0.3, x + 0.3, y + 0.3, z + 0.3), found);
+		SkyTri nearest = null;
+		double best = Double.MAX_VALUE;
 		for (SkyTri t : found) {
-			if (t.stairHelper || out.size() >= SkyGeo.MAX_TRIS * 3) {
+			if (t.stairHelper) {
 				continue;
 			}
-			List<double[]> poly = new ArrayList<>(List.of(new double[] { t.ax, t.ay, t.az }, new double[] { t.bx, t.by, t.bz }, new double[] { t.cx, t.cy, t.cz }));
-			double[] lo = { pos.getX(), pos.getY(), pos.getZ() }, hi = { pos.getX() + 1, pos.getY() + 1, pos.getZ() + 1 };
-			for (int axis = 0; axis < 3 && poly.size() >= 3; axis++) {
-				poly = clip(poly, axis, lo[axis], true);
-				poly = clip(poly, axis, hi[axis], false);
-			}
-			for (int k = 1; k + 1 < poly.size() && out.size() < SkyGeo.MAX_TRIS * 3; k++) {
-				for (double[] v : new double[][] { poly.get(0), poly.get(k), poly.get(k + 1) }) {
-					out.add(SkyGeo.Piece.pack(v[0] - lo[0], v[1] - lo[1], v[2] - lo[2]));
-				}
+			double cx = (t.ax + t.bx + t.cx) / 3.0, cy = (t.ay + t.by + t.cy) / 3.0, cz = (t.az + t.bz + t.cz) / 3.0;
+			// Distance to its plane, plus how far outside its box (a cheap nearest-triangle).
+			double plane = Math.abs((x - cx) * t.nx + (y - cy) * t.ny + (z - cz) * t.nz);
+			double ex = Math.max(0.0, Math.max(t.minX - x, x - t.maxX)), ey = Math.max(0.0, Math.max(t.minY - y, y - t.maxY)), ez = Math.max(0.0, Math.max(t.minZ - z, z - t.maxZ));
+			double d = plane + ex + ey + ez;
+			if (d < best) {
+				best = d;
+				nearest = t;
 			}
 		}
-		return out.toIntArray();
-	}
-
-	/** Sutherland-Hodgman against one side of the cell: keep what's above (keepAbove) or below that plane. */
-	private static List<double[]> clip(List<double[]> poly, int axis, double plane, boolean keepAbove) {
-		List<double[]> out = new ArrayList<>();
-		for (int i = 0; i < poly.size(); i++) {
-			double[] a = poly.get(i), b = poly.get((i + 1) % poly.size());
-			boolean ina = keepAbove ? a[axis] >= plane : a[axis] <= plane;
-			boolean inb = keepAbove ? b[axis] >= plane : b[axis] <= plane;
-			if (ina) {
-				out.add(a);
-			}
-			if (ina != inb) {
-				double f = (plane - a[axis]) / (b[axis] - a[axis]);
-				out.add(new double[] { a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f });
-			}
-		}
-		return out;
+		return nearest == null ? 0 : nearest.terrain ? 1 : 2;
 	}
 }

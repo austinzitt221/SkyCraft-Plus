@@ -1034,7 +1034,7 @@ namespace skycraft::SkyInventory
 				} else if (request.op == proto::kStoreTextureAt) {
 					// SkyCraft+ : Skyrim geo. Which texture a dug surface has (the point in health, charge and soul's bits).
 					int        kind = 0;
-					const auto path = GeoTextures::TextureAt(request.health, request.charge, std::bit_cast<float>(request.soul), kind);
+					const auto path = GeoTextures::TextureAt(request.health, request.charge, std::bit_cast<float>(request.soul), kind, request.count);
 					proto::SkyStoreResult result = Refusal(request.id, path.empty() ? proto::kStoreNone : proto::kStoreOk);
 					result.kind = static_cast<std::uint8_t>(kind);
 					std::strncpy(result.name, path.c_str(), sizeof(result.name) - 1);

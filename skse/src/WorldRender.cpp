@@ -75,6 +75,7 @@ Texture2D<float> shadowMap : register(t2);    // Minecraft blocks seen from the 
 Texture2D skyrimShadow : register(t3);        // Skyrim's screen-space shadow mask (r: sun, 1 = lit)
 SamplerState atlasSampler : register(s0);
 SamplerState pointSampler : register(s1);
+SamplerState smoothSampler : register(s3);
 SamplerComparisonState shadowSampler : register(s2);
 Texture2DArray<float> skyrimShadowMaps : register(t4);  // Skyrim's own shadow maps
 // What's solid around the camera, per Minecraft block (x, y up, z): bit 0 a Minecraft block; bit 1
@@ -389,7 +390,8 @@ PSOut PSMain(VSOut i)
 		po.color = i.color;
 		return po;
 	}
-	float4 t = (i.flags & 8) ? atlas.SampleLevel(atlasSampler, i.uv, 0) : atlas.Sample(atlasSampler, i.uv);
+	// (128: one of Skyrim's own textures on a Skyrim block, sampled smooth as Skyrim does, not in crisp pixels.)
+	float4 t = (i.flags & 8) ? atlas.SampleLevel(atlasSampler, i.uv, 0) : (i.flags & 128) ? atlas.Sample(smoothSampler, i.uv) : atlas.Sample(atlasSampler, i.uv);
 	if (!(i.flags & 2) && t.a < 0.5) {
 		discard;
 	}
@@ -583,6 +585,7 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 		UINT                      dynCapacity = 0;
 		ID3D11SamplerState*       atlasSampler = nullptr;
 		ID3D11SamplerState*       pointSampler = nullptr;
+		ID3D11SamplerState*       smoothSampler = nullptr;  // SkyCraft+ : Skyrim's own textures on Skyrim blocks
 		ID3D11RasterizerState*    raster = nullptr;
 		ID3D11RasterizerState*    rasterCullBack = nullptr;
 		ID3D11DepthStencilState*  depthWrite = nullptr;  // standard Z (0 near, 1 far)
@@ -784,6 +787,10 @@ float4 OverlayPS(float4 pos : SV_Position) : SV_Target
 			a_device->CreateSamplerState(&sd, &atlasSampler);
 			sd.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
 			a_device->CreateSamplerState(&sd, &pointSampler);
+			sd.Filter = D3D11_FILTER_ANISOTROPIC;  // SkyCraft+ : Skyrim blocks, smooth as Skyrim draws its own textures
+			sd.MaxAnisotropy = 8;
+			a_device->CreateSamplerState(&sd, &smoothSampler);
+			sd.MaxAnisotropy = 0;
 			sd.Filter = D3D11_FILTER_COMPARISON_MIN_MAG_LINEAR_MIP_POINT;
 			sd.ComparisonFunc = D3D11_COMPARISON_LESS_EQUAL;
 			a_device->CreateSamplerState(&sd, &shadowSampler);
@@ -1351,6 +1358,7 @@ float4 BlitPS(BlitV i) : SV_Target
 					auto* renderer = source ? reinterpret_cast<std::uint8_t*>(source->rendererTexture) : nullptr;
 					auto* view = renderer ? *reinterpret_cast<ID3D11ShaderResourceView**>(renderer + 0x10) : nullptr;
 					BlitIntoAtlas(a_context, view, x, y, w, h);
+					atlasMipsStale = true;  // (seen from afar too, not the grey it was)
 				}
 			}
 			if (std::exchange(atlasMipsStale, false) && atlasSrv) {
@@ -2539,7 +2547,7 @@ float4 BlitPS(BlitV i) : SV_Target
 			ID3D11Buffer*             vsCb[2]{};
 			ID3D11Buffer*             psCb[2]{};
 			ID3D11ShaderResourceView* srv[4]{};
-			ID3D11SamplerState*       samplers[3]{};
+			ID3D11SamplerState*       samplers[4]{};
 			// Binding a depth buffer or render target unbinds it wherever it's bound for reading;
 			// put every stage's resources back so Skyrim's renderer finds what it left.
 			static constexpr UINT     kSlots = D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT;
@@ -2562,7 +2570,7 @@ float4 BlitPS(BlitV i) : SV_Target
 				a_c->VSGetConstantBuffers(0, 2, vsCb);
 				a_c->PSGetConstantBuffers(0, 2, psCb);
 				a_c->PSGetShaderResources(0, 4, srv);
-				a_c->PSGetSamplers(0, 3, samplers);
+				a_c->PSGetSamplers(0, 4, samplers);
 				a_c->VSGetShaderResources(0, kSlots, vsAll);
 				a_c->PSGetShaderResources(0, kSlots, psAll);
 				a_c->CSGetShaderResources(0, kSlots, csAll);
@@ -2583,7 +2591,7 @@ float4 BlitPS(BlitV i) : SV_Target
 				a_c->VSSetConstantBuffers(0, 2, vsCb);
 				a_c->PSSetConstantBuffers(0, 2, psCb);
 				a_c->PSSetShaderResources(0, 4, srv);
-				a_c->PSSetSamplers(0, 3, samplers);
+				a_c->PSSetSamplers(0, 4, samplers);
 				a_c->VSSetShaderResources(0, kSlots, vsAll);
 				a_c->PSSetShaderResources(0, kSlots, psAll);
 				a_c->CSSetShaderResources(0, kSlots, csAll);
@@ -3016,8 +3024,8 @@ float4 BlitPS(BlitV i) : SV_Target
 			ID3D11Buffer* cbs[2] = { frameCb, objectCb };
 			a_context->VSSetConstantBuffers(0, 2, cbs);
 			a_context->PSSetConstantBuffers(0, 2, cbs);
-			ID3D11SamplerState* samplers[3] = { atlasSampler, pointSampler, shadowSampler };
-			a_context->PSSetSamplers(0, 3, samplers);
+			ID3D11SamplerState* samplers[4] = { atlasSampler, pointSampler, shadowSampler, smoothSampler };
+			a_context->PSSetSamplers(0, 4, samplers);
 			a_context->IASetInputLayout(layout);
 			a_context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 

@@ -219,7 +219,7 @@ namespace skycraft
 		// Render thread: one loaded, to draw into its rect.
 		bool TakeReady(std::uint32_t& a_x, std::uint32_t& a_y, std::uint32_t& a_w, std::uint32_t& a_h, RE::NiPointer<RE::NiTexture>& a_texture);
 		// Main thread: the diffuse texture of Skyrim's geometry at a Minecraft point (a_kind 1 land, 2 an object; empty: none known).
-		std::string TextureAt(double a_x, double a_y, double a_z, int& a_kind);
+		std::string TextureAt(double a_x, double a_y, double a_z, int& a_kind, int a_hit);  // a_hit: what Minecraft saw there, 1 the land, 2 something on it, 0 not known
 		// Every land texture, for the creative menu's Skyrim geo (kSkyGeo).
 		void Catalog(std::vector<proto::SkyItem>& a_items);
 	}

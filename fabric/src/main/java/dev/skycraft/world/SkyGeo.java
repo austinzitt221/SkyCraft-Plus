@@ -54,14 +54,13 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Skyrim's ground and rock as Minecraft blocks. Mined with silk touch, a cell of Skyrim's geometry
- * doesn't break into its Minecraft block (dirt, stone): it comes out as that very piece of Skyrim
- * (skycraft:skyrim_geo), its surface's shape and Skyrim's texture there kept. Placed, it's a whole
- * block: the surface on top as it was (raised to the block's top), filled in under it with what it's
- * made of (Minecraft's dirt, stone...), so it stacks and builds like any block. Crafted on its own it
- * becomes a plain cube with that Skyrim texture all over (skycraft:skyrim_block). Skyrim draws both:
- * Minecraft sends their faces with the rest of the blocks (WorldExporter), their texture drawn into
- * the atlas by Skyrim itself (SkyGeoTextures). The creative menu has one of each for every texture
- * Skyrim's land is painted with.
+ * doesn't break into its Minecraft block (dirt, stone): it comes out as a block with the very texture
+ * Skyrim used there (skycraft:skyrim_block), a plain cube that builds like any other. Skyrim draws it:
+ * Minecraft sends its faces with the rest of the blocks (WorldExporter), its texture drawn into the
+ * atlas by Skyrim itself (SkyGeoTextures). The creative menu has one for every texture Skyrim's land
+ * is painted with. (The first version kept the mined piece's own shape, skycraft:skyrim_geo; the
+ * restoration brush puts Skyrim's ground back as it was instead, so those are plain blocks now: still
+ * there in worlds that have them, drawn as cubes, and turned into blocks when picked up.)
  */
 public final class SkyGeo {
 	private SkyGeo() {
@@ -84,8 +83,6 @@ public final class SkyGeo {
 		new BlockItem(BLOCK, new Item.Properties().setId(ResourceKey.create(Registries.ITEM, BLOCK_KEY.identifier())).useBlockDescriptionPrefix()));
 	public static final BlockEntityType<GeoEntity> ENTITY = Registry.register(BuiltInRegistries.BLOCK_ENTITY_TYPE, GEO_KEY.identifier(),
 		new BlockEntityType<>(GeoEntity::new, Set.of(GEO, BLOCK)));
-	public static final RecipeSerializer<BlockRecipe> RECIPE = Registry.register(BuiltInRegistries.RECIPE_SERIALIZER,
-		Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "skyrim_block_from_geo"), new RecipeSerializer<>(MapCodec.unit(BlockRecipe.INSTANCE), StreamCodec.unit(BlockRecipe.INSTANCE)));
 
 	private static BlockBehaviour.Properties props(ResourceKey<Block> key) {
 		return BlockBehaviour.Properties.of().mapColor(MapColor.STONE).strength(1.2F, 4.0F).sound(SoundType.STONE).setId(key);
@@ -229,9 +226,25 @@ public final class SkyGeo {
 		ServerPlayNetworking.registerGlobalReceiver(Mine.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
 			context.server().execute(() -> {
-				Piece piece = new Piece(payload.tris(), payload.material(), payload.texture());
-				SkyDig.open(player, payload.world(), payload.pos(), payload.material(), stack(piece, true, 1));
+				Piece piece = new Piece(new int[0], payload.material(), payload.texture());
+				SkyDig.open(player, payload.world(), payload.pos(), payload.material(), stack(piece, false, 1));
 			});
+		});
+		// An old geo piece picked up (or already held): the Skyrim-textured block it would have crafted into.
+		net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+			if (server.getTickCount() % 20 != 7) {
+				return;
+			}
+			for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+				var inventory = player.getInventory();
+				for (int i = 0; i < inventory.getContainerSize(); i++) {
+					ItemStack stack = inventory.getItem(i);
+					Piece piece = stack.is(GEO_ITEM) ? piece(stack) : null;
+					if (stack.is(GEO_ITEM)) {
+						inventory.setItem(i, piece != null ? stack(piece, false, stack.getCount()) : ItemStack.EMPTY);
+					}
+				}
+			}
 		});
 	}
 
@@ -267,8 +280,9 @@ public final class SkyGeo {
 			return Piece.of(this.data);
 		}
 
+		/** (Always a cube now: see the class comment.) */
 		public boolean geo() {
-			return this.getBlockState().is(GEO);
+			return false;
 		}
 
 		@Override
@@ -320,44 +334,6 @@ public final class SkyGeo {
 		public void removeComponentsFromTag(ValueOutput output) {
 			output.discard("geo");
 			output.discard("CustomName");
-		}
-	}
-
-	/** One Skyrim geo piece on its own in a crafting grid: a block with its texture all over. */
-	public static final class BlockRecipe extends CustomRecipe {
-		static final BlockRecipe INSTANCE = new BlockRecipe();
-
-		private static @Nullable ItemStack only(CraftingInput input) {
-			ItemStack found = null;
-			for (int i = 0; i < input.size(); i++) {
-				ItemStack stack = input.getItem(i);
-				if (stack.isEmpty()) {
-					continue;
-				}
-				if (found != null || !stack.is(GEO_ITEM)) {
-					return null;
-				}
-				found = stack;
-			}
-			return found;
-		}
-
-		@Override
-		public boolean matches(CraftingInput input, Level level) {
-			ItemStack geo = only(input);
-			return geo != null && piece(geo) != null;
-		}
-
-		@Override
-		public ItemStack assemble(CraftingInput input) {
-			ItemStack geo = only(input);
-			Piece piece = geo == null ? null : piece(geo);
-			return piece == null ? ItemStack.EMPTY : stack(piece, false, 1);
-		}
-
-		@Override
-		public RecipeSerializer<BlockRecipe> getSerializer() {
-			return RECIPE;
 		}
 	}
 
