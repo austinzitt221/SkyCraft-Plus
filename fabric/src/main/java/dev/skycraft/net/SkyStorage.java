@@ -152,6 +152,84 @@ public final class SkyStorage {
 		}
 	}
 
+	/**
+	 * SkyCraft+ : Skyrim items carried in Minecraft. Things that are only had, never held or worn
+	 * (materials, ingredients, food, potions), dragged into the player's own inventory, leave Skyrim's
+	 * as they would for a chest: then they're the only ones (their weight gone from Skyrim's too), and
+	 * stay where they are; used from the hand, one goes back into Skyrim and is used there; dropped on
+	 * the Skyrim panel, back they go. Weapons, armor, arrows, spells, torches, soul gems, keys and
+	 * books stay shortcuts: Skyrim has to have those to use them. Setting skyrimItemsInMinecraft.
+	 */
+	public static boolean carriedInMinecraft(int kind, int sub, int flags, String name) {
+		if (!dev.skycraft.SkySettings.flag("skyrimItemsInMinecraft", true) || (flags & (Proto.ITEM_QUEST | Proto.ITEM_PLANTABLE)) != 0) {
+			return false;
+		}
+		return switch (kind) {
+			case Proto.SKY_FOOD, Proto.SKY_POTION, Proto.SKY_INGREDIENT -> true;
+			case Proto.SKY_MISC -> sub != 2 && !name.toLowerCase(java.util.Locale.ROOT).contains("soul gem");
+			default -> false;
+		};
+	}
+
+	/** Deposit.slot for anywhere in the player's own inventory (a thing carried in Minecraft, shift-clicked out of the Skyrim panel). */
+	public static final int OWN_INVENTORY = 9999;
+
+	public static boolean carriedInMinecraft(Stored s) {
+		return carriedInMinecraft(s.kind(), s.sub(), s.flags(), s.name());
+	}
+
+	/** SkyCraft+ : Skyrim items carried in Minecraft. Client -> server: the stored food, potion or ingredient in that hand is used: one goes back into Skyrim for it. */
+	public record UseStored(boolean offHand) implements CustomPacketPayload {
+		public static final Type<UseStored> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "storage_use"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, UseStored> CODEC = StreamCodec.of((buf, u) -> buf.writeBoolean(u.offHand),
+			buf -> new UseStored(buf.readBoolean()));
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	/** SkyCraft+ : Skyrim items carried in Minecraft. Server -> client: this one, out of the hand, into Skyrim and used there. */
+	public record GiveAndUse(Stored stored) implements CustomPacketPayload {
+		public static final Type<GiveAndUse> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "storage_give_use"));
+		public static final StreamCodec<RegistryFriendlyByteBuf, GiveAndUse> CODEC = StreamCodec.of((buf, g) -> Stored.CODEC.encode(buf, g.stored),
+			buf -> new GiveAndUse(Stored.CODEC.decode(buf)));
+
+		@Override
+		public Type<? extends CustomPacketPayload> type() {
+			return TYPE;
+		}
+	}
+
+	private static void useStored(ServerPlayer player, boolean offHand) {
+		ItemStack held = player.getItemInHand(offHand ? net.minecraft.world.InteractionHand.OFF_HAND : net.minecraft.world.InteractionHand.MAIN_HAND);
+		Stored stored = stored(held);
+		if (stored == null || !(stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
+			|| !ServerPlayNetworking.canSend(player, GiveAndUse.TYPE)) {
+			return;
+		}
+		if (!player.hasInfiniteMaterials()) {
+			held.shrink(1);
+		}
+		ServerPlayNetworking.send(player, new GiveAndUse(stored));
+	}
+
+	/** SkyCraft+ : Skyrim items carried in Minecraft. A stored thing of this kind in a hand was fed to an animal: one fewer (true), else false. */
+	public static boolean usedUpFromHand(ServerPlayer player, String plugin, int localId) {
+		for (var hand : net.minecraft.world.InteractionHand.values()) {
+			ItemStack held = player.getItemInHand(hand);
+			Stored stored = stored(held);
+			if (stored != null && stored.localId() == localId && stored.plugin().equalsIgnoreCase(plugin)) {
+				if (!player.hasInfiniteMaterials()) {
+					held.shrink(1);
+				}
+				return true;
+			}
+		}
+		return false;
+	}
+
 	public static boolean isStored(ItemStack stack) {
 		if (stack.isEmpty()) {
 			return false;
@@ -300,6 +378,7 @@ public final class SkyStorage {
 			return;
 		}
 		Slot target = deposit.slot() >= 0 && deposit.slot() < menu.slots.size() ? menu.getSlot(deposit.slot()) : null;
+		boolean carried = carriedInMinecraft(stored);  // SkyCraft+ : into the player's own inventory too
 		while (left > 0) {
 			int size = Math.min(left, stored.maxStack());
 			left -= size;
@@ -317,9 +396,14 @@ public final class SkyStorage {
 					target.setChanged();
 				}
 			} else if (target != null) {
-				if (storageSlot(target)) {
+				if (storageSlot(target) || carried && target.container instanceof Inventory) {
 					chunk = target.safeInsert(chunk);
 				}
+				if (carried && !chunk.isEmpty()) {
+					player.getInventory().add(chunk);  // (the rest beside it)
+				}
+			} else if (carried && deposit.slot() == OWN_INVENTORY) {
+				player.getInventory().add(chunk);  // SkyCraft+ : shift-clicked out of the Skyrim panel
 			} else {
 				// Shift-click: stacks of the same first, then empty slots, as Minecraft's own does.
 				for (boolean empty : new boolean[] { false, true }) {
@@ -377,8 +461,8 @@ public final class SkyStorage {
 			for (int i = 0; i < inventory.getContainerSize(); i++) {
 				ItemStack stack = inventory.getItem(i);
 				Stored stored = stored(stack);
-				if (stored == null) {
-					continue;
+				if (stored == null || carriedInMinecraft(stored) && !stack.has(DataComponents.ENCHANTMENTS)) {
+					continue;  // SkyCraft+ : (carried in Minecraft: it stays)
 				}
 				giveBack(player, stored, stack.getCount());
 				ItemStack shortcut = null;
@@ -431,6 +515,12 @@ public final class SkyStorage {
 		PayloadTypeRegistry.serverboundPlay().register(Deposit.TYPE, Deposit.CODEC);
 		PayloadTypeRegistry.serverboundPlay().register(TakeCarried.TYPE, TakeCarried.CODEC);
 		PayloadTypeRegistry.clientboundPlay().register(Give.TYPE, Give.CODEC);
+		PayloadTypeRegistry.serverboundPlay().register(UseStored.TYPE, UseStored.CODEC);
+		PayloadTypeRegistry.clientboundPlay().register(GiveAndUse.TYPE, GiveAndUse.CODEC);
+		ServerPlayNetworking.registerGlobalReceiver(UseStored.TYPE, (payload, context) -> {
+			ServerPlayer player = context.player();
+			context.server().execute(() -> useStored(player, payload.offHand()));
+		});
 		ServerPlayNetworking.registerGlobalReceiver(Deposit.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
 			context.server().execute(() -> deposit(player, payload));

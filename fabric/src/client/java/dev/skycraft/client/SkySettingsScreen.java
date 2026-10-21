@@ -161,6 +161,7 @@ public final class SkySettingsScreen extends Screen {
 		{ "World", "bedsInSkyrim", "true", "Sleeping the night through in a Minecraft bed moves Skyrim's clock to the morning; after a death and the reload you're taken to your bed (load the save again to go back)." },
 		{ "Items & combat", "skyrimArmorSlots", "true", "Skyrim armor goes in Minecraft's armor slots (and more slots for gauntlets, necklace, ring)." },
 		{ "Items & combat", "skyrimStorage", "true", "Skyrim items can be put in Minecraft's chests, barrels, bundles and the like." },
+		{ "Items & combat", "skyrimItemsInMinecraft", "true", "Skyrim materials, food, potions and ingredients dragged into your Minecraft inventory leave Skyrim's (no doubles, no weight there); drop them on the Skyrim panel to put them back. Off: shortcuts, as before." },
 		{ "Items & combat", "crossCrafting", "true", "Skyrim materials count in Minecraft's recipes (Skyrim iron makes a Minecraft sword)." },
 		{ "Items & combat", "skyrimWorkbenches", "true", "Skyrim's forge, cooking pot, enchanter... see your Minecraft materials (and the weapon in hand) while you use them." },
 		{ "Items & combat", "arrowsAcrossGames", "true", "Minecraft bows shoot Skyrim arrows and Skyrim bows Minecraft arrows (the off hand's arrows win)." },

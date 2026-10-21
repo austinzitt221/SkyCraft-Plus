@@ -528,9 +528,12 @@ public final class SkyInventoryPanels {
 					return false;
 				}
 				// Shift-click (a controller's Y): a shortcut in the first free slot, no dragging needed.
+				// (SkyCraft+ : a thing carried in Minecraft: all of it out of Skyrim into the inventory.)
 				if (event.hasShiftDown()) {
 					SkyLink.SkyItem item = panel.itemAt(event.x(), event.y());
-					if (item != null) {
+					if (item != null && !creative && SkyStorageClient.carries(item)) {
+						SkyStorageClient.store(item, item.count(), dev.skycraft.net.SkyStorage.OWN_INVENTORY, false);
+					} else if (item != null) {
 						quickShortcut(minecraft, item);
 					}
 					return false;
@@ -566,7 +569,10 @@ public final class SkyInventoryPanels {
 						}
 					} else if (slot != null && slot.container instanceof Inventory) {
 						int index = inventoryIndex(minecraft, slot);
-						if ((index < 36 || index == 40) && (slot.getItem().isEmpty() || SkyShortcuts.isShortcut(slot.getItem()))) {
+						if ((index < 36 || index == 40) && !creative && SkyStorageClient.carries(item)) {
+							// SkyCraft+ : carried in Minecraft: a stack of it out of Skyrim into that slot (the only ones now).
+							SkyStorageClient.store(item, Math.min(item.count(), 64), slot.index, false);
+						} else if ((index < 36 || index == 40) && (slot.getItem().isEmpty() || SkyShortcuts.isShortcut(slot.getItem()))) {
 							SkyShortcutsClient.make(item, index);
 						} else if (index >= 36 && index <= 39) {
 							SkyArmorClient.dropOn(item, index);  // SkyCraft+ : onto its armor slot

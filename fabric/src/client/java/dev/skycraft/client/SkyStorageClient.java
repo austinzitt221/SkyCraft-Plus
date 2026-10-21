@@ -51,6 +51,7 @@ public final class SkyStorageClient {
 
 	private static final Map<Integer, Pending> PENDING = new HashMap<>();
 	private static final Map<Integer, Long> GIVES = new HashMap<>();
+	private static final java.util.Set<Integer> USE_AFTER = new java.util.HashSet<>();  // SkyCraft+ : gives to use once Skyrim has them
 	private static final ArrayDeque<SkyStorage.Give> TO_GIVE = new ArrayDeque<>();
 	// Skyrim's pictures of stored things: "plugin:id" -> the picture's key (Skyrim's form id), and when each was last asked for.
 	private static final Map<String, Integer> PICTURE_KEYS = new HashMap<>();
@@ -108,6 +109,49 @@ public final class SkyStorageClient {
 			return SkyStorage.storageSlot(slot);
 		}
 		return craftingMenu(menu) && !(slot.container instanceof Inventory) && !(slot.container instanceof net.minecraft.world.inventory.ResultContainer);
+	}
+
+	/** SkyCraft+ : Skyrim items carried in Minecraft. Whether this thing, put in the player's own inventory, leaves Skyrim for it (SkyStorage.carriedInMinecraft). */
+	static boolean carries(SkyLink.SkyItem item) {
+		return enabled() && !item.plugin().isEmpty() && SkyStorage.carriedInMinecraft(item.kind(), item.sub(), item.flags(), item.name())
+			&& ClientPlayNetworking.canSend(SkyStorage.Deposit.TYPE);
+	}
+
+	/** SkyCraft+ : Skyrim items carried in Minecraft. A stored food, potion or ingredient in a hand used: Skyrim gets one and uses it (true), or it isn't one (false). */
+	static boolean useStored(net.minecraft.client.player.LocalPlayer player) {
+		Minecraft minecraft = Minecraft.getInstance();
+		if (minecraft.hitResult instanceof net.minecraft.world.phys.BlockHitResult block && block.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK
+			&& minecraft.level != null && usable(minecraft.level, block.getBlockPos())) {
+			return false;  // (a chest, door, bed... in front: that, as Minecraft does with food in hand)
+		}
+		for (var hand : net.minecraft.world.InteractionHand.values()) {
+			SkyStorage.Stored stored = SkyStorage.stored(player.getItemInHand(hand));
+			if (stored == null || !(stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
+				|| hand == net.minecraft.world.InteractionHand.OFF_HAND && !player.getMainHandItem().isEmpty() || !ClientPlayNetworking.canSend(SkyStorage.UseStored.TYPE)) {
+				continue;
+			}
+			// To an animal under the crosshair: fed to it (SkyFeeding uses up the one in hand).
+			int foods = dev.skycraft.SkySettings.flag("skyrimFoodForAnimals", true) ? dev.skycraft.combat.SkyFoods.ofSkyrim(stored.kind(), stored.name()) : 0;
+			if (foods != 0 && minecraft.hitResult instanceof net.minecraft.world.phys.EntityHitResult hit
+				&& (hit.getEntity() instanceof net.minecraft.world.entity.animal.Animal || hit.getEntity() instanceof dev.skycraft.combat.SkyrimActorEntity)) {
+				ClientPlayNetworking.send(new dev.skycraft.net.SkyFeeding.Feed(hit.getEntity().getId(), foods, stored.plugin(), stored.localId()));
+				return true;
+			}
+			ClientPlayNetworking.send(new SkyStorage.UseStored(hand == net.minecraft.world.InteractionHand.OFF_HAND));
+			return true;
+		}
+		return false;
+	}
+
+	/** A block a right click does something with (a container, door, bed, button...). */
+	private static boolean usable(net.minecraft.world.level.Level level, net.minecraft.core.BlockPos pos) {
+		var state = level.getBlockState(pos);
+		var block = state.getBlock();
+		return state.getMenuProvider(level, pos) != null || level.getBlockEntity(pos) instanceof net.minecraft.world.MenuProvider
+			|| block instanceof net.minecraft.world.level.block.DoorBlock || block instanceof net.minecraft.world.level.block.TrapDoorBlock
+			|| block instanceof net.minecraft.world.level.block.FenceGateBlock || block instanceof net.minecraft.world.level.block.ButtonBlock
+			|| block instanceof net.minecraft.world.level.block.LeverBlock || block instanceof net.minecraft.world.level.block.BedBlock
+			|| block instanceof net.minecraft.world.level.block.CraftingTableBlock || block instanceof net.minecraft.world.level.block.BellBlock;
 	}
 
 	/** Asks Skyrim to take count of item out, for slot of the open menu (-1: anywhere in its container), or into the bundle in that slot. */
@@ -197,11 +241,14 @@ public final class SkyStorageClient {
 		while (!TO_GIVE.isEmpty()) {
 			SkyStorage.Give give = TO_GIVE.peek();
 			SkyStorage.Stored s = give.stored();
-			int id = SkyLink.pushStoreRequest(Proto.STORE_GIVE, 0, give.count(), s.health(), s.charge(), s.soul(), s.localId(), s.plugin());
+			int id = SkyLink.pushStoreRequest(Proto.STORE_GIVE, 0, Math.max(1, give.count()), s.health(), s.charge(), s.soul(), s.localId(), s.plugin());
 			if (id == 0) {
 				break;  // Skyrim's queue is full: next tick
 			}
 			GIVES.put(id, System.nanoTime());
+			if (give.count() < 0) {
+				USE_AFTER.add(id);
+			}
 			TO_GIVE.poll();
 		}
 		for (SkyLink.StoreResult result : SkyLink.popStoreResults()) {
@@ -218,6 +265,9 @@ public final class SkyStorageClient {
 			if (GIVES.remove(result.id()) != null) {
 				if (result.status() != Proto.STORE_OK) {
 					tell(minecraft, "A Skyrim item from storage couldn't be found in this Skyrim (is its mod loaded?)");
+				} else if (USE_AFTER.remove(result.id()) && result.formId() != 0) {
+					// SkyCraft+ : carried in Minecraft, used from the hand: eaten or drunk in Skyrim now it has it.
+					SkyLink.pushEvent(Proto.EV_SKY_ITEM, result.formId(), 0.0F, 0.0F, 0.0F, 0.0F, Proto.SKY_ACT_USE);
 				}
 				continue;
 			}
@@ -245,6 +295,7 @@ public final class SkyStorageClient {
 			}
 		}
 		GIVES.values().removeIf(at -> at < old);
+		USE_AFTER.retainAll(GIVES.keySet());
 	}
 
 	public static void register() {
@@ -252,8 +303,14 @@ public final class SkyStorageClient {
 			TO_GIVE.add(payload);
 			SkyCraft.LOG.info("SkyCraft: {} x{} out of storage, back into Skyrim", payload.stored().name(), payload.count());
 		});
+		// SkyCraft+ : carried in Minecraft, used from the hand (a count of -1 marks it: given as one, then used).
+		ClientPlayNetworking.registerGlobalReceiver(SkyStorage.GiveAndUse.TYPE, (payload, context) -> TO_GIVE.add(new SkyStorage.Give(-1, payload.stored())));
 		ItemTooltipCallback.EVENT.register((stack, context, type, lines) -> {
-			if (SkyStorage.isStored(stack)) {
+			SkyStorage.Stored stored = SkyStorage.stored(stack);
+			if (stored != null && SkyStorage.carriedInMinecraft(stored)) {
+				lines.add(Component.literal(stored.kind() == Proto.SKY_MISC ? "Carried in Minecraft: drop it on the Skyrim panel to put it back in Skyrim"
+					: "Carried in Minecraft: use it to eat or drink it; drop it on the Skyrim panel to put it back").withStyle(ChatFormatting.DARK_GRAY));
+			} else if (stored != null) {
 				lines.add(Component.literal("Take it into your inventory to put it back in Skyrim").withStyle(ChatFormatting.DARK_GRAY));
 			}
 		});

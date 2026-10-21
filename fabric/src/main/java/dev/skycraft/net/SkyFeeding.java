@@ -70,7 +70,8 @@ public final class SkyFeeding {
 		} else if (entity instanceof Animal animal) {
 			eaten = feedMinecraft(player, animal, feed.foods());
 		}
-		if (eaten && !player.hasInfiniteMaterials() && ServerPlayNetworking.canSend(player, Eaten.TYPE)) {
+		// (SkyCraft+ : Skyrim food carried in Minecraft: the one in hand is eaten instead.)
+		if (eaten && !SkyStorage.usedUpFromHand(player, feed.plugin(), feed.localId()) && !player.hasInfiniteMaterials() && ServerPlayNetworking.canSend(player, Eaten.TYPE)) {
 			ServerPlayNetworking.send(player, new Eaten(feed.plugin(), feed.localId()));
 		}
 		SkyCraft.LOG.info("SkyCraft: {} gave Skyrim food ({}) to {}: {}", player.getPlainTextName(), Integer.toHexString(feed.foods()), entity.getName().getString(),

@@ -201,6 +201,9 @@ public final class SkyShortcutsClient {
 
 	/** A shortcut right click uses (MinecraftShortcutUseMixin), or null. */
 	public static boolean use(LocalPlayer player) {
+		if (SkyStorageClient.useStored(player)) {
+			return true;  // SkyCraft+ : Skyrim food or a potion carried in Minecraft
+		}
 		for (ItemStack stack : new ItemStack[] { player.getMainHandItem(), player.getOffhandItem() }) {
 			if (!SkyShortcuts.isShortcut(stack)) {
 				continue;
