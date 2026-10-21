@@ -147,6 +147,7 @@ public final class SkyDigClient {
 
 	public static void tick(Minecraft minecraft) {
 		ticks++;
+		SkyGeoClient.tick();  // SkyCraft+ : Skyrim geo
 		ClientLevel level = minecraft.level;
 		if (level == null || minecraft.player == null) {
 			REVEAL.clear();

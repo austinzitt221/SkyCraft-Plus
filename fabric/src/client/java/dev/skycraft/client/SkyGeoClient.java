@@ -27,6 +27,10 @@ public final class SkyGeoClient {
 
 	private static final Map<Integer, Long> ASKED = new HashMap<>();   // request id -> cell
 	private static final Map<Long, String> TEXTURES = new HashMap<>(); // cell -> Skyrim's texture there
+	// A cell that came out before Skyrim's answer did (creative, a fast tool): it waits for it a moment.
+	private record Waiting(int world, BlockPos pos, int material, long since) {
+	}
+	private static final Map<Long, Waiting> WAITING = new HashMap<>();
 
 	private static boolean silkTouch(Minecraft minecraft) {
 		return minecraft.player != null && minecraft.level != null && SkyGeo.silkTouch(minecraft.level, minecraft.player.getMainHandItem());
@@ -56,7 +60,36 @@ public final class SkyGeoClient {
 		if (result.status() == Proto.STORE_OK && !result.name().isEmpty()) {
 			TEXTURES.put(cell, result.name());
 		}
+		Waiting waiting = WAITING.remove(cell);
+		if (waiting != null) {
+			send(waiting);
+		}
 		return true;
+	}
+
+	/** The block for a cell that came out: with the texture if it's known, else its Minecraft block. */
+	private static void send(Waiting w) {
+		String texture = TEXTURES.getOrDefault(w.pos().asLong(), "");
+		if (texture.isEmpty()) {
+			ClientPlayNetworking.send(new dev.skycraft.net.SkyNet.DigOpen(w.world(), w.pos(), w.material()));
+		} else {
+			ClientPlayNetworking.send(new SkyGeo.Mine(w.world(), w.pos(), w.material(), new int[0], texture));
+		}
+	}
+
+	/** Each client tick (SkyDigClient): a cell waited a second for Skyrim's answer in vain comes out as its Minecraft block. */
+	static void tick() {
+		if (WAITING.isEmpty()) {
+			return;
+		}
+		long now = System.currentTimeMillis();
+		WAITING.values().removeIf(w -> {
+			if (now - w.since() < 1000L) {
+				return false;
+			}
+			send(w);
+			return true;
+		});
 	}
 
 	/** The cell came out: with silk touch, its piece is sent (true), else it's an ordinary dig (false). */
@@ -67,7 +100,11 @@ public final class SkyGeoClient {
 		// A block with the texture Skyrim had there (its answer came while it was mined); none known: its Minecraft block.
 		String texture = TEXTURES.getOrDefault(pos.asLong(), "");
 		if (texture.isEmpty()) {
-			return false;
+			if (!ASKED.containsValue(pos.asLong())) {
+				return false;
+			}
+			WAITING.put(pos.asLong(), new Waiting(world, pos.immutable(), material, System.currentTimeMillis()));  // (Skyrim's answer is on its way)
+			return true;
 		}
 		ClientPlayNetworking.send(new SkyGeo.Mine(world, pos, material, new int[0], texture));
 		return true;
