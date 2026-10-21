@@ -8,7 +8,7 @@ public final class Proto {
 	}
 
 	public static final int MAGIC = 0x43594B53;
-	public static final int VERSION = 59; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE); v56, the settings screen (OFF_SKY_SETTINGS); v57, every shout in Minecraft mode (SHOT_PARALYZE.., SS_SELF_EFFECTS); v58, Skyrim geo (REN_SKYRIM_TEXTURE, STORE_TEXTURE_AT, SKY_GEO); v59, beds (EV_SLEPT, EV_GO_TO_BED), bow enchantments (EV_BOW_ENCHANTS)
+	public static final int VERSION = 60; // SkyCraft+ : v50, KotIsOff's atlas in bands (kRenAtlasChunk); v51, Skyrim mode's collision and lock-on (kWeMob, kSkySkyrimControl); v52, SKY_ACT_DESTROY; v53, taming and feeding (EV_TAME, EV_GROW_BABY, ACTOR_TAMED); v54, Minecraft's things at Skyrim's workbenches (SS_WORKBENCH, STORE_LEND_GEAR/RETURN_GEAR, EV_ENCHANT_HIT); v55, arrows across the games (SHOT_ARROW), Skyrim mode's Activate (MS_USE_DISTANCE); v56, the settings screen (OFF_SKY_SETTINGS); v57, every shout in Minecraft mode (SHOT_PARALYZE.., SS_SELF_EFFECTS); v58, Skyrim geo (REN_SKYRIM_TEXTURE, STORE_TEXTURE_AT, SKY_GEO); v59, beds (EV_SLEPT, EV_GO_TO_BED), bow enchantments (EV_BOW_ENCHANTS); v60, Minecraft arrows on the Skyrim bow (EV_BOW_ENCHANTS flag 4)
 	// A second client on the same PC (multiplayer testing) talks to its own stand-in Skyrim:
 	// -Dskycraft.link=Local\SkyCraft_guest (see tools/fake_guest.py).
 	public static final String MAPPING_NAME = System.getProperty("skycraft.link", "Local\\SkyCraft_v1");
@@ -161,7 +161,7 @@ public final class Proto {
 	public static final int EV_ENCHANT_HIT = 18; // SkyCraft+ : v54, a Minecraft weapon's Skyrim enchantment (flags: its form id) on formId
 	public static final int EV_SLEPT = 19; // SkyCraft+ : v59, slept the night through in a bed: Skyrim's clock goes to 6 am
 	public static final int EV_GO_TO_BED = 20; // SkyCraft+ : v59, after a death and reload: formId = worldId the bed was slept in, flags = dimension, a/b/c where to stand, d yaw
-	public static final int EV_BOW_ENCHANTS = 21; // SkyCraft+ : v59, Minecraft enchantments on the Skyrim bow in hand: flags 1 Infinity, 2 Multishot
+	public static final int EV_BOW_ENCHANTS = 21; // SkyCraft+ : v59, Minecraft enchantments on the Skyrim bow in hand: flags 1 Infinity, 2 Multishot; v60, 4 its arrows stand in for Minecraft arrows
 	public static final int EV_DRAGON_SOUL = 8; // SkyCraft+ : v39, the Ender Dragon died near this player: a Skyrim dragon soul
 	public static final int SKY_ACT_RIGHT = 1, SKY_ACT_LEFT = 2, SKY_ACT_USE = 3, SKY_ACT_MENU_STATS = 4, SKY_ACT_MENU_MAP = 5,
 		SKY_ACT_EQUIP_RIGHT = 6, SKY_ACT_EQUIP_LEFT = 7, SKY_ACT_DROP = 8, // SkyCraft+ : v36, shortcuts

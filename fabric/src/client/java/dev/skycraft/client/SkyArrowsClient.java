@@ -30,6 +30,7 @@ public final class SkyArrowsClient {
 	// Minecraft arrows lent to Skyrim's bow: how many Skyrim holds for them, the off hand's count last tick, the readying.
 	private static boolean lending;
 	private static int lent, readyTries, readyAt;
+	private static int givenBackAt = -1000;
 	private static SkyLink.@Nullable SkyItem standIn;
 	private static String readied = "";
 
@@ -97,7 +98,8 @@ public final class SkyArrowsClient {
 	private static void tellBowEnchantments(LocalPlayer player) {
 		ItemStack bow = skyrimBow() ? SkyArrows.enchantedSkyrimBow(player) : ItemStack.EMPTY;
 		int bits = (SkyArrows.level(bow, net.minecraft.world.item.enchantment.Enchantments.INFINITY) > 0 ? 1 : 0)
-			| (SkyArrows.level(bow, net.minecraft.world.item.enchantment.Enchantments.MULTISHOT) > 0 ? 2 : 0);
+			| (SkyArrows.level(bow, net.minecraft.world.item.enchantment.Enchantments.MULTISHOT) > 0 ? 2 : 0)
+			| (lending && skyrimBow() ? 4 : 0);  // (its arrows are Minecraft's: they don't stay where they land)
 		if (bits != sentBow || bits != 0 && ticks - sentBowAt >= 40) {
 			SkyLink.pushEvent(Proto.EV_BOW_ENCHANTS, 0, 0.0F, 0.0F, 0.0F, 0.0F, bits);
 			sentBow = bits;
@@ -111,16 +113,24 @@ public final class SkyArrowsClient {
 		if (inventory != null) {
 			SkyLink.SkyItem forced = SkyShortcuts.isShortcut(player.getOffhandItem()) ? SkyShortcutsClient.resolve(player.getOffhandItem()) : null;
 			SkyLink.SkyItem pick = forced != null && forced.kind() == Proto.SKY_AMMO ? forced : null;
+			int pickCount = forced != null ? forced.count() : 0;
 			if (pick == null) {
 				for (SkyLink.SkyItem item : inventory.items()) {
-					if (item.kind() == Proto.SKY_AMMO && item.count() > 0 && !item.plugin().isEmpty()
-						&& (pick == null || item.has(Proto.ITEM_WORN) && !pick.has(Proto.ITEM_WORN) || item.has(Proto.ITEM_WORN) == pick.has(Proto.ITEM_WORN) && item.count() > pick.count())) {
+					// (Skyrim's own of the arrows lent for Minecraft's: those it has besides them. Just after they went back, Skyrim's
+					// list may still show them: they aren't its own, or Skyrim would seem to have arrows, and lending stop and start.)
+					int own = item.count();
+					if (standIn != null && item.formId() == standIn.formId()) {
+						own = lending ? item.count() - lent : ticks - givenBackAt < 40 ? 0 : item.count();
+					}
+					if (item.kind() == Proto.SKY_AMMO && own > 0 && !item.plugin().isEmpty()
+						&& (pick == null || item.has(Proto.ITEM_WORN) && !pick.has(Proto.ITEM_WORN) || item.has(Proto.ITEM_WORN) == pick.has(Proto.ITEM_WORN) && own > pickCount)) {
 						pick = item;
+						pickCount = own;
 					}
 				}
 			}
-			if (pick != null && !(lending && standIn != null && pick.formId() == standIn.formId())) {
-				ammo = new SkyArrows.Ammo(pick.plugin(), pick.localId(), pick.name(), pick.stat(), pick.count(), pick == forced);
+			if (pick != null) {
+				ammo = new SkyArrows.Ammo(pick.plugin(), pick.localId(), pick.name(), pick.stat(), pickCount, pick == forced);
 			}
 		}
 		SkyArrows.clientAmmo = ammo;
@@ -163,6 +173,15 @@ public final class SkyArrowsClient {
 			take(lent - now);
 		}
 		// Readied, so the bow shoots them (once they're in Skyrim's inventory).
+		// (And again whenever they stop being readied: Skyrim lets go of arrows that ran out for a moment.)
+		if (readyTries >= 5 && ticks >= readyAt && inventory != null && lent > 0) {
+			for (SkyLink.SkyItem item : inventory.items()) {
+				if (item.formId() == standIn.formId() && !item.has(Proto.ITEM_WORN)) {
+					readyTries = 0;
+				}
+			}
+			readyAt = ticks + 20;
+		}
 		if (readyTries < 5 && ticks >= readyAt && inventory != null) {
 			SkyLink.SkyItem mine = null;
 			for (SkyLink.SkyItem item : inventory.items()) {
@@ -175,6 +194,7 @@ public final class SkyArrowsClient {
 			}
 			if (mine != null && mine.has(Proto.ITEM_WORN)) {
 				readyTries = 5;
+				readyAt = ticks + 20;
 			} else {
 				readyTries++;
 				readyAt = ticks + 20;
@@ -198,6 +218,7 @@ public final class SkyArrowsClient {
 		take(lent);
 		lending = false;
 		lent = 0;
+		givenBackAt = ticks;
 	}
 
 	/** A Skyrim arrow's shortcut put in the off hand with a Skyrim bow: those arrows readied in Skyrim. */

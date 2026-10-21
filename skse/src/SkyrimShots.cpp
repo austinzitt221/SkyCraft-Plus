@@ -36,6 +36,10 @@ namespace skycraft::SkyrimShots
 			RE::Projectile::ProjectileRot angles;
 		};
 		std::vector<Fired> fired;
+		// SkyCraft+ : arrows across the games. Arrows shot for Minecraft's (kEvBowEnchants flag 4: the bow's arrows are
+		// stand-ins for Minecraft arrows) go once they've hit: picked up, they'd be Skyrim arrows the player never had.
+		std::unordered_set<std::uint32_t> lentShots;
+		std::vector<RE::ProjectileHandle> spent;
 
 		McVec ToMc(const RE::NiPoint3& a_pos) { return SkyToMc(a_pos); }
 
@@ -259,7 +263,8 @@ namespace skycraft::SkyrimShots
 	void SetBowEnchants(std::uint32_t a_flags)
 	{
 		if (a_flags != bowEnchants) {
-			logger::info("shots: the Skyrim bow's Minecraft enchantments: {}{}{}", a_flags & 1 ? "Infinity " : "", a_flags & 2 ? "Multishot" : "", a_flags ? "" : "none");
+			logger::info("shots: the Skyrim bow's Minecraft enchantments: {}{}{}{}", a_flags & 1 ? "Infinity " : "", a_flags & 2 ? "Multishot " : "", a_flags & 3 ? "" : "none",
+				a_flags & 4 ? " (shooting Minecraft's arrows)" : "");
 		}
 		bowEnchants = a_flags;
 	}
@@ -291,7 +296,14 @@ namespace skycraft::SkyrimShots
 					}
 					const bool fresh = t.shot.id == 0;
 					Describe(projectile.get(), id, t);
-					if (fresh && bowEnchants && (t.shot.flags & proto::kShotArrow) && !extraArrows.erase(id)) {
+					if (fresh && (bowEnchants & 4) && (t.shot.flags & proto::kShotArrow)) {
+						lentShots.insert(id);
+					}
+					if (lentShots.contains(id) && !projectile->GetProjectileRuntimeData().impacts.empty()) {
+						lentShots.erase(id);
+						spent.push_back(handle);
+					}
+					if (fresh && (bowEnchants & 3) && (t.shot.flags & proto::kShotArrow) && !extraArrows.erase(id)) {
 						auto& runtime = projectile->GetProjectileRuntimeData();
 						if (runtime.ammoSource) {
 							fired.push_back({ runtime.ammoSource, runtime.weaponSource, projectile->GetPosition(), { projectile->data.angle.x, projectile->data.angle.z } });
@@ -321,6 +333,16 @@ namespace skycraft::SkyrimShots
 		fired.clear();
 		if (extraArrows.size() > 64) {
 			extraArrows.clear();
+		}
+		for (auto& handle : spent) {
+			if (auto arrow = handle.get(); arrow && !arrow->IsDisabled()) {
+				arrow->Disable();
+				arrow->SetDelete(true);
+			}
+		}
+		spent.clear();
+		if (lentShots.size() > 64) {
+			lentShots.clear();
 		}
 		std::vector<proto::SkyrimShot> shots;
 		for (auto it = tracked.begin(); it != tracked.end();) {
