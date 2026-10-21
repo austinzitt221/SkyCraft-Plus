@@ -147,6 +147,11 @@ public final class SkyShortcutsClient {
 			List<Component> skyrim = SkyInventoryPanels.tooltip(item);
 			lines.clear();
 			lines.addAll(skyrim);
+			// SkyCraft+ : a name given at Minecraft's anvil, over Skyrim's.
+			Component named = stack.get(DataComponents.CUSTOM_NAME);
+			if (named != null && !lines.isEmpty() && !named.getString().equals(item.name())) {
+				lines.set(0, named.copy().withStyle(ChatFormatting.ITALIC));
+			}
 			// SkyCraft+ : enchanting across the games. Minecraft enchantments it got at Minecraft's table.
 			var enchantments = stack.get(DataComponents.ENCHANTMENTS);
 			if (enchantments != null) {
