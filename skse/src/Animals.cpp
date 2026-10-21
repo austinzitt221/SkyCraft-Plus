@@ -130,6 +130,31 @@ namespace skycraft::Animals
 			}
 		}
 
+		// The height of what's under a point (Skyrim's land and objects, Minecraft's blocks' collision), looking from a
+		// little over it (a small step up) to this far below; none if nothing is.
+		std::optional<float> GroundUnder(RE::Actor* a_actor, const RE::NiPoint3& a_at, float a_below)
+		{
+			auto* cell = a_actor->GetParentCell();
+			auto* world = cell ? cell->GetbhkWorld() : nullptr;
+			if (!world) {
+				return std::nullopt;
+			}
+			const float     s = RE::bhkWorld::GetWorldScale();
+			const float     over = 0.6f * float(proto::kUnitsPerBlock);
+			RE::bhkPickData pick;
+			pick.rayInput.from = RE::hkVector4(a_at.x * s, a_at.y * s, (a_at.z + over) * s, 0.0f);
+			pick.rayInput.to = RE::hkVector4(a_at.x * s, a_at.y * s, (a_at.z - a_below) * s, 0.0f);
+			pick.rayInput.filterInfo.SetCollisionLayer(RE::COL_LAYER::kLOS);
+			{
+				RE::BSReadLockGuard guard(world->worldLock);
+				world->PickObject(pick);
+			}
+			if (!pick.rayOutput.HasHit()) {
+				return std::nullopt;
+			}
+			return a_at.z + over - (over + a_below) * pick.rayOutput.hitFraction;
+		}
+
 		struct Walk
 		{
 			RE::NiPoint3 at;               // where we last put it
@@ -204,12 +229,16 @@ namespace skycraft::Animals
 			}
 			walk.blocked = 0.0f;
 			auto to = McToSky(nx, ny, nz);
-			if (auto* tes = RE::TES::GetSingleton(); tes && !NpcBlocks::SolidAt(bx, int(std::floor(ny + 0.05)) - 1, bz)) {
+			// SkyCraft+ : on whatever is under it (Skyrim's land, a rock, a bridge, Minecraft's blocks), falling to it when it's
+			// far below: brought to a player flying in creative, it walked on the air (its AI, and with it its falling, paused).
+			if (!NpcBlocks::SolidAt(bx, int(std::floor(ny + 0.05)) - 1, bz)) {
+				const float block = float(proto::kUnitsPerBlock);
 				auto  above = to;
 				float land = 0.0f;
 				above.z += 100000.0f;
-				const float block = float(proto::kUnitsPerBlock);
-				if (tes->GetLandHeight(above, land) && land > to.z - 1.5f * block && land < to.z + block) {
+				if (auto ground = GroundUnder(a_actor, to, 64.0f * block)) {
+					to.z = *ground > to.z - 1.5f * block ? *ground : std::max(*ground, walk.at.z - 20.0f * block * a_delta);
+				} else if (auto* tes = RE::TES::GetSingleton(); tes && tes->GetLandHeight(above, land) && land > to.z - 1.5f * block && land < to.z + block) {
 					to.z = land;  // along Skyrim's land, up and down (not out of a tunnel: the land's far over that)
 				}
 			}
@@ -621,7 +650,8 @@ namespace skycraft::Animals
 				return;
 			}
 			auto target = a_actor->GetActorRuntimeData().currentCombatTarget.get();
-			if (!target || target.get() == a_player || target->IsPlayerTeammate() || target->IsCommandedActor()) {
+			// (SkyCraft+ : nor anyone who isn't the player's enemy: a guard it went for would keep the player from waiting.)
+			if (!target || target.get() == a_player || target->IsPlayerTeammate() || target->IsCommandedActor() || !target->IsHostileToActor(a_player)) {
 				a_actor->StopCombat();
 				a_actor->EvaluatePackage(true, false);
 			}
@@ -629,12 +659,45 @@ namespace skycraft::Animals
 		std::unordered_map<RE::FormID, Pet> pets;
 		RE::TESObjectCELL*                  petCell = nullptr;
 		constexpr std::uint32_t             kPetsRecord = 'TAME';
+		float                               peaceTimer = 0.0f;
+
+		// SkyCraft+ : nobody who isn't the player's enemy fights a pet. Skyrim's people still went for a tamed wolf on
+		// sight, and a fight near the player kept them from waiting ("enemies nearby").
+		void LeavePetsBe(RE::PlayerCharacter* a_player, float a_delta)
+		{
+			if (pets.empty() || (peaceTimer -= a_delta) > 0.0f) {
+				return;
+			}
+			peaceTimer = 0.5f;
+			auto* lists = RE::ProcessLists::GetSingleton();
+			if (!lists) {
+				return;
+			}
+			for (auto& handle : lists->highActorHandles) {
+				auto actor = handle.get();
+				if (!actor || actor->IsDead() || !actor->IsInCombat() || pets.contains(actor->GetFormID())) {
+					continue;
+				}
+				auto target = actor->GetActorRuntimeData().currentCombatTarget.get();
+				if (target && pets.contains(target->GetFormID()) && !actor->IsHostileToActor(a_player)) {
+					actor->StopCombat();
+					actor->EvaluatePackage(true, false);
+					static int logged = 0;
+					if (logged++ < 20) {
+						logger::info("pets: {} let {} be (not the player's enemy)", actor->GetName(), target->GetName());
+					}
+				}
+			}
+		}
 
 		void MakeFriends(RE::PlayerCharacter* a_player, RE::Actor* a_actor)
 		{
 			a_actor->StopCombat();
 			CallActor(a_actor, "RemoveFromAllFactions");
 			if (auto* faction = RE::TESForm::LookupByID<RE::TESFaction>(0xDB1)) {  // PlayerFaction
+				CallActor(a_actor, "AddToFaction", std::move(faction));
+			}
+			if (auto* faction = RE::TESForm::LookupByID<RE::TESFaction>(0x5C84E)) {  // CurrentFollowerFaction (as Meeko: Skyrim's people leave it be)
 				CallActor(a_actor, "AddToFaction", std::move(faction));
 			}
 			RE::Actor* player = a_player;
@@ -782,6 +845,7 @@ namespace skycraft::Animals
 	{
 		TickLeads(a_player, a_delta);
 		TickPets(a_player, a_delta);
+		LeavePetsBe(a_player, a_delta);
 		TickBabies(a_delta);
 		for (const auto& [id, _] : following) {
 			if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(id)) {
