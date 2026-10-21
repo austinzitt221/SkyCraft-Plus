@@ -52,6 +52,8 @@ public final class SkyStorageClient {
 	private static final Map<Integer, Pending> PENDING = new HashMap<>();
 	private static final Map<Integer, Long> GIVES = new HashMap<>();
 	private static final java.util.Set<Integer> USE_AFTER = new java.util.HashSet<>();  // SkyCraft+ : gives to use once Skyrim has them
+	private static final java.util.Map<SkyStorage.Give, Long> PLANT_FOR = new java.util.IdentityHashMap<>();  // SkyCraft+ : a give to plant on this farmland
+	private static final Map<Integer, Long> PLANT_AFTER = new HashMap<>();
 	private static final ArrayDeque<SkyStorage.Give> TO_GIVE = new ArrayDeque<>();
 	// Skyrim's pictures of stored things: "plugin:id" -> the picture's key (Skyrim's form id), and when each was last asked for.
 	private static final Map<String, Integer> PICTURE_KEYS = new HashMap<>();
@@ -112,6 +114,12 @@ public final class SkyStorageClient {
 	}
 
 	/** SkyCraft+ : Skyrim items carried in Minecraft. Whether this thing, put in the player's own inventory, leaves Skyrim for it (SkyStorage.carriedInMinecraft). */
+	static String carriesWhy(SkyLink.SkyItem item) {
+		return !enabled() ? "a shortcut (skyrimStorage is off)" : item.plugin().isEmpty() ? "a shortcut (made in this game)"
+			: !SkyStorage.carriedInMinecraft(item.kind(), item.sub(), item.flags(), item.name()) ? "a shortcut (not a thing carried in Minecraft, or skyrimItemsInMinecraft off)"
+			: !ClientPlayNetworking.canSend(SkyStorage.Deposit.TYPE) ? "a shortcut (the server can't store it)" : "out of Skyrim into Minecraft";
+	}
+
 	static boolean carries(SkyLink.SkyItem item) {
 		return enabled() && !item.plugin().isEmpty() && SkyStorage.carriedInMinecraft(item.kind(), item.sub(), item.flags(), item.name())
 			&& ClientPlayNetworking.canSend(SkyStorage.Deposit.TYPE);
@@ -126,7 +134,8 @@ public final class SkyStorageClient {
 		}
 		for (var hand : net.minecraft.world.InteractionHand.values()) {
 			SkyStorage.Stored stored = SkyStorage.stored(player.getItemInHand(hand));
-			if (stored == null || !(stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
+			long farmland = farmland(minecraft, stored);
+			if (stored == null || farmland == SkyStorage.UseStored.NO_FARMLAND && !(stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
 				|| hand == net.minecraft.world.InteractionHand.OFF_HAND && !player.getMainHandItem().isEmpty() || !ClientPlayNetworking.canSend(SkyStorage.UseStored.TYPE)) {
 				continue;
 			}
@@ -137,10 +146,21 @@ public final class SkyStorageClient {
 				ClientPlayNetworking.send(new dev.skycraft.net.SkyFeeding.Feed(hit.getEntity().getId(), foods, stored.plugin(), stored.localId()));
 				return true;
 			}
-			ClientPlayNetworking.send(new SkyStorage.UseStored(hand == net.minecraft.world.InteractionHand.OFF_HAND ? 40 : player.getInventory().getSelectedSlot()));
+			ClientPlayNetworking.send(new SkyStorage.UseStored(hand == net.minecraft.world.InteractionHand.OFF_HAND ? 40 : player.getInventory().getSelectedSlot(), farmland));
 			return true;
 		}
 		return false;
+	}
+
+	/** A plantable stored thing pointed at farmland with room above it: that farmland (as a long), else NO_FARMLAND. */
+	private static long farmland(Minecraft minecraft, SkyStorage.@Nullable Stored stored) {
+		if (stored == null || (stored.flags() & Proto.ITEM_PLANTABLE) == 0 || !(minecraft.hitResult instanceof net.minecraft.world.phys.BlockHitResult hit)
+			|| hit.getType() != net.minecraft.world.phys.HitResult.Type.BLOCK || minecraft.level == null) {
+			return SkyStorage.UseStored.NO_FARMLAND;
+		}
+		var at = hit.getBlockPos();
+		return minecraft.level.getBlockState(at).is(net.minecraft.world.level.block.Blocks.FARMLAND) && minecraft.level.getBlockState(at.above()).isAir()
+			? at.asLong() : SkyStorage.UseStored.NO_FARMLAND;
 	}
 
 	/** SkyCraft+ : Skyrim items carried in Minecraft. Right-clicked in the inventory screen (this index of the player's inventory): eaten or drunk, as on the Skyrim panel (true). */
@@ -150,7 +170,7 @@ public final class SkyStorageClient {
 			|| !ClientPlayNetworking.canSend(SkyStorage.UseStored.TYPE)) {
 			return false;
 		}
-		ClientPlayNetworking.send(new SkyStorage.UseStored(index));
+		ClientPlayNetworking.send(new SkyStorage.UseStored(index, SkyStorage.UseStored.NO_FARMLAND));
 		return true;
 	}
 
@@ -257,7 +277,10 @@ public final class SkyStorageClient {
 				break;  // Skyrim's queue is full: next tick
 			}
 			GIVES.put(id, System.nanoTime());
-			if (give.count() < 0) {
+			Long plantOn = PLANT_FOR.remove(give);
+			if (plantOn != null) {
+				PLANT_AFTER.put(id, plantOn);
+			} else if (give.count() < 0) {
 				USE_AFTER.add(id);
 			}
 			TO_GIVE.poll();
@@ -276,6 +299,10 @@ public final class SkyStorageClient {
 			if (GIVES.remove(result.id()) != null) {
 				if (result.status() != Proto.STORE_OK) {
 					tell(minecraft, "A Skyrim item from storage couldn't be found in this Skyrim (is its mod loaded?)");
+				} else if (PLANT_AFTER.containsKey(result.id()) && result.formId() != 0) {
+					// SkyCraft+ : carried in Minecraft, planted from the hand: on the farmland, as a shortcut plants it.
+					ClientPlayNetworking.send(new dev.skycraft.world.SkyCrops.Plant(net.minecraft.core.BlockPos.of(PLANT_AFTER.remove(result.id())), result.formId(), result.name()));
+					SkyLink.pushEvent(Proto.EV_SKY_ITEM, result.formId(), 0.0F, 0.0F, 0.0F, 0.0F, Proto.SKY_ACT_CONSUME);
 				} else if (USE_AFTER.remove(result.id()) && result.formId() != 0) {
 					// SkyCraft+ : carried in Minecraft, used from the hand: eaten or drunk in Skyrim now it has it.
 					SkyLink.pushEvent(Proto.EV_SKY_ITEM, result.formId(), 0.0F, 0.0F, 0.0F, 0.0F, Proto.SKY_ACT_USE);
@@ -295,8 +322,7 @@ public final class SkyStorageClient {
 				}
 				case Proto.STORE_QUEST -> tell(minecraft, "Quest items stay in Skyrim");
 				case Proto.STORE_MADE_HERE -> tell(minecraft, "Things you made or enchanted yourself stay in Skyrim");
-				default -> {
-				}
+				default -> SkyCraft.LOG.info("SkyCraft: Skyrim items: Skyrim didn't give {} up (status {})", result.name(), result.status());
 			}
 		}
 		long old = System.nanoTime() - 30_000_000_000L;
@@ -307,6 +333,7 @@ public final class SkyStorageClient {
 		}
 		GIVES.values().removeIf(at -> at < old);
 		USE_AFTER.retainAll(GIVES.keySet());
+		PLANT_AFTER.keySet().retainAll(GIVES.keySet());
 	}
 
 	public static void register() {
@@ -315,7 +342,13 @@ public final class SkyStorageClient {
 			SkyCraft.LOG.info("SkyCraft: {} x{} out of storage, back into Skyrim", payload.stored().name(), payload.count());
 		});
 		// SkyCraft+ : carried in Minecraft, used from the hand (a count of -1 marks it: given as one, then used).
-		ClientPlayNetworking.registerGlobalReceiver(SkyStorage.GiveAndUse.TYPE, (payload, context) -> TO_GIVE.add(new SkyStorage.Give(-1, payload.stored())));
+		ClientPlayNetworking.registerGlobalReceiver(SkyStorage.GiveAndUse.TYPE, (payload, context) -> Minecraft.getInstance().execute(() -> {
+			SkyStorage.Give give = new SkyStorage.Give(-1, payload.stored());
+			if (payload.farmland() != SkyStorage.UseStored.NO_FARMLAND) {
+				PLANT_FOR.put(give, payload.farmland());
+			}
+			TO_GIVE.add(give);
+		}));
 		ItemTooltipCallback.EVENT.register((stack, context, type, lines) -> {
 			SkyStorage.Stored stored = SkyStorage.stored(stack);
 			if (stored != null && SkyStorage.carriedInMinecraft(stored)) {

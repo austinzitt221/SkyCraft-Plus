@@ -161,7 +161,7 @@ public final class SkyStorage {
 	 * books stay shortcuts: Skyrim has to have those to use them. Setting skyrimItemsInMinecraft.
 	 */
 	public static boolean carriedInMinecraft(int kind, int sub, int flags, String name) {
-		if (!dev.skycraft.SkySettings.flag("skyrimItemsInMinecraft", true) || (flags & (Proto.ITEM_QUEST | Proto.ITEM_PLANTABLE)) != 0) {
+		if (!dev.skycraft.SkySettings.flag("skyrimItemsInMinecraft", true) || (flags & Proto.ITEM_QUEST) != 0) {
 			return false;
 		}
 		return switch (kind) {
@@ -182,12 +182,16 @@ public final class SkyStorage {
 
 	/**
 	 * SkyCraft+ : Skyrim items carried in Minecraft. Client -> server: the stored food, potion or ingredient at this index of the
-	 * player's inventory (a hand's, or right-clicked in the inventory screen) is used: one goes back into Skyrim for it.
+	 * player's inventory (a hand's, or right-clicked in the inventory screen) is used: one goes back into Skyrim for it. With
+	 * farmland (a BlockPos as a long; NO_FARMLAND: none), a plantable one is planted there instead.
 	 */
-	public record UseStored(int index) implements CustomPacketPayload {
+	public record UseStored(int index, long farmland) implements CustomPacketPayload {
+		public static final long NO_FARMLAND = Long.MIN_VALUE;
 		public static final Type<UseStored> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "storage_use"));
-		public static final StreamCodec<RegistryFriendlyByteBuf, UseStored> CODEC = StreamCodec.of((buf, u) -> buf.writeVarInt(u.index),
-			buf -> new UseStored(buf.readVarInt()));
+		public static final StreamCodec<RegistryFriendlyByteBuf, UseStored> CODEC = StreamCodec.of((buf, u) -> {
+			buf.writeVarInt(u.index);
+			buf.writeLong(u.farmland);
+		}, buf -> new UseStored(buf.readVarInt(), buf.readLong()));
 
 		@Override
 		public Type<? extends CustomPacketPayload> type() {
@@ -195,11 +199,13 @@ public final class SkyStorage {
 		}
 	}
 
-	/** SkyCraft+ : Skyrim items carried in Minecraft. Server -> client: this one, out of the hand, into Skyrim and used there. */
-	public record GiveAndUse(Stored stored) implements CustomPacketPayload {
+	/** SkyCraft+ : Skyrim items carried in Minecraft. Server -> client: this one, out of the hand, into Skyrim and used there (or planted on that farmland). */
+	public record GiveAndUse(Stored stored, long farmland) implements CustomPacketPayload {
 		public static final Type<GiveAndUse> TYPE = new Type<>(Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "storage_give_use"));
-		public static final StreamCodec<RegistryFriendlyByteBuf, GiveAndUse> CODEC = StreamCodec.of((buf, g) -> Stored.CODEC.encode(buf, g.stored),
-			buf -> new GiveAndUse(Stored.CODEC.decode(buf)));
+		public static final StreamCodec<RegistryFriendlyByteBuf, GiveAndUse> CODEC = StreamCodec.of((buf, g) -> {
+			Stored.CODEC.encode(buf, g.stored);
+			buf.writeLong(g.farmland);
+		}, buf -> new GiveAndUse(Stored.CODEC.decode(buf), buf.readLong()));
 
 		@Override
 		public Type<? extends CustomPacketPayload> type() {
@@ -207,20 +213,21 @@ public final class SkyStorage {
 		}
 	}
 
-	private static void useStored(ServerPlayer player, int index) {
+	private static void useStored(ServerPlayer player, int index, long farmland) {
 		if (index < 0 || index >= player.getInventory().getContainerSize()) {
 			return;
 		}
 		ItemStack held = player.getInventory().getItem(index);
 		Stored stored = stored(held);
-		if (stored == null || !(stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
+		boolean plant = farmland != UseStored.NO_FARMLAND && stored != null && (stored.flags() & Proto.ITEM_PLANTABLE) != 0;
+		if (stored == null || !(plant || stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
 			|| !ServerPlayNetworking.canSend(player, GiveAndUse.TYPE)) {
 			return;
 		}
 		if (!player.hasInfiniteMaterials()) {
 			held.shrink(1);
 		}
-		ServerPlayNetworking.send(player, new GiveAndUse(stored));
+		ServerPlayNetworking.send(player, new GiveAndUse(stored, plant ? farmland : UseStored.NO_FARMLAND));
 	}
 
 	/** SkyCraft+ : Skyrim items carried in Minecraft. A stored thing of this kind in a hand was fed to an animal: one fewer (true), else false. */
@@ -543,7 +550,7 @@ public final class SkyStorage {
 		PayloadTypeRegistry.clientboundPlay().register(GiveAndUse.TYPE, GiveAndUse.CODEC);
 		ServerPlayNetworking.registerGlobalReceiver(UseStored.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();
-			context.server().execute(() -> useStored(player, payload.index()));
+			context.server().execute(() -> useStored(player, payload.index(), payload.farmland()));
 		});
 		ServerPlayNetworking.registerGlobalReceiver(Deposit.TYPE, (payload, context) -> {
 			ServerPlayer player = context.player();

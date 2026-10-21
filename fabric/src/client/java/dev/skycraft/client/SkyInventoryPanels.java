@@ -577,6 +577,8 @@ public final class SkyInventoryPanels {
 						}
 					} else if (slot != null && slot.container instanceof Inventory) {
 						int index = inventoryIndex(minecraft, slot);
+						dev.skycraft.SkyCraft.LOG.info("SkyCraft: Skyrim items: {} dragged onto inventory slot {} (kind {}, sub {}, flags {}, plugin '{}'): {}", item.name(), index, item.kind(),
+							item.sub(), item.flags(), item.plugin(), SkyStorageClient.carriesWhy(item));
 						if ((index < 36 || index == 40) && SkyStorageClient.carries(item)) {
 							// SkyCraft+ : carried in Minecraft: a stack of it out of Skyrim into that slot (the only ones now).
 							SkyStorageClient.store(item, Math.min(item.count(), 64), dev.skycraft.net.SkyStorage.INVENTORY_INDEX + index, false);
