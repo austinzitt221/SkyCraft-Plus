@@ -531,7 +531,37 @@ namespace skycraft::Animals
 		{
 			bool sitting = false;
 			bool friends = false;  // made friends this session (a loaded game's: again, once it's loaded)
+			float poseTimer = 0.0f;  // seconds to the next look at its sitting pose
 		};
+
+		// Sits (a dog's sitting idle, DogBehavior's idleSitStart; a wolf has none and just stands
+		// still), or gets up again. True if its body took it.
+		bool SitPose(RE::Actor* a_actor, bool a_sit)
+		{
+			if (!a_sit) {
+				return a_actor->NotifyAnimationGraph("Idle_Out") || a_actor->NotifyAnimationGraph("IdleStop");
+			}
+			bool sat = false;
+			if (a_actor->GetGraphVariableBool("isIdleSitting", sat) && sat) {
+				return true;
+			}
+			return a_actor->NotifyAnimationGraph("idleSitStart");
+		}
+
+		// A pet never fights the player or their side: the fight it was in when tamed (a spawned wolf
+		// goes for the player at once) carried on, and as the factions were changed after it (Papyrus,
+		// a frame or two later) it went back to it; and sitting, it ran on the spot at the player.
+		void KeepPeace(RE::PlayerCharacter* a_player, RE::Actor* a_actor)
+		{
+			if (!a_actor->IsInCombat()) {
+				return;
+			}
+			auto target = a_actor->GetActorRuntimeData().currentCombatTarget.get();
+			if (!target || target.get() == a_player || target->IsPlayerTeammate() || target->IsCommandedActor()) {
+				a_actor->StopCombat();
+				a_actor->EvaluatePackage(true, false);
+			}
+		}
 		std::unordered_map<RE::FormID, Pet> pets;
 		RE::TESObjectCELL*                  petCell = nullptr;
 		constexpr std::uint32_t             kPetsRecord = 'TAME';
@@ -572,6 +602,11 @@ namespace skycraft::Animals
 					pet.friends = true;
 					MakeFriends(a_player, actor);
 					HoldStill(actor, pet.sitting);
+				}
+				KeepPeace(a_player, actor);
+				if (pet.sitting && actor->Get3D() && (pet.poseTimer -= a_delta) <= 0.0f) {
+					pet.poseTimer = 1.5f;
+					SitPose(actor, true);
 				}
 				if (pet.sitting || leads.contains(it->first) || State().parked) {
 					++it;
@@ -620,9 +655,12 @@ namespace skycraft::Animals
 			return;
 		}
 		it->second.sitting = a_mode == 2;
+		it->second.poseTimer = 0.0f;
 		Unwalk(actor);
 		HoldStill(actor, it->second.sitting);
-		logger::info("pets: {} {}", actor->GetName(), it->second.sitting ? "sits" : "stands");
+		KeepPeace(a_player, actor);
+		const bool posed = SitPose(actor, it->second.sitting);
+		logger::info("pets: {} {}{}", actor->GetName(), it->second.sitting ? "sits" : "stands", posed ? "" : " (no sitting pose of its own)");
 	}
 
 	bool IsTamed(RE::FormID a_actor)
