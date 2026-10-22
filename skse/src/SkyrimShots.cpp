@@ -102,9 +102,10 @@ namespace skycraft::SkyrimShots
 		{
 			auto* cell = a_active && a_player ? a_player->GetParentCell() : nullptr;
 			auto* loaded = cell ? cell->GetRuntimeData().loadedData : nullptr;
-			// (Hung where the player's own body is, among the place's people: hung on the place's 3D itself it was never drawn.)
-			auto*                     body = a_active && a_player ? a_player->Get3D(false) : nullptr;
-			RE::NiPointer<RE::NiNode> parent(body && body->parent ? body->parent : loaded ? loaded->cell3D.get() : nullptr);
+			// (Hung on the scene's root, as other mods hang what they add: on the place's 3D, or by the player's body, it was never
+			// drawn: those are culled by bounds made before it was there.)
+			auto*                     scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
+			RE::NiPointer<RE::NiNode> parent(loaded ? static_cast<RE::NiNode*>(scene) : nullptr);
 			if (!parent || !Link::Get().ReadWorldEntities(shownEntities)) {
 				if (!parent) {
 					for (auto& [id, s] : shown) {
@@ -313,6 +314,40 @@ namespace skycraft::SkyrimShots
 		}
 	}
 
+	// SkyCraft+ : what of an effect on the player Minecraft acts out (proto::SelfEffects).
+	std::uint32_t SelfBits(RE::EffectSetting* base)
+	{
+		using Arch = RE::EffectArchetypes::ArchetypeID;
+		std::uint32_t bits = 0;
+		const std::string_view name = base->GetName() ? base->GetName() : "";
+		switch (base->GetArchetype()) {
+		case Arch::kEtherealize:
+			bits |= proto::kSelfEthereal;
+			break;
+		case Arch::kSlowTime:
+			bits |= proto::kSelfSlowTime;
+			break;
+		case Arch::kDetectLife:
+			bits |= proto::kSelfAura;
+			break;
+		default:
+			if (!base->IsDetrimental() && base->data.primaryAV == RE::ActorValue::kWeaponSpeedMult) {
+				bits |= proto::kSelfFury;
+			}
+			break;
+		}
+		if (name.find("Dragon Aspect") != std::string_view::npos) {
+			bits |= proto::kSelfAspect;
+		}
+		if (name.find("Storm Call") != std::string_view::npos) {
+			bits |= proto::kSelfStorm;
+		}
+		return bits;
+	}
+
+	std::uint32_t shoutedBits = 0;  // SkyCraft+ : a shout on the player shouted for Minecraft mode (AroundPlayer): what, till when
+	std::uint64_t shoutedUntil = 0;
+
 	// SkyCraft+ : every shout in Minecraft mode. The shouts and spells on the player now that Minecraft acts out
 	// (proto::SelfEffects): by archetype, and two of Dragonborn's by name.
 	std::uint32_t SelfEffects(RE::PlayerCharacter* a_player)
@@ -321,36 +356,15 @@ namespace skycraft::SkyrimShots
 		if (!list) {
 			return 0;
 		}
-		using Arch = RE::EffectArchetypes::ArchetypeID;
-		std::uint32_t bits = 0;
+		// (SkyCraft+ : and those of a shout on the player shouted for Minecraft mode, for as long as they last: Aura
+		// Whisper's never showed among the player's effects.)
+		std::uint32_t bits = GetTickCount64() < shoutedUntil ? shoutedBits : 0;
 		for (auto* active : *list) {
 			auto* base = active ? active->GetBaseObject() : nullptr;
 			if (!base || active->flags.any(RE::ActiveEffect::Flag::kInactive, RE::ActiveEffect::Flag::kDispelled)) {
 				continue;
 			}
-			const std::string_view name = base->GetName() ? base->GetName() : "";
-			switch (base->GetArchetype()) {
-			case Arch::kEtherealize:
-				bits |= proto::kSelfEthereal;
-				break;
-			case Arch::kSlowTime:
-				bits |= proto::kSelfSlowTime;
-				break;
-			case Arch::kDetectLife:
-				bits |= proto::kSelfAura;
-				break;
-			default:
-				if (!base->IsDetrimental() && base->data.primaryAV == RE::ActorValue::kWeaponSpeedMult) {
-					bits |= proto::kSelfFury;
-				}
-				break;
-			}
-			if (name.find("Dragon Aspect") != std::string_view::npos) {
-				bits |= proto::kSelfAspect;
-			}
-			if (name.find("Storm Call") != std::string_view::npos) {
-				bits |= proto::kSelfStorm;
-			}
+			bits |= SelfBits(base);
 		}
 		return bits;
 	}
@@ -362,6 +376,23 @@ namespace skycraft::SkyrimShots
 	{
 		if (!a_player || !a_spell) {
 			return;
+		}
+		// (What it does to the player that Minecraft acts out, for as long as it lasts: SelfEffects.)
+		std::uint32_t self = 0;
+		float         seconds = 0.0f;
+		for (auto* effect : a_spell->effects) {
+			if (effect && effect->baseEffect) {
+				self |= SelfBits(effect->baseEffect);
+				seconds = std::max(seconds, float(effect->effectItem.duration));
+			}
+		}
+		if (const char* spellName = a_spell->GetName(); spellName && std::string_view(spellName).find("Aura Whisper") != std::string_view::npos) {
+			self |= proto::kSelfAura;  // (by name too: whatever its effects are)
+		}
+		if (self) {
+			shoutedBits = self;
+			shoutedUntil = GetTickCount64() + std::uint64_t(std::max(seconds, 1.0f) * 1000.0f);
+			logger::info("shots: {} on the player for Minecraft for {:.0f} s (bits {})", a_spell->GetName(), seconds, self);
 		}
 		std::uint32_t area = 0;
 		for (auto* effect : a_spell->effects) {
