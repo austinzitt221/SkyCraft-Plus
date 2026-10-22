@@ -575,6 +575,11 @@ namespace skycraft
 			std::uint64_t pressAt = 0, releaseAt = 0;
 		} aimed;
 
+		// SkyCraft+ : the shouts Skyrim didn't shout itself in Minecraft mode (Fire Ball): cast as the key comes up from then on.
+		std::unordered_set<RE::FormID> unshouted;
+
+		void AimedFallback(RE::PlayerCharacter* a_player, bool a_now = false);
+
 		void AimedKey(RE::PlayerCharacter* a_player, bool a_down, std::uint64_t a_now)
 		{
 			auto* voice = a_player ? a_player->GetActorRuntimeData().selectedPower : nullptr;
@@ -584,6 +589,9 @@ namespace skycraft
 				logger::info("{}: shout key {} (recovery {:.1f} s)", shout->GetName(), a_down ? "down" : "up", a_player->GetActorRuntimeData().voiceTimer);
 			}
 			if (a_down) {
+				if (aimed.releaseAt != 0) {
+					AimedFallback(a_player, true);  // SkyCraft+ : (one let go of and still waiting goes now, not lost to this press)
+				}
 				aimed = {};
 				if (shout && a_player->GetActorRuntimeData().voiceTimer <= 0.0f) {
 					aimed.shout = shout;
@@ -594,7 +602,7 @@ namespace skycraft
 			}
 		}
 
-		void AimedFallback(RE::PlayerCharacter* a_player)
+		void AimedFallback(RE::PlayerCharacter* a_player, bool a_now)
 		{
 			if (!aimed.shout || aimed.releaseAt == 0) {
 				return;
@@ -604,7 +612,8 @@ namespace skycraft
 			for (const auto& variation : aimed.shout->variations) {
 				learnable = learnable || variation.word;
 			}
-			if (learnable && GetTickCount64() - aimed.releaseAt < 1500) {
+			// (Nor for one it didn't shout before; others a moment, as Skyrim's own shout goes as the key comes up.)
+			if (!a_now && learnable && !unshouted.contains(aimed.shout->GetFormID()) && GetTickCount64() - aimed.releaseAt < 700) {
 				return;
 			}
 			auto* shout = aimed.shout;
@@ -612,6 +621,7 @@ namespace skycraft
 			aimed = {};
 			if (a_player->GetActorRuntimeData().voiceTimer > 0.0f) {
 				logger::info("{}: Skyrim shouted it itself (recovery {:.1f} s)", shout->GetName(), a_player->GetActorRuntimeData().voiceTimer);
+				unshouted.erase(shout->GetFormID());
 				return;  // (Skyrim shouted it)
 			}
 			// The words unlocked, or for a shout with none a player learns, as many as were held.
@@ -634,6 +644,7 @@ namespace skycraft
 				return;
 			}
 			caster->CastSpellImmediate(variation.spell, false, nullptr, 1.0f, false, 0.0f, a_player);
+			unshouted.insert(shout->GetFormID());
 			a_player->GetActorRuntimeData().voiceTimer = std::max(variation.recoveryTime, 1.0f) *
 			                                             std::max(0.0f, a_player->AsActorValueOwner()->GetActorValue(RE::ActorValue::kShoutRecoveryMult));
 			whirlwind.cooldown = a_player->GetActorRuntimeData().voiceTimer;
