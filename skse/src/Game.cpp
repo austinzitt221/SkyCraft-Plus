@@ -592,7 +592,15 @@ namespace skycraft
 
 		void AimedFallback(RE::PlayerCharacter* a_player)
 		{
-			if (!aimed.shout || aimed.releaseAt == 0 || GetTickCount64() - aimed.releaseAt < 1500) {
+			if (!aimed.shout || aimed.releaseAt == 0) {
+				return;
+			}
+			// (SkyCraft+ : one with no words a player learns, as Fire Ball, Skyrim never shouts: no waiting for it.)
+			bool learnable = false;
+			for (const auto& variation : aimed.shout->variations) {
+				learnable = learnable || variation.word;
+			}
+			if (learnable && GetTickCount64() - aimed.releaseAt < 1500) {
 				return;
 			}
 			auto* shout = aimed.shout;
@@ -2067,6 +2075,10 @@ namespace skycraft
 			sky.workbench = Workbench::Kind();  // SkyCraft+ : Minecraft's things at Skyrim's workbenches
 			sky.workbenchSeq = Workbench::Seq();
 			sky.selfEffects = SkyrimShots::SelfEffects(a_player);  // SkyCraft+ : every shout in Minecraft mode
+			if (static std::uint32_t loggedSelf = 0; sky.selfEffects != loggedSelf) {
+				loggedSelf = sky.selfEffects;
+				logger::info("shouts on the player for Minecraft: bits {}", loggedSelf);  // SkyCraft+
+			}
 			sky.handKinds[0] = rightHand ? HandKind(a_player, false) : proto::kHandNone;
 			sky.handKinds[1] = leftHand ? HandKind(a_player, true) : proto::kHandNone;
 			if (sky.handKinds[0] >= proto::kHandGreatsword && sky.handKinds[0] <= proto::kHandCrossbow) {

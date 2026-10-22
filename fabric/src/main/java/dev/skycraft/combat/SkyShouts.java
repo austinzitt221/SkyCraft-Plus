@@ -1,6 +1,7 @@
 // SkyCraft+ : every shout in Minecraft mode
 package dev.skycraft.combat;
 
+import dev.skycraft.SkyCraft;
 import dev.skycraft.link.Proto;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -109,6 +110,9 @@ public final class SkyShouts {
 		ServerTickEvents.END_SERVER_TICK.register(SkyShouts::tick);
 	}
 
+	private static int loggedBits;  // (what was last logged)
+	private static boolean loggedAura;
+
 	private static void tick(MinecraftServer server) {
 		holdMoods(server);
 		if (server.getTickCount() % 20 != 3) {
@@ -125,9 +129,17 @@ public final class SkyShouts {
 					e.addEffect(new MobEffectInstance(MobEffects.SLOWNESS, 30, 3, true, false), player);
 				}
 			}
+			if (bits != loggedBits) {
+				loggedBits = bits;
+				SkyCraft.LOG.info("SkyCraft: shouts on {} now acted out in Minecraft: bits {}", player.getPlainTextName(), bits);
+			}
 			if ((bits & Proto.SELF_AURA) != 0) {
 				for (LivingEntity e : around(player, 48.0)) {
 					e.addEffect(new MobEffectInstance(MobEffects.GLOWING, 30, 0, true, false), player);
+				}
+				if (!loggedAura) {
+					loggedAura = true;
+					SkyCraft.LOG.info("SkyCraft: Aura Whisper: {} Minecraft mob(s) round {} glow", around(player, 48.0).size(), player.getPlainTextName());
 				}
 			}
 			if ((bits & Proto.SELF_ASPECT) != 0) {
