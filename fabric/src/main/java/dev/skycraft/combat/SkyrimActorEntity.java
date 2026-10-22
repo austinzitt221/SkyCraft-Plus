@@ -77,7 +77,7 @@ public class SkyrimActorEntity extends LivingEntity implements net.minecraft.wor
 	public net.minecraft.world.InteractionResult interact(net.minecraft.world.entity.player.Player player, net.minecraft.world.InteractionHand hand,
 		net.minecraft.world.phys.Vec3 location) {
 		if (player instanceof net.minecraft.server.level.ServerPlayer server) {
-			var fed = SkyBreeding.feed(this, server, player.getItemInHand(hand), SkyCombat.actor(this.formId()));
+			var fed = SkyBreeding.feed(this, server, hand, player.getItemInHand(hand), SkyCombat.actor(this.formId()));
 			if (fed != null) {
 				return fed;
 			}

@@ -83,14 +83,19 @@ public final class SkyBreeding {
 	 * bones tame a dog or a wolf; an empty hand tells a tamed one to sit or stand. Null: not
 	 * breeding's to answer.
 	 */
-	static @Nullable InteractionResult feed(SkyrimActorEntity proxy, ServerPlayer player, ItemStack stack, SkyLink.@Nullable Actor actor) {
+	static @Nullable InteractionResult feed(SkyrimActorEntity proxy, ServerPlayer player, net.minecraft.world.InteractionHand hand, ItemStack stack,
+		SkyLink.@Nullable Actor actor) {
 		if (actor == null) {
 			return null;
 		}
-		if (stack.isEmpty() && sitOrStand(proxy, player, actor)) {
+		int species = species(actor.flags());
+		// SkyCraft+ : as a Minecraft wolf, whatever is in hand that isn't its food (a bow, arrows in the other hand...), not only an
+		// empty hand. The main hand's only: the other hand's is asked after it, and told it again.
+		if (hand == net.minecraft.world.InteractionHand.MAIN_HAND && !stack.is(Items.BONE) && !food(species, stack) && !stack.is(Items.LEAD) && !stack.is(Items.NAME_TAG)
+			&& !(dev.skycraft.net.SkyStorage.stored(stack) instanceof dev.skycraft.net.SkyStorage.Stored s && dev.skycraft.net.SkyStorage.usedFromHand(s.kind()))
+			&& sitOrStand(proxy, player, actor)) {
 			return InteractionResult.SUCCESS_SERVER;
 		}
-		int species = species(actor.flags());
 		boolean eaten = stack.is(Items.BONE) ? tame(proxy, player, actor, species) : food(species, stack) && eat(proxy, player, actor);
 		if (!eaten) {
 			return null;
