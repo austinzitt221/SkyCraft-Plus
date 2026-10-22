@@ -646,6 +646,17 @@ namespace skycraft::Animals
 		// a frame or two later) it went back to it; and sitting, it ran on the spot at the player.
 		void KeepPeace(RE::PlayerCharacter* a_player, RE::Actor* a_actor)
 		{
+			// (SkyCraft+ : angry with the player since it was spawned against them, it kept the player from waiting.)
+			if (a_actor->IsAngryWithPlayer()) {
+				a_actor->GetActorRuntimeData().boolFlags.reset(RE::Actor::BOOL_FLAGS::kAngryWithPlayer);
+				logger::info("pets: {} no longer angry with the player", a_actor->GetName());
+			}
+			if (static std::uint64_t told = 0; GetTickCount64() - told > 15000 && a_actor->GetPosition().GetDistance(a_player->GetPosition()) < 1500.0f) {
+				told = GetTickCount64();
+				auto target = a_actor->GetActorRuntimeData().currentCombatTarget.get();
+				logger::info("pets: {} hostile to the player {}, in combat {}{}{}, player in combat {}", a_actor->GetName(), a_actor->IsHostileToActor(a_player),
+					a_actor->IsInCombat(), target ? " with " : "", target ? target->GetName() : "", a_player->IsInCombat());
+			}
 			if (!a_actor->IsInCombat()) {
 				return;
 			}
@@ -704,7 +715,17 @@ namespace skycraft::Animals
 			CallActor(a_actor, "SetRelationshipRank", std::move(player), 3);
 			CallActor(a_actor, "SetPlayerTeammate", true, false);
 			CallActor(a_actor, "IgnoreFriendlyHits", true);
-			a_actor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kAggression, 0.0f);
+			CallActor(a_actor, "StopCombatAlarm");  // SkyCraft+ : (spawned against the player: its alarm too)
+			// (SkyCraft+ : aggressive: it goes for the player's enemies on sight, as a follower; it has no quarrel with the player now.)
+			a_actor->AsActorValueOwner()->SetActorValue(RE::ActorValue::kAggression, 1.0f);
+			// SkyCraft+ : as tough as a tamed Minecraft wolf (40 health), in Skyrim's health for a Minecraft hit on it (Combat's scale).
+			auto*       values = a_actor->AsActorValueOwner();
+			const float tough = 40.0f * (State().mcDamageBase + State().mcDamagePerLevel * static_cast<float>(a_actor->GetLevel()));
+			if (values->GetBaseActorValue(RE::ActorValue::kHealth) < tough) {
+				values->SetBaseActorValue(RE::ActorValue::kHealth, tough);
+				values->RestoreActorValue(RE::ActorValue::kHealth, tough);
+				logger::info("pets: {} as tough as a Minecraft wolf ({:.0f} health)", a_actor->GetName(), tough);
+			}
 			a_actor->EvaluatePackage(true, false);
 		}
 
@@ -759,7 +780,7 @@ namespace skycraft::Animals
 					if (logged++ < 20) {
 						logger::info("pets: {} came to the player ({:.0f} blocks behind{})", actor->GetName(), distance / block, otherPlace ? ", another place" : "");
 					}
-				} else if (!otherPlace) {
+				} else if (!otherPlace && !actor->IsInCombat()) {  // SkyCraft+ : (fighting: its own way, after the player's enemies)
 					Steer(actor, a_player->GetPosition(), 3.0, a_delta);
 				} else {
 					Unwalk(actor);
