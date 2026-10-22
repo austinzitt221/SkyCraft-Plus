@@ -55,7 +55,30 @@ public final class SkyStorage {
 	private static final String TAG = "skycraft_stored";
 
 	public static final ResourceKey<Item> ITEM_KEY = ResourceKey.create(Registries.ITEM, Identifier.fromNamespaceAndPath(SkyCraft.MOD_ID, "skyrim_item"));
-	public static final Item ITEM = Registry.register(BuiltInRegistries.ITEM, ITEM_KEY, new Item(new Item.Properties().setId(ITEM_KEY)));
+	public static final Item ITEM = Registry.register(BuiltInRegistries.ITEM, ITEM_KEY, new StoredItem(new Item.Properties().setId(ITEM_KEY)));
+
+	/**
+	 * SkyCraft+ : Skyrim items carried in Minecraft. Food, potions and ingredients are eaten or drunk from the hand as
+	 * Minecraft's are (held, with its animation: make() gives them CONSUMABLE, no hunger needed); when done, one goes back
+	 * into Skyrim and is used there.
+	 */
+	private static final class StoredItem extends Item {
+		StoredItem(Item.Properties properties) {
+			super(properties);
+		}
+
+		@Override
+		public ItemStack finishUsingItem(ItemStack stack, net.minecraft.world.level.Level level, net.minecraft.world.entity.LivingEntity entity) {
+			Stored stored = stored(stack);
+			if (entity instanceof ServerPlayer player && stored != null && usedFromHand(stored.kind()) && ServerPlayNetworking.canSend(player, GiveAndUse.TYPE)) {
+				ServerPlayNetworking.send(player, new GiveAndUse(stored, UseStored.NO_FARMLAND));
+				if (!player.hasInfiniteMaterials()) {
+					stack.shrink(1);
+				}
+			}
+			return stack;
+		}
+	}
 
 	/** What a stored Skyrim item is: Skyrim's side (plugin, id, copy data, stats) and its Minecraft stand-in look. */
 	public record Stored(String plugin, int localId, int kind, int sub, int material, int flags, float health, float charge, int soul, float weight, int value,
@@ -329,6 +352,13 @@ public final class SkyStorage {
 		}
 		if (s.glint) {
 			stack.set(DataComponents.ENCHANTMENT_GLINT_OVERRIDE, true);
+		}
+		if (s.kind == Proto.SKY_FOOD || s.kind == Proto.SKY_POTION || s.kind == Proto.SKY_INGREDIENT) {
+			// SkyCraft+ : eaten or drunk from the hand as Minecraft's food is (StoredItem).
+			boolean drink = s.kind == Proto.SKY_POTION;
+			stack.set(DataComponents.CONSUMABLE, net.minecraft.world.item.component.Consumable.builder().consumeSeconds(1.6F)
+				.animation(drink ? net.minecraft.world.item.ItemUseAnimation.DRINK : net.minecraft.world.item.ItemUseAnimation.EAT)
+				.sound(drink ? net.minecraft.sounds.SoundEvents.GENERIC_DRINK : net.minecraft.sounds.SoundEvents.GENERIC_EAT).hasConsumeParticles(!drink).build());
 		}
 		stack.set(DataComponents.MAX_STACK_SIZE, s.maxStack());
 		String tier = s.tier();

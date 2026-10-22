@@ -146,6 +146,9 @@ public final class SkyStorageClient {
 				ClientPlayNetworking.send(new dev.skycraft.net.SkyFeeding.Feed(hit.getEntity().getId(), foods, stored.plugin(), stored.localId()));
 				return true;
 			}
+			if (farmland == SkyStorage.UseStored.NO_FARMLAND && player.getItemInHand(hand).has(net.minecraft.core.component.DataComponents.CONSUMABLE)) {
+				return false;  // SkyCraft+ : (eaten or drunk as Minecraft's food is, held: SkyStorage.StoredItem)
+			}
 			ClientPlayNetworking.send(new SkyStorage.UseStored(hand == net.minecraft.world.InteractionHand.OFF_HAND ? 40 : player.getInventory().getSelectedSlot(), farmland));
 			return true;
 		}
