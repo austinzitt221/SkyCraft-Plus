@@ -76,6 +76,21 @@ namespace skycraft::SkyrimShots
 			}
 			auto* copy = root ? root->Clone() : nullptr;
 			auto* node = copy ? copy->AsNode() : nullptr;
+			// A projectile's root is a fade node: a copy no one fades in stays faded out (unseen). Its parts go under a plain node.
+			if (node && node->AsFadeNode()) {
+				std::vector<RE::NiPointer<RE::NiAVObject>> parts;
+				for (auto& child : node->GetChildren()) {
+					if (child) {
+						parts.push_back(child);
+					}
+				}
+				RE::NiPointer<RE::NiNode> fade(node);
+				node = RE::NiNode::Create(static_cast<std::uint16_t>(parts.size()));
+				for (auto& part : parts) {
+					fade->DetachChild(part.get());
+					node->AttachChild(part.get(), true);
+				}
+			}
 			static int logged = 0;
 			if (logged++ < 10) {
 				logger::info("shots: {} from a Minecraft bow drawn with {}{}", ammo->GetName(), path, node ? "" : " (it didn't load)");
