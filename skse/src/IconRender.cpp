@@ -67,6 +67,7 @@ namespace skycraft::IconRender
 		std::uint64_t                                  tick = 0;
 		std::unordered_map<RE::SpellItem*, RE::TESObjectBOOK*> tomes;
 		std::unordered_map<std::uint32_t, std::string>  texturePaths;  // SkyCraft+ : a texture picture's key -> the texture
+		std::unordered_map<std::uint32_t, float>        textureSpans;  // SkyCraft+ : the blocks it spreads over (the picture: one's part)
 		bool                                           tomesBuilt = false;
 
 		// ---- main thread -> render thread ----
@@ -153,9 +154,8 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 }
 )";
 
-		// SkyCraft+ : a texture over the whole target (one triangle past its corners). Only a fifth of it
-		// each way: one placed Skyrim block shows that much (the texture spreads over 5x5 of them,
-		// WorldExporter's GEO_TILE), so the item looks like the block it places.
+		// SkyCraft+ : a texture over the whole target (one triangle past its corners). (Drawn into a viewport as many
+		// times the picture as the blocks it spreads over: the picture is one block's part, as a placed one shows it.)
 		constexpr char kFlatShader[] = R"(
 Texture2D tex : register(t0);
 SamplerState samp : register(s0);
@@ -163,7 +163,7 @@ struct VO { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
 VO FlatVS(uint id : SV_VertexID) {
 	VO o;
 	float2 uv = float2((id << 1) & 2, id & 2);
-	o.uv = uv * 0.2;
+	o.uv = uv;
 	o.pos = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);
 	return o;
 }
@@ -1191,7 +1191,9 @@ float4 FlatPS(VO i) : SV_Target { return float4(tex.Sample(samp, i.uv).rgb, 1); 
 					continue;
 				}
 				BeginPass(a_context, rtvB, dsvB);
-				D3D11_VIEWPORT vp{ 0, 0, float(kFinal), float(kFinal), 0, 1 };
+				const auto     span = textureSpans.find(job.model.key);
+				const float    scale = span != textureSpans.end() ? span->second : 1.0f;
+				D3D11_VIEWPORT vp{ 0, 0, float(kFinal) * scale, float(kFinal) * scale, 0, 1 };
 				a_context->RSSetViewports(1, &vp);
 				a_context->IASetInputLayout(nullptr);
 				a_context->VSSetShader(flatVs, nullptr, 0);
@@ -1260,12 +1262,14 @@ float4 FlatPS(VO i) : SV_Target { return float4(tex.Sample(samp, i.uv).rgb, 1); 
 	}
 
 	// SkyCraft+ : Skyrim blocks' items. A key no form has (FDF00000 up: the last plugin index, past what load orders reach), by the path.
-	std::uint32_t TextureKey(std::string_view a_path)
+	std::uint32_t TextureKey(std::string_view a_path, float a_span)
 	{
 		std::string path(a_path);
 		std::ranges::transform(path, path.begin(), [](unsigned char c) { return char(std::tolower(c)); });
-		const auto key = 0xFDF00000u | static_cast<std::uint32_t>(Hash(path) & 0xFFFFFu);
+		const float span = std::clamp(a_span, 1.0f, 16.0f);
+		const auto  key = 0xFDF00000u | static_cast<std::uint32_t>(Hash(path + "|" + std::to_string(int(span))) & 0xFFFFFu);
 		texturePaths[key] = std::move(path);
+		textureSpans[key] = span;
 		return key;
 	}
 

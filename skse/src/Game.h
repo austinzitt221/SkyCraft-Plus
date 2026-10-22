@@ -445,7 +445,7 @@ namespace skycraft
 		void Draw(ID3D11Device* a_device, ID3D11DeviceContext* a_context);
 		// SkyCraft+ : Skyrim blocks' items. Main thread: the key of a picture of this texture (flat, filling it) to
 		// list with Want, and the texture a key is for (null: not one of these).
-		std::uint32_t TextureKey(std::string_view a_path);
+		std::uint32_t TextureKey(std::string_view a_path, float a_span);
 		const char*   TexturePath(std::uint32_t a_key);
 	}
 

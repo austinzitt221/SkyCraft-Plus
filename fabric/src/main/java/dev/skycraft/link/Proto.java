@@ -78,7 +78,7 @@ public final class Proto {
 	public static final int STORE_TAKE = 1, STORE_GIVE = 2, STORE_PICTURE = 3;
 	public static final int STORE_LEND_GEAR = 4, STORE_RETURN_GEAR = 5; // SkyCraft+ : v54, a Minecraft weapon or armor at Skyrim's enchanter
 	public static final int STORE_TEXTURE_AT = 6; // SkyCraft+ : v58, the texture of Skyrim's geometry at a point (name: its path; kind 1 land, 2 an object)
-	public static final int STORE_TEXTURE_PICTURE = 7; // SkyCraft+ : v61, draw this texture's picture too for a while (plugin: its path; the result's formId is its key)
+	public static final int STORE_TEXTURE_PICTURE = 7; // SkyCraft+ : v61, draw this texture's picture too for a while (plugin: its path; health: the blocks it spreads over, the picture one's part; the result's formId is its key)
 	public static final int GEAR_SWORD = 1, GEAR_AXE = 2, GEAR_MACE = 3, GEAR_PICKAXE = 4, GEAR_BOW = 5, GEAR_CROSSBOW = 6, GEAR_HELMET = 7, GEAR_CHEST = 8,
 		GEAR_LEGS = 9, GEAR_BOOTS = 10, GEAR_SHIELD = 11;
 	public static final int BENCH_CREATE = 1, BENCH_SHARPEN = 2, BENCH_ENCHANT = 3, BENCH_ALCHEMY = 5, BENCH_ARMOR = 7; // SkyCraft+ : v54, SkyState workbench

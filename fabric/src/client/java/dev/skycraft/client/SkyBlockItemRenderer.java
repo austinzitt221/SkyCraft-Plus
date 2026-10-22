@@ -57,11 +57,12 @@ public final class SkyBlockItemRenderer implements SpecialModelRenderer<SkyBlock
 
 	/** The texture of Skyrim's picture of this texture, asking for it now and then (Skyrim keeps a picture a minute after); null if none yet. */
 	static @Nullable Identifier picture(String texture) {
-		String key = texture.toLowerCase(Locale.ROOT);
+		int span = dev.skycraft.client.render.WorldExporter.geoTile();  // (as much of it as one placed block shows)
+		String key = texture.toLowerCase(Locale.ROOT) + "|" + span;
 		long now = System.nanoTime();
 		Long asked = ASKED.get(key);
-		if ((asked == null || now - asked > 20_000_000_000L) && SkyLink.active() && key.length() < Proto.SKY_ITEM_PLUGIN_BYTES) {
-			int id = SkyLink.pushStoreRequest(Proto.STORE_TEXTURE_PICTURE, 0, 0, 1.0F, -1.0F, 0, 0, key);
+		if ((asked == null || now - asked > 20_000_000_000L) && SkyLink.active() && texture.length() < Proto.SKY_ITEM_PLUGIN_BYTES) {
+			int id = SkyLink.pushStoreRequest(Proto.STORE_TEXTURE_PICTURE, 0, 0, span, -1.0F, 0, 0, texture.toLowerCase(Locale.ROOT));
 			if (id != 0) {
 				ASKED.put(key, now);
 				ASKING.put(id, key);

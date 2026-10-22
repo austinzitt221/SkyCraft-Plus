@@ -1045,7 +1045,7 @@ namespace skycraft::SkyInventory
 				} else if (request.op == proto::kStoreTexturePicture) {
 					// SkyCraft+ : Skyrim blocks' items. A picture of a texture (its path in plugin); the result's formId is its key.
 					const std::string_view path(request.plugin, strnlen(request.plugin, sizeof(request.plugin)));
-					const auto             key = path.empty() ? 0u : IconRender::TextureKey(path);
+					const auto             key = path.empty() ? 0u : IconRender::TextureKey(path, request.health);
 					proto::SkyStoreResult  result = Refusal(request.id, key ? proto::kStoreOk : proto::kStoreMissing);
 					result.formId = key;
 					if (key) {

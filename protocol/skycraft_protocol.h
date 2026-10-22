@@ -1143,7 +1143,7 @@ namespace skycraft::proto
 		kStoreReturnGear = 5,  // take the stand-in back: kStoreOk with its enchantment if it was enchanted (formId the
 		                       // EnchantmentItem, charge its charge, health its most, stat its cost a hit, name its effects
 		                       // as "kind magnitude seconds;..."), else kStoreNone
-		kStoreTexturePicture = 7,  // SkyCraft+ (v61): draw the picture of the texture whose path is in plugin too for a while
+		kStoreTexturePicture = 7,  // SkyCraft+ (v61): draw the picture of the texture whose path is in plugin too for a while (health: the blocks it spreads over; the picture is one block's part)
 		                           // (a Skyrim block's item: SkyIcons; the result's formId is its key)
 	};
 

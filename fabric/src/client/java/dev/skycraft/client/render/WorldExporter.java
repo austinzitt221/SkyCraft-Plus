@@ -979,19 +979,22 @@ public final class WorldExporter {
 	}
 
 	/**
-	 * SkyCraft+ : Skyrim blocks. How many blocks one of Skyrim's textures covers: 5x5, as Skyrim's own
-	 * scale (its ground textures repeat every five or so blocks), so a wall or floor of them looks like
+	 * SkyCraft+ : Skyrim blocks. How many blocks one of Skyrim's textures covers: 8x8 unless set (skyrimBlockTextureBlocks), as Skyrim's own
+	 * scale (its ground textures repeat every several blocks), so a wall or floor of them looks like
 	 * Skyrim's ground, not a close-up of it.
 	 */
-	private static final int GEO_TILE = 5;
+	public static int geoTile() {
+		return Math.clamp(dev.skycraft.SkySettings.number("skyrimBlockTextureBlocks", 8), 1, 16);  // (setting: how many blocks)
+	}
 
 	/**
 	 * SkyCraft+ : Skyrim blocks. A Skyrim-textured block (SkyGeo): a cube in its Skyrim texture
-	 * (SkyGeoTextures), each block its part of the 5x5 the picture spreads over, sampled smooth (as
+	 * (SkyGeoTextures), each block its part of the square the picture spreads over, sampled smooth (as
 	 * Skyrim draws it); with no texture known yet, in what it's made of. Faces against a whole
 	 * neighbour are left out. Section-relative cell.
 	 */
 	private static void geoFaces(ClientLevel level, BlockPos pos, int x, int y, int z, long key) {
+		int tile = geoTile();
 		if (!(level.getBlockEntity(pos) instanceof dev.skycraft.world.SkyGeo.GeoEntity entity)) {
 			return;
 		}
@@ -1002,9 +1005,9 @@ public final class WorldExporter {
 		if (sky == null && fillRects == null) {
 			return;
 		}
-		// The texture's part for this block: its place in the 5x5 the picture spreads over.
-		float tu = Mth.positiveModulo(pos.getX(), GEO_TILE) / (float) GEO_TILE, tv = Mth.positiveModulo(pos.getZ(), GEO_TILE) / (float) GEO_TILE;
-		float ty = Mth.positiveModulo(-pos.getY() - 1, GEO_TILE) / (float) GEO_TILE;
+		// The texture's part for this block: its place in the square the picture spreads over.
+		float tu = Mth.positiveModulo(pos.getX(), tile) / (float) tile, tv = Mth.positiveModulo(pos.getZ(), tile) / (float) tile;
+		float ty = Mth.positiveModulo(-pos.getY() - 1, tile) / (float) tile;
 		for (Direction d : Direction.values()) {
 			BlockPos next = pos.relative(d);
 			if (level.getBlockState(next).isSolidRender()) {
@@ -1017,7 +1020,7 @@ public final class WorldExporter {
 			if (sky != null) {
 				a = d.getAxis() == Direction.Axis.X ? tv : tu;
 				b = d.getAxis() == Direction.Axis.Y ? tv : ty;
-				span = 1.0F / GEO_TILE;
+				span = 1.0F / tile;
 			}
 			float u0 = r[0] + (r[2] - r[0]) * a, v0 = r[1] + (r[3] - r[1]) * b, u1 = u0 + (r[2] - r[0]) * span, v1 = v0 + (r[3] - r[1]) * span;
 			float[] uv = { u0, v1, u1, v1, u1, v0, u0, v0 };
