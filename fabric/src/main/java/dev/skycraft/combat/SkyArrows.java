@@ -182,7 +182,7 @@ public final class SkyArrows {
 		}
 		SkyStorage.Stored stored = new SkyStorage.Stored(tag.getStringOr("plugin", ""), tag.getIntOr("id", 0), Proto.SKY_AMMO, 0, 0, 0, 1.0F, -1.0F, 0, 0.0F, 0, damage,
 			0.0F, name, "minecraft:arrow", 0, false);
-		((dev.skycraft.mixin.AbstractArrowAccessor) arrow).skycraft$setPickupItemStack(SkyStorage.make(stored, 1));
+		((dev.skycraft.mixin.AbstractArrowAccessor) arrow).skycraft$setPickupItemStack(SkyStorage.backToSkyrim(SkyStorage.make(stored, 1)));  // (SkyCraft+ : picked up, back into Skyrim's stack)
 		// SkyCraft+ : which Skyrim arrow it is, for its look (Skyrim draws that arrow there: WorldExporter, Proto.WE_SKYRIM_ARROW).
 		// An entity's name is what reaches every client; an arrow's is never shown.
 		arrow.setCustomName(Component.literal(SKYRIM_ARROW_NAME + stored.plugin() + "|" + stored.localId()));

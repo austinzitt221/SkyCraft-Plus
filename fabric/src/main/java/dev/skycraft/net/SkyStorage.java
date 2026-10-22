@@ -195,6 +195,22 @@ public final class SkyStorage {
 		};
 	}
 
+	/** SkyCraft+ : a stored thing that goes straight back into Skyrim when it comes into the player's inventory, carried kind or not (an arrow shot from Skyrim's, picked up). */
+	public static ItemStack backToSkyrim(ItemStack stack) {
+		CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+		CompoundTag root = data == null ? new CompoundTag() : data.copyTag();
+		root.putBoolean(BACK, true);
+		stack.set(DataComponents.CUSTOM_DATA, CustomData.of(root));
+		return stack;
+	}
+
+	private static final String BACK = "skycraft_back";
+
+	private static boolean goesBack(ItemStack stack) {
+		CustomData data = stack.get(DataComponents.CUSTOM_DATA);
+		return data != null && data.copyTag().getBooleanOr(BACK, false);
+	}
+
 	/** SkyCraft+ : carried things Skyrim has to have to use: back into Skyrim once in a hand or an armor slot. */
 	public static boolean heldInSkyrim(int kind) {
 		return kind == Proto.SKY_WEAPON || kind == Proto.SKY_APPAREL || kind == Proto.SKY_AMMO || kind == Proto.SKY_SCROLL;
@@ -535,7 +551,8 @@ public final class SkyStorage {
 				Stored stored = stored(stack);
 				// SkyCraft+ : (one Skyrim has to have to use it, in a hand or an armor slot: back it goes, its shortcut there)
 				boolean held = stored != null && heldInSkyrim(stored.kind()) && (i == inventory.getSelectedSlot() || i >= 36);
-				if (stored == null || carriedInMinecraft(stored) && !held && stack.getEnchantments().isEmpty()) {  // (every item has an empty enchantments component)
+				boolean back = stored != null && goesBack(stack);  // SkyCraft+ : (an arrow shot from Skyrim's, picked up: into its stack there)
+				if (stored == null || carriedInMinecraft(stored) && !held && !back && stack.getEnchantments().isEmpty()) {  // (every item has an empty enchantments component)
 					continue;  // SkyCraft+ : (carried in Minecraft: it stays)
 				}
 				giveBack(player, stored, stack.getCount());
