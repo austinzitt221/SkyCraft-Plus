@@ -137,6 +137,25 @@ namespace skycraft::SkyrimShots
 				}
 				ref->SetPosition(at);
 				ref->SetAngle(angle);
+				// (Its 3D moved along by hand: a static's stayed where it was made, though its place followed.)
+				if (auto* root = ref->Get3D()) {
+					RE::NiPoint3 x = f.Cross(RE::NiPoint3{ 0.0f, 0.0f, 1.0f });
+					if (x.Length() < 1e-3f) {
+						x = { 1.0f, 0.0f, 0.0f };
+					}
+					x.Unitize();
+					const RE::NiPoint3 z = x.Cross(f);
+					RE::NiTransform    want;
+					auto&              m = want.rotate.entry;
+					m[0][0] = x.x, m[1][0] = x.y, m[2][0] = x.z;
+					m[0][1] = f.x, m[1][1] = f.y, m[2][1] = f.z;
+					m[0][2] = z.x, m[1][2] = z.y, m[2][2] = z.z;
+					want.translate = at;
+					want.scale = root->local.scale;
+					root->local = root->parent ? root->parent->world.Invert() * want : want;
+					RE::NiUpdateData update{};
+					root->Update(update);
+				}
 			}
 			for (auto it = shown.begin(); it != shown.end();) {
 				if (!it->second.seen) {
