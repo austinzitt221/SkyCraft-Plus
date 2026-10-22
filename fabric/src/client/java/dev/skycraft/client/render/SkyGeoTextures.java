@@ -9,6 +9,7 @@ import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.util.Locale;
+import org.jspecify.annotations.Nullable;
 
 /**
  * The atlas slots Skyrim's own textures go in (SkyAtlas.GEO_SLOTS), for Skyrim geo placed as blocks:
@@ -23,16 +24,17 @@ final class SkyGeoTextures {
 	private static final String[] PATHS = new String[SkyAtlas.GEO_SLOTS];
 	private static final long[] USED = new long[SkyAtlas.GEO_SLOTS];
 	private static final LongOpenHashSet SECTIONS = new LongOpenHashSet();  // sections with geo blocks in them
-	private static long clock;
 
-	/** The atlas rect {u0, v0, u1, v1} a Skyrim texture is drawn in (asked for now if it has no slot yet). */
-	static float[] uv(SkyAtlas atlas, String path, long section) {
+	/** The atlas rect {u0, v0, u1, v1} a Skyrim texture is drawn in (asked for now if it has no slot yet); null while every slot
+	 * is in use (SkyCraft+ : a slot drawn with in the last ten seconds isn't taken: with more textures about than slots,
+	 * taking them in turn remade every section again and again, and placed blocks swapped textures fast). */
+	static float @Nullable [] uv(SkyAtlas atlas, String path, long section) {
 		String key = path.toLowerCase(Locale.ROOT);
 		SECTIONS.add(section);
 		int free = -1, oldest = 0;
 		for (int i = 0; i < PATHS.length; i++) {
 			if (key.equals(PATHS[i])) {
-				USED[i] = ++clock;
+				USED[i] = System.nanoTime();
 				return atlas.geoUv(i);
 			}
 			if (PATHS[i] == null && free < 0) {
@@ -41,6 +43,9 @@ final class SkyGeoTextures {
 			if (USED[i] < USED[oldest]) {
 				oldest = i;
 			}
+		}
+		if (free < 0 && System.nanoTime() - USED[oldest] < 10_000_000_000L) {
+			return null;  // (drawn in what it's made of for now)
 		}
 		int slot = free >= 0 ? free : oldest;
 		if (PATHS[slot] != null) {
@@ -52,7 +57,7 @@ final class SkyGeoTextures {
 			SECTIONS.add(section);
 		}
 		PATHS[slot] = key;
-		USED[slot] = ++clock;
+		USED[slot] = System.nanoTime();
 		send(atlas, slot);
 		return atlas.geoUv(slot);
 	}
