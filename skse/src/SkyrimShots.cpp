@@ -102,7 +102,9 @@ namespace skycraft::SkyrimShots
 		{
 			auto* cell = a_active && a_player ? a_player->GetParentCell() : nullptr;
 			auto* loaded = cell ? cell->GetRuntimeData().loadedData : nullptr;
-			RE::NiPointer<RE::NiNode> parent = loaded ? loaded->cell3D : nullptr;
+			// (Hung where the player's own body is, among the place's people: hung on the place's 3D itself it was never drawn.)
+			auto*                     body = a_active && a_player ? a_player->Get3D(false) : nullptr;
+			RE::NiPointer<RE::NiNode> parent(body && body->parent ? body->parent : loaded ? loaded->cell3D.get() : nullptr);
 			if (!parent || !Link::Get().ReadWorldEntities(shownEntities)) {
 				if (!parent) {
 					for (auto& [id, s] : shown) {
@@ -142,12 +144,18 @@ namespace skycraft::SkyrimShots
 				}
 				x.Unitize();
 				const RE::NiPoint3 z = x.Cross(f);
-				auto&              m = s.node->local.rotate.entry;
+				RE::NiTransform    want;
+				auto&              m = want.rotate.entry;
 				m[0][0] = x.x, m[1][0] = x.y, m[2][0] = x.z;
 				m[0][1] = f.x, m[1][1] = f.y, m[2][1] = f.z;
 				m[0][2] = z.x, m[1][2] = z.y, m[2][2] = z.z;
-				s.node->local.translate = McToSky(e.x, e.y, e.z);
-				s.node->local.scale = 1.0f;
+				want.translate = McToSky(e.x, e.y, e.z);
+				want.scale = 1.0f;
+				s.node->local = parent->world.Invert() * want;  // (where it is in the world, under its parent)
+				if (static int placed = 0; placed++ < 3) {
+					logger::info("shots: a Minecraft bow's Skyrim arrow at ({:.0f}, {:.0f}, {:.0f}) under {}", want.translate.x, want.translate.y, want.translate.z,
+						parent->name.c_str() ? parent->name.c_str() : "");
+				}
 				RE::NiUpdateData update{};
 				s.node->Update(update);
 			}

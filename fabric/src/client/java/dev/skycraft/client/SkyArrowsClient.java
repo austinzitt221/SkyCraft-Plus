@@ -31,6 +31,7 @@ public final class SkyArrowsClient {
 	private static boolean lending;
 	private static int lent, readyTries, readyAt;
 	private static int givenBackAt = -1000;
+	private static int differentSince = -1;  // SkyCraft+ : (when the off hand and the lent first differed)
 	private static SkyLink.@Nullable SkyItem standIn;
 	private static String readied = "";
 
@@ -167,10 +168,20 @@ public final class SkyArrowsClient {
 			readyAt = ticks + 10;
 		}
 		// As many as the off hand holds (those shot are gone from both: Shot); more put there, or fewer, follow.
-		if (now > lent) {
-			give(now - lent);
-		} else if (now < lent) {
-			take(lent - now);
+		// (A difference is let settle half a second first: a shot's Shot and the off hand's new count come apart, and
+		// evening out between them took an iron arrow from Skyrim's readied ones, which let go of them: "no arrows".)
+		if (now == lent) {
+			differentSince = -1;
+		} else if (differentSince < 0) {
+			differentSince = ticks;
+		}
+		if (now != lent && (lent == 0 || ticks - differentSince >= 10)) {
+			differentSince = -1;
+			if (now > lent) {
+				give(now - lent);
+			} else {
+				take(lent - now);
+			}
 		}
 		// Readied, so the bow shoots them (once they're in Skyrim's inventory).
 		// (And again whenever they stop being readied: Skyrim lets go of arrows that ran out for a moment.)
