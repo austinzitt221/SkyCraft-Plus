@@ -492,7 +492,7 @@ public final class SkyStorage {
 			for (int i = 0; i < inventory.getContainerSize(); i++) {
 				ItemStack stack = inventory.getItem(i);
 				Stored stored = stored(stack);
-				if (stored == null || carriedInMinecraft(stored) && !stack.has(DataComponents.ENCHANTMENTS)) {
+				if (stored == null || carriedInMinecraft(stored) && stack.getEnchantments().isEmpty()) {  // (every item has an empty enchantments component)
 					continue;  // SkyCraft+ : (carried in Minecraft: it stays)
 				}
 				giveBack(player, stored, stack.getCount());
