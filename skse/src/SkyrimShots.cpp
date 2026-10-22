@@ -42,96 +42,60 @@ namespace skycraft::SkyrimShots
 		std::vector<RE::ProjectileHandle> spent;
 
 		// SkyCraft+ : arrows across the games. A Skyrim arrow shot from a Minecraft bow is Minecraft's arrow, which
-		// it lists as kWeSkyrimArrow: that arrow's own Skyrim model is hung in the cell where it flies.
+		// it lists as kWeSkyrimArrow: a reference of that arrow's own Skyrim model flies where it does (Skyrim draws
+		// it as any of its things; a model hung in the scene by hand was never drawn, however it was hung).
 		struct Shown
 		{
-			RE::NiPointer<RE::NiNode> node;
-			RE::NiPointer<RE::NiNode> parent;
-			bool                      seen = false;
+			RE::ObjectRefHandle ref;
+			bool                seen = false;
 		};
 		std::unordered_map<std::uint32_t, Shown> shown;  // by Minecraft entity id
 		proto::WorldEntities                     shownEntities;
+		std::unordered_map<RE::FormID, RE::TESObjectSTAT*> arrowForms;  // by ammo: a static of its projectile's model (null: none)
 
 		void HideShown(Shown& a_shown)
 		{
-			if (a_shown.node && a_shown.parent) {
-				a_shown.parent->DetachChild(a_shown.node.get());
+			if (auto ref = a_shown.ref.get()) {
+				ref->Disable();
+				ref->SetDelete(true);
 			}
 			a_shown = {};
 		}
 
-		// Every part shown (a projectile's model may come with parts hidden till Skyrim fires it): its shapes, and how many were hidden.
-		void ShowAll(RE::NiAVObject* a_obj, int& a_shapes, int& a_hidden, int a_depth = 0)
+		// A form of our own whose model is the ammo's projectile (as BlockCollision makes its sections').
+		RE::TESObjectSTAT* ArrowForm(RE::FormID a_ammo)
 		{
-			if (!a_obj || a_depth > 32) {
-				return;
+			if (const auto it = arrowForms.find(a_ammo); it != arrowForms.end()) {
+				return it->second;
 			}
-			if (a_obj->GetFlags().any(RE::NiAVObject::Flag::kHidden)) {
-				++a_hidden;
-				a_obj->GetFlags().reset(RE::NiAVObject::Flag::kHidden);
-			}
-			a_obj->SetAppCulled(false);
-			if (a_obj->AsGeometry()) {
-				++a_shapes;
-			}
-			if (auto* node = a_obj->AsNode()) {
-				for (auto& child : node->GetChildren()) {
-					ShowAll(child.get(), a_shapes, a_hidden, a_depth + 1);
-				}
-			}
-		}
-
-		RE::NiPointer<RE::NiNode> ArrowModel(RE::FormID a_ammo)
-		{
-			auto* ammo = RE::TESForm::LookupByID<RE::TESAmmo>(a_ammo);
-			auto* projectile = ammo ? ammo->GetRuntimeData().data.projectile : nullptr;
+			auto*       ammo = RE::TESForm::LookupByID<RE::TESAmmo>(a_ammo);
+			auto*       projectile = ammo ? ammo->GetRuntimeData().data.projectile : nullptr;
 			const char* path = projectile ? projectile->GetModel() : nullptr;
-			if (!path || !*path) {
-				return nullptr;
-			}
-			RE::BSModelDB::DBTraits::ArgsType args{};
-			RE::NiPointer<RE::NiNode>         root;
-			RE::BSModelDB::Demand(path, root, args);
-			if (!root) {
-				RE::BSModelDB::Demand((std::string("Meshes\\") + path).c_str(), root, args);
-			}
-			auto* copy = root ? root->Clone() : nullptr;
-			auto* node = copy ? copy->AsNode() : nullptr;
-			// A projectile's root is a fade node: a copy no one fades in stays faded out (unseen). Its parts go under a plain node.
-			if (node && node->AsFadeNode()) {
-				std::vector<RE::NiPointer<RE::NiAVObject>> parts;
-				for (auto& child : node->GetChildren()) {
-					if (child) {
-						parts.push_back(child);
-					}
+			RE::TESObjectSTAT* form = nullptr;
+			if (path && *path) {
+				form = RE::IFormFactory::Create<RE::TESObjectSTAT>();
+				if (form && form->GetFormID() == 0) {
+					form->SetFormID(0, true);
 				}
-				RE::NiPointer<RE::NiNode> fade(node);
-				node = RE::NiNode::Create(static_cast<std::uint16_t>(parts.size()));
-				for (auto& part : parts) {
-					fade->DetachChild(part.get());
-					node->AttachChild(part.get(), true);
+				if (form && form->GetFormID() != 0) {
+					static_cast<RE::TESModel*>(form)->SetModel(path);
+					form->boundData.boundMin = { -10, -60, -10 };
+					form->boundData.boundMax = { 10, 60, 10 };
+				} else {
+					form = nullptr;
 				}
 			}
-			int shapes = 0, hidden = 0;
-			ShowAll(node, shapes, hidden);
-			static int logged = 0;
-			if (logged++ < 10) {
-				logger::info("shots: {} from a Minecraft bow drawn with {}{}", ammo->GetName(), path, node ? "" : " (it didn't load)");
-				logger::info("shots: (its model: {} shape(s), {} part(s) were hidden)", shapes, hidden);
-			}
-			return RE::NiPointer<RE::NiNode>(node);
+			arrowForms[a_ammo] = form;
+			logger::info("shots: {} from a Minecraft bow shown as {}{}", ammo ? ammo->GetName() : "?", path ? path : "nothing", form ? "" : " (no form for it)");
+			return form;
 		}
 
 		void ShowSkyrimArrows(RE::PlayerCharacter* a_player, bool a_active)
 		{
 			auto* cell = a_active && a_player ? a_player->GetParentCell() : nullptr;
-			auto* loaded = cell ? cell->GetRuntimeData().loadedData : nullptr;
-			// (Hung on the scene's root, as other mods hang what they add: on the place's 3D, or by the player's body, it was never
-			// drawn: those are culled by bounds made before it was there.)
-			auto*                     scene = RE::BSShaderManager::State::GetSingleton().shadowSceneNode[0];
-			RE::NiPointer<RE::NiNode> parent(loaded ? static_cast<RE::NiNode*>(scene) : nullptr);
-			if (!parent || !Link::Get().ReadWorldEntities(shownEntities)) {
-				if (!parent) {
+			auto* handler = RE::TESDataHandler::GetSingleton();
+			if (!cell || !handler || !Link::Get().ReadWorldEntities(shownEntities)) {
+				if (!cell) {
 					for (auto& [id, s] : shown) {
 						HideShown(s);
 					}
@@ -148,49 +112,31 @@ namespace skycraft::SkyrimShots
 					continue;
 				}
 				auto& s = shown[e.id];
-				if (s.parent != parent) {
-					HideShown(s);
-					s.node = ArrowModel(e.tint);
-					if (s.node) {
-						// (Through the scene's own AttachObject, which also gives its shapes their lights: hung on as a plain child,
-						// lit shapes without any were never drawn.)
-						scene->AttachObject(s.node.get());
-						if (!s.node->parent) {
-							parent->AttachChild(s.node.get(), true);  // (if that only lit it)
-						}
-						if (static int told = 0; told++ < 3) {
-							logger::info("shots: the arrow attached through the scene ({})", s.node->parent ? "hung on it" : "not hung");
-						}
-						s.parent = parent;
+				s.seen = true;
+				// Minecraft's arrow faces (sin yaw cos pitch, sin pitch, cos yaw cos pitch); Skyrim's model points along its +Y.
+				const float        yaw = e.yaw * std::numbers::pi_v<float> / 180.0f, pitch = e.pitch * std::numbers::pi_v<float> / 180.0f;
+				const RE::NiPoint3 f{ std::sin(yaw) * std::cos(pitch), -std::cos(yaw) * std::cos(pitch), std::sin(pitch) };  // Minecraft -> Skyrim axes
+				// Skyrim's angles: z the heading (0 north, clockwise), x the pitch (positive looks down).
+				const RE::NiPoint3 angle{ -std::asin(std::clamp(f.z, -1.0f, 1.0f)), 0.0f, std::atan2(f.x, f.y) };
+				const RE::NiPoint3 at = McToSky(e.x, e.y, e.z);
+				auto               ref = s.ref.get();
+				if (!ref) {
+					auto* form = ArrowForm(e.tint);
+					if (!form) {
+						continue;
+					}
+					ref = handler->CreateReferenceAtLocation(form, at, angle, cell, a_player->GetWorldspace(), nullptr, nullptr, RE::ObjectRefHandle(), false, true).get();
+					if (!ref) {
+						continue;
+					}
+					ref->SetActivationBlocked(true);
+					s.ref = ref->GetHandle();
+					if (static int placed = 0; placed++ < 3) {
+						logger::info("shots: a Minecraft bow's Skyrim arrow placed at ({:.0f}, {:.0f}, {:.0f})", at.x, at.y, at.z);
 					}
 				}
-				s.seen = true;
-				if (!s.node) {
-					continue;
-				}
-				// Minecraft's arrow faces (sin yaw cos pitch, sin pitch, cos yaw cos pitch); Skyrim's model points along its +Y.
-				const float  yaw = e.yaw * std::numbers::pi_v<float> / 180.0f, pitch = e.pitch * std::numbers::pi_v<float> / 180.0f;
-				RE::NiPoint3 f{ std::sin(yaw) * std::cos(pitch), -std::cos(yaw) * std::cos(pitch), std::sin(pitch) };  // Minecraft -> Skyrim axes
-				RE::NiPoint3 x = f.Cross(RE::NiPoint3{ 0.0f, 0.0f, 1.0f });
-				if (x.Length() < 1e-3f) {
-					x = { 1.0f, 0.0f, 0.0f };
-				}
-				x.Unitize();
-				const RE::NiPoint3 z = x.Cross(f);
-				RE::NiTransform    want;
-				auto&              m = want.rotate.entry;
-				m[0][0] = x.x, m[1][0] = x.y, m[2][0] = x.z;
-				m[0][1] = f.x, m[1][1] = f.y, m[2][1] = f.z;
-				m[0][2] = z.x, m[1][2] = z.y, m[2][2] = z.z;
-				want.translate = McToSky(e.x, e.y, e.z);
-				want.scale = 1.0f;
-				s.node->local = parent->world.Invert() * want;  // (where it is in the world, under its parent)
-				if (static int placed = 0; placed++ < 3) {
-					logger::info("shots: a Minecraft bow's Skyrim arrow at ({:.0f}, {:.0f}, {:.0f}) under {}", want.translate.x, want.translate.y, want.translate.z,
-						parent->name.c_str() ? parent->name.c_str() : "");
-				}
-				RE::NiUpdateData update{};
-				s.node->Update(update);
+				ref->SetPosition(at);
+				ref->SetAngle(angle);
 			}
 			for (auto it = shown.begin(); it != shown.end();) {
 				if (!it->second.seen) {
