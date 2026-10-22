@@ -119,6 +119,7 @@ final class AvatarExporter implements SubmitNodeCollector {
 	private float offX, offY, offZ;
 	// SkyCraft+ : every shout in Minecraft mode. The entity being captured glows (Aura Whisper, a spectral arrow): drawn lit and pale.
 	private boolean glowing;
+	private static boolean loggedGlow;
 
 	private AvatarExporter() {
 	}
@@ -350,6 +351,10 @@ final class AvatarExporter implements SubmitNodeCollector {
 			try {
 				EntityRenderState state = dispatcher.extractEntity(e, partialTick);
 				this.glowing = e.isCurrentlyGlowing();
+				if (this.glowing && !loggedGlow) {
+					loggedGlow = true;  // SkyCraft+ : (once: a glowing mob reached Skyrim's drawing)
+					SkyCraft.LOG.info("SkyCraft: {} drawn glowing for Skyrim", e.getName().getString());
+				}
 				dispatcher.submit(state, cameraState, state.x - origin[0], state.y - origin[1], state.z - origin[2], pose, this);
 				this.capture.flush();
 			} catch (RuntimeException ex) {
@@ -530,7 +535,8 @@ final class AvatarExporter implements SubmitNodeCollector {
 				light = 0xF000F0;
 			}
 			if (AvatarExporter.this.glowing) {
-				int r = 128 + (((argb >> 16) & 0xFF) >> 1), g = 112 + (((argb >> 8) & 0xFF) >> 1), b = 80 + ((argb & 0xFF) >> 1);
+				// (SkyCraft+ : Aura Whisper's red-orange, lit: pale before, it went unseen.)
+				int r = 255, g = 70 + (((argb >> 8) & 0xFF) >> 2), b = 30 + ((argb & 0xFF) >> 3);
 				argb = (argb & 0xFF000000) | (r << 16) | (g << 8) | b;
 				light = 0xF000F0;
 			}
