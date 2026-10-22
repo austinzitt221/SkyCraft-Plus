@@ -60,6 +60,27 @@ namespace skycraft::SkyrimShots
 			a_shown = {};
 		}
 
+		// Every part shown (a projectile's model may come with parts hidden till Skyrim fires it): its shapes, and how many were hidden.
+		void ShowAll(RE::NiAVObject* a_obj, int& a_shapes, int& a_hidden, int a_depth = 0)
+		{
+			if (!a_obj || a_depth > 32) {
+				return;
+			}
+			if (a_obj->GetFlags().any(RE::NiAVObject::Flag::kHidden)) {
+				++a_hidden;
+				a_obj->GetFlags().reset(RE::NiAVObject::Flag::kHidden);
+			}
+			a_obj->SetAppCulled(false);
+			if (a_obj->AsGeometry()) {
+				++a_shapes;
+			}
+			if (auto* node = a_obj->AsNode()) {
+				for (auto& child : node->GetChildren()) {
+					ShowAll(child.get(), a_shapes, a_hidden, a_depth + 1);
+				}
+			}
+		}
+
 		RE::NiPointer<RE::NiNode> ArrowModel(RE::FormID a_ammo)
 		{
 			auto* ammo = RE::TESForm::LookupByID<RE::TESAmmo>(a_ammo);
@@ -91,9 +112,12 @@ namespace skycraft::SkyrimShots
 					node->AttachChild(part.get(), true);
 				}
 			}
+			int shapes = 0, hidden = 0;
+			ShowAll(node, shapes, hidden);
 			static int logged = 0;
 			if (logged++ < 10) {
 				logger::info("shots: {} from a Minecraft bow drawn with {}{}", ammo->GetName(), path, node ? "" : " (it didn't load)");
+				logger::info("shots: (its model: {} shape(s), {} part(s) were hidden)", shapes, hidden);
 			}
 			return RE::NiPointer<RE::NiNode>(node);
 		}
