@@ -216,7 +216,7 @@ public final class SkyInventoryPanels {
 			this.generation = inventory.generation();
 			this.shown.clear();
 			for (SkyLink.SkyItem item : inventory.items()) {
-				if (this.category.filter.test(item)) {
+				if (this.category.filter.test(item) && SkyArrowsClient.own(item) > 0) {  // SkyCraft+ : (not iron arrows only lent)
 					this.shown.add(item);
 				}
 			}
@@ -540,7 +540,7 @@ public final class SkyInventoryPanels {
 				if (event.hasShiftDown()) {
 					SkyLink.SkyItem item = panel.itemAt(event.x(), event.y());
 					if (item != null && SkyStorageClient.carries(item)) {
-						SkyStorageClient.store(item, item.count(), dev.skycraft.net.SkyStorage.OWN_INVENTORY, false);
+						SkyStorageClient.store(item, SkyArrowsClient.own(item), dev.skycraft.net.SkyStorage.OWN_INVENTORY, false);
 					} else if (item != null) {
 						quickShortcut(minecraft, item);
 					}
@@ -581,14 +581,14 @@ public final class SkyInventoryPanels {
 							item.sub(), item.flags(), item.plugin(), SkyStorageClient.carriesWhy(item));
 						if ((index < 36 || index == 40) && SkyStorageClient.carries(item)) {
 							// SkyCraft+ : carried in Minecraft: a stack of it out of Skyrim into that slot (the only ones now).
-							SkyStorageClient.store(item, Math.min(item.count(), 64), dev.skycraft.net.SkyStorage.INVENTORY_INDEX + index, false);
+							SkyStorageClient.store(item, Math.min(SkyArrowsClient.own(item), 64), dev.skycraft.net.SkyStorage.INVENTORY_INDEX + index, false);
 						} else if ((index < 36 || index == 40) && (slot.getItem().isEmpty() || SkyShortcuts.isShortcut(slot.getItem()))) {
 							SkyShortcutsClient.make(item, index);
 						} else if (index >= 36 && index <= 39) {
 							SkyArmorClient.dropOn(item, index);  // SkyCraft+ : onto its armor slot
 						}
 					} else if (slot != null && SkyStorageClient.storesInto(inventory.getMenu(), slot)) {
-						SkyStorageClient.store(item, item.count(), slot.index, false);  // SkyCraft+ : into the chest
+						SkyStorageClient.store(item, SkyArrowsClient.own(item), slot.index, false);  // SkyCraft+ : into the chest
 					} else if (slot != null && destroySlot(inventory, slot)) {
 						giveUp(minecraft, item, Proto.SKY_ACT_DESTROY);  // SkyCraft+ : creative's destroy slot
 					} else if (slot == null && state.at(event.x(), event.y()) == null
@@ -727,7 +727,7 @@ public final class SkyInventoryPanels {
 					graphics.fill(sx, sy, sx + 16, sy + 16, 0xFF70B070);
 				}
 				ItemStack stack = picture(graphics, item, sx, sy);
-				graphics.itemDecorations(font, stack, sx, sy, item.count() > 1 && item.kind() < Proto.SKY_SPELL ? String.valueOf(item.count()) : null);
+				graphics.itemDecorations(font, stack, sx, sy, SkyArrowsClient.own(item) > 1 && item.kind() < Proto.SKY_SPELL ? String.valueOf(SkyArrowsClient.own(item)) : null);
 				String mark = mark(item);
 				if (mark != null) {
 					graphics.text(font, mark, sx, sy, 0xFFFFFF60, true);
@@ -874,7 +874,7 @@ public final class SkyInventoryPanels {
 			}
 		}
 		if (item.kind() < Proto.SKY_SPELL) {
-			lines.add(gray(String.format("Weight %s   Value %d", trim(item.weight()), item.value()) + (item.count() > 1 ? "   x" + item.count() : "")));
+			lines.add(gray(String.format("Weight %s   Value %d", trim(item.weight()), item.value()) + (SkyArrowsClient.own(item) > 1 ? "   x" + SkyArrowsClient.own(item) : "")));
 		}
 		if (item.has(Proto.ITEM_TWO_HANDED)) {
 			lines.add(gray("Two-handed"));

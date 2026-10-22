@@ -67,7 +67,8 @@ public final class SkyShortcutsClient {
 	/** The count drawn on a shortcut (GuiGraphicsShortcutMixin): Skyrim's, for things there's more than one of. */
 	public static @Nullable String countText(ItemStack stack) {
 		SkyLink.SkyItem item = resolve(stack);
-		return item != null && item.count() > 1 && item.kind() < Proto.SKY_SPELL ? String.valueOf(item.count()) : null;
+		int count = item == null ? 0 : SkyArrowsClient.own(item);  // SkyCraft+ : (not the iron arrows lent Minecraft arrows are)
+		return item != null && count > 1 && item.kind() < Proto.SKY_SPELL ? String.valueOf(count) : null;
 	}
 
 	/** Draws Skyrim's picture of a shortcut's thing in place of its stand-in (GuiGraphicsShortcutMixin); false if there's none. */

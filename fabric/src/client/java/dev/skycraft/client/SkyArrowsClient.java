@@ -214,6 +214,11 @@ public final class SkyArrowsClient {
 		}
 	}
 
+	/** How many of this Skyrim thing are the player's own: the iron arrows Skyrim holds for lent Minecraft ones aren't (shown, stored or counted). */
+	public static int own(SkyLink.SkyItem item) {
+		return lending && standIn != null && item.formId() == standIn.formId() ? Math.max(0, item.count() - lent) : item.count();
+	}
+
 	private static void giveBack() {
 		take(lent);
 		lending = false;
