@@ -830,6 +830,9 @@ namespace skycraft
 			}
 		};
 
+		// SkyCraft+ : hand mixing. When a shortcut last gave each hand its spell (SpellGiven), GetTickCount64.
+		std::atomic<std::uint64_t> spellGivenAt[2]{};
+
 		// SkyCraft+ : hand mixing. Takes a weapon, shield or torch out of a hand (a spell stays: it's
 		// only no longer that hand's).
 		void UnequipFromHand(RE::PlayerCharacter* a_player, RE::TESForm* a_held, bool a_left)
@@ -910,8 +913,11 @@ namespace skycraft
 			}
 			// Switched in Minecraft (hotbar slot, off-hand swap): Minecraft's, and the Skyrim item there
 			// is unequipped, so equipping it again brings it back.
+			static std::uint64_t rightSeqAt = 0, leftSeqAt = 0;
+			const auto           now = GetTickCount64();
 			if (rightSeq != rightSeen) {
 				rightSeen = rightSeq;
+				rightSeqAt = now;
 				if (right) {
 					rightTaken = true;
 					UnequipFromHand(a_player, right, false);
@@ -919,12 +925,22 @@ namespace skycraft
 			}
 			if (leftSeq != leftSeen) {
 				leftSeen = leftSeq;
+				leftSeqAt = now;
 				if (bothHands) {
 					rightTaken = true;
 					UnequipFromHand(a_player, right, false);
 				} else if (left) {
 					leftTaken = true;
 					UnequipFromHand(a_player, left, true);
+				}
+			}
+			// (A spell a shortcut just gave the hand, with the switch that brought the shortcut (either may come first, a moment
+			// apart): Skyrim's. A switch well after it takes the hand again.)
+			for (int hand = 0; hand < 2; ++hand) {
+				const auto given = spellGivenAt[hand].load();
+				auto*      held = hand ? left : right;
+				if (given != 0 && now - given < 1000 && given + 300 >= (hand ? leftSeqAt : rightSeqAt) && held && held->Is(RE::FormType::Spell)) {
+					(hand ? leftTaken : rightTaken) = false;
 				}
 			}
 			a_right = a_right && !rightTaken;
@@ -2506,6 +2522,7 @@ namespace skycraft
 
 		// SkyCraft+ : Whirlwind Sprint (see WhirlwindKey).
 		void ShoutKey(bool a_down) { WhirlwindKey(a_down); }
+		void SpellGiven(bool a_left) { spellGivenAt[a_left ? 1 : 0] = GetTickCount64(); }
 
 		// SkyCraft+ : beds. Slept the night through in a Minecraft bed: Skyrim's clock goes on to 6 am
 		// (Skyrim's time is Minecraft's, so Minecraft's own skip to morning was undone).

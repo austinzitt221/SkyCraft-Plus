@@ -1157,12 +1157,14 @@ namespace skycraft::SkyInventory
 				logger::info("Skyrim items: {} is the voice's", spell->GetName());
 			} else if (runtime.selectedSpells[left ? RE::Actor::SlotTypes::kLeftHand : RE::Actor::SlotTypes::kRightHand] == spell) {
 				if (equipOnly) {
+					Game::SpellGiven(left);  // SkyCraft+ : (there already: the hand is Skyrim's again)
 					return;
 				}
 				a_player->DeselectSpell(spell);
 				logger::info("Skyrim items: {} taken out of the {} hand", spell->GetName(), left ? "left" : "right");
 			} else {
 				equip->EquipSpell(a_player, spell, handSlot);
+				Game::SpellGiven(left);  // SkyCraft+
 				logger::info("Skyrim items: {} in the {} hand", spell->GetName(), left ? "left" : "right");
 			}
 			return;

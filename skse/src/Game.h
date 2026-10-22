@@ -148,6 +148,9 @@ namespace skycraft
 		void ReportPause();
 		// SkyCraft+ : Whirlwind Sprint. Skyrim's Shout key went down or up (acted on in Minecraft mode).
 		void ShoutKey(bool a_down);
+		// SkyCraft+ : hand mixing. A shortcut just put this spell in that hand (or found it there already): the hand is
+		// Skyrim's again (the same spell equipped again sends nothing to see).
+		void SpellGiven(bool a_left);
 		// SkyCraft+ : beds (kEvSlept, kEvGoToBed).
 		void SleptInMinecraft();
 		void GoToBed(RE::PlayerCharacter* a_player, const proto::McEvent& a_ev);
