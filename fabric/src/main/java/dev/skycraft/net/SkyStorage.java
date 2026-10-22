@@ -153,22 +153,33 @@ public final class SkyStorage {
 	}
 
 	/**
-	 * SkyCraft+ : Skyrim items carried in Minecraft. Things that are only had, never held or worn
-	 * (materials, ingredients, food, potions), dragged into the player's own inventory, leave Skyrim's
-	 * as they would for a chest: then they're the only ones (their weight gone from Skyrim's too), and
-	 * stay where they are; used from the hand, one goes back into Skyrim and is used there; dropped on
-	 * the Skyrim panel, back they go. Weapons, armor, arrows, spells, torches, soul gems, keys and
-	 * books stay shortcuts: Skyrim has to have those to use them. Setting skyrimItemsInMinecraft.
+	 * SkyCraft+ : Skyrim items carried in Minecraft. Things dragged into the player's own inventory leave
+	 * Skyrim's as they would for a chest: then they're the only ones (their weight gone from Skyrim's too),
+	 * and stay where they are; dropped on the Skyrim panel, back they go. Food, potions, ingredients and
+	 * books used from the hand: one goes back into Skyrim and is used (read) there. Weapons, arrows, scrolls
+	 * and armor go back into Skyrim once in a hand or an armor slot (heldInSkyrim): Skyrim has to have
+	 * those to use them, and a shortcut takes their place. Spells, keys, soul gems, torches and quest
+	 * things stay shortcuts. Setting skyrimItemsInMinecraft.
 	 */
 	public static boolean carriedInMinecraft(int kind, int sub, int flags, String name) {
 		if (!dev.skycraft.SkySettings.flag("skyrimItemsInMinecraft", true) || (flags & Proto.ITEM_QUEST) != 0) {
 			return false;
 		}
 		return switch (kind) {
-			case Proto.SKY_FOOD, Proto.SKY_POTION, Proto.SKY_INGREDIENT -> true;
+			case Proto.SKY_FOOD, Proto.SKY_POTION, Proto.SKY_INGREDIENT, Proto.SKY_BOOK, Proto.SKY_WEAPON, Proto.SKY_APPAREL, Proto.SKY_AMMO, Proto.SKY_SCROLL -> true;
 			case Proto.SKY_MISC -> sub != 2 && !name.toLowerCase(java.util.Locale.ROOT).contains("soul gem");
 			default -> false;
 		};
+	}
+
+	/** SkyCraft+ : carried things Skyrim has to have to use: back into Skyrim once in a hand or an armor slot. */
+	public static boolean heldInSkyrim(int kind) {
+		return kind == Proto.SKY_WEAPON || kind == Proto.SKY_APPAREL || kind == Proto.SKY_AMMO || kind == Proto.SKY_SCROLL;
+	}
+
+	/** SkyCraft+ : carried things used from the hand (or right-clicked in the inventory): eaten, drunk or read in Skyrim. */
+	public static boolean usedFromHand(int kind) {
+		return kind == Proto.SKY_FOOD || kind == Proto.SKY_POTION || kind == Proto.SKY_INGREDIENT || kind == Proto.SKY_BOOK;
 	}
 
 	/** Deposit.slot for anywhere in the player's own inventory (a thing carried in Minecraft, shift-clicked out of the Skyrim panel). */
@@ -220,7 +231,7 @@ public final class SkyStorage {
 		ItemStack held = player.getInventory().getItem(index);
 		Stored stored = stored(held);
 		boolean plant = farmland != UseStored.NO_FARMLAND && stored != null && (stored.flags() & Proto.ITEM_PLANTABLE) != 0;
-		if (stored == null || !(plant || stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
+		if (stored == null || !(plant || usedFromHand(stored.kind()))
 			|| !ServerPlayNetworking.canSend(player, GiveAndUse.TYPE)) {
 			return;
 		}
@@ -492,7 +503,9 @@ public final class SkyStorage {
 			for (int i = 0; i < inventory.getContainerSize(); i++) {
 				ItemStack stack = inventory.getItem(i);
 				Stored stored = stored(stack);
-				if (stored == null || carriedInMinecraft(stored) && stack.getEnchantments().isEmpty()) {  // (every item has an empty enchantments component)
+				// SkyCraft+ : (one Skyrim has to have to use it, in a hand or an armor slot: back it goes, its shortcut there)
+				boolean held = stored != null && heldInSkyrim(stored.kind()) && (i == inventory.getSelectedSlot() || i >= 36);
+				if (stored == null || carriedInMinecraft(stored) && !held && stack.getEnchantments().isEmpty()) {  // (every item has an empty enchantments component)
 					continue;  // SkyCraft+ : (carried in Minecraft: it stays)
 				}
 				giveBack(player, stored, stack.getCount());
@@ -506,7 +519,7 @@ public final class SkyStorage {
 					existing.set(DataComponents.ENCHANTMENTS, enchantments);
 				}
 				// (SkyCraft+ : a dragon soul from the creative menu is absorbed: nothing to keep a shortcut for.)
-				if ((i < 36 || i == 40) && existing == null && (enchanted || !hasShortcut(inventory, stored)) && !SkyCreative.SOUL_PLUGIN.equals(stored.plugin())) {
+				if ((i < 36 || i == 40) && existing == null && (enchanted || held || !hasShortcut(inventory, stored)) && !SkyCreative.SOUL_PLUGIN.equals(stored.plugin())) {
 					shortcut = SkyShortcuts.make(new SkyShortcuts.Make(i, stored.plugin(), stored.localId(), stored.kind(), stored.model(), stored.color(), stored.glint(),
 						stored.name()));
 					if (shortcut != null && enchanted) {

@@ -135,7 +135,7 @@ public final class SkyStorageClient {
 		for (var hand : net.minecraft.world.InteractionHand.values()) {
 			SkyStorage.Stored stored = SkyStorage.stored(player.getItemInHand(hand));
 			long farmland = farmland(minecraft, stored);
-			if (stored == null || farmland == SkyStorage.UseStored.NO_FARMLAND && !(stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
+			if (stored == null || farmland == SkyStorage.UseStored.NO_FARMLAND && !SkyStorage.usedFromHand(stored.kind())
 				|| hand == net.minecraft.world.InteractionHand.OFF_HAND && !player.getMainHandItem().isEmpty() || !ClientPlayNetworking.canSend(SkyStorage.UseStored.TYPE)) {
 				continue;
 			}
@@ -166,7 +166,7 @@ public final class SkyStorageClient {
 	/** SkyCraft+ : Skyrim items carried in Minecraft. Right-clicked in the inventory screen (this index of the player's inventory): eaten or drunk, as on the Skyrim panel (true). */
 	static boolean useStoredAt(net.minecraft.world.entity.player.Player player, int index) {
 		SkyStorage.Stored stored = index >= 0 && index < player.getInventory().getContainerSize() ? SkyStorage.stored(player.getInventory().getItem(index)) : null;
-		if (stored == null || !(stored.kind() == Proto.SKY_FOOD || stored.kind() == Proto.SKY_POTION || stored.kind() == Proto.SKY_INGREDIENT)
+		if (stored == null || !SkyStorage.usedFromHand(stored.kind())
 			|| !ClientPlayNetworking.canSend(SkyStorage.UseStored.TYPE)) {
 			return false;
 		}
@@ -352,8 +352,9 @@ public final class SkyStorageClient {
 		ItemTooltipCallback.EVENT.register((stack, context, type, lines) -> {
 			SkyStorage.Stored stored = SkyStorage.stored(stack);
 			if (stored != null && SkyStorage.carriedInMinecraft(stored)) {
-				lines.add(Component.literal(stored.kind() == Proto.SKY_MISC ? "Carried in Minecraft: drop it on the Skyrim panel to put it back in Skyrim"
-					: "Carried in Minecraft: use it to eat or drink it; drop it on the Skyrim panel to put it back").withStyle(ChatFormatting.DARK_GRAY));
+				lines.add(Component.literal(SkyStorage.heldInSkyrim(stored.kind()) ? "Carried in Minecraft: put it in your hand" + (stored.kind() == Proto.SKY_APPAREL ? " or an armor slot" : "") + " to have it back in Skyrim"
+					: SkyStorage.usedFromHand(stored.kind()) ? "Carried in Minecraft: use it to " + (stored.kind() == Proto.SKY_BOOK ? "read it" : "eat or drink it") + "; drop it on the Skyrim panel to put it back"
+					: "Carried in Minecraft: drop it on the Skyrim panel to put it back in Skyrim").withStyle(ChatFormatting.DARK_GRAY));
 			} else if (stored != null) {
 				lines.add(Component.literal("Take it into your inventory to put it back in Skyrim").withStyle(ChatFormatting.DARK_GRAY));
 			}
