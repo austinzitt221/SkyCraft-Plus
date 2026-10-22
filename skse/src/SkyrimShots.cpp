@@ -152,7 +152,15 @@ namespace skycraft::SkyrimShots
 					HideShown(s);
 					s.node = ArrowModel(e.tint);
 					if (s.node) {
-						parent->AttachChild(s.node.get(), true);
+						// (Through the scene's own AttachObject, which also gives its shapes their lights: hung on as a plain child,
+						// lit shapes without any were never drawn.)
+						scene->AttachObject(s.node.get());
+						if (!s.node->parent) {
+							parent->AttachChild(s.node.get(), true);  // (if that only lit it)
+						}
+						if (static int told = 0; told++ < 3) {
+							logger::info("shots: the arrow attached through the scene ({})", s.node->parent ? "hung on it" : "not hung");
+						}
 						s.parent = parent;
 					}
 				}
