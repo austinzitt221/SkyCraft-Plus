@@ -164,6 +164,14 @@ public final class SkyMobFights {
 		if ((actor.flags() & Proto.ACTOR_TEAMMATE) == 0 || host == null) {
 			return null;
 		}
+		// SkyCraft+ : a tamed one, as a Minecraft wolf: what the player hit lately, even a farm animal (not a creeper, nor an
+		// animal the player tamed).
+		if ((actor.flags() & Proto.ACTOR_TAMED) != 0 && host.getLastHurtMob() instanceof Mob hit && hit.isAlive() && hit.level() == level
+			&& host.tickCount - host.getLastHurtMobTimestamp() < GRUDGE_TICKS && hit.distanceToSqr(host) < PLAYER_RANGE * PLAYER_RANGE
+			&& !(hit instanceof net.minecraft.world.entity.monster.Creeper)
+			&& !(hit instanceof net.minecraft.world.entity.TamableAnimal tamed && tamed.isOwnedBy(host))) {
+			return hit;
+		}
 		Mob best = null;
 		double bestDistance = Double.MAX_VALUE;
 		for (Mob mob : level.getEntitiesOfClass(Mob.class, new AABB(proxy.blockPosition()).inflate(FOLLOWER_RANGE),
