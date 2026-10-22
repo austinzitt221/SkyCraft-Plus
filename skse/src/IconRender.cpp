@@ -153,7 +153,9 @@ float4 PSMain(VO i, bool front : SV_IsFrontFace) : SV_Target {
 }
 )";
 
-		// SkyCraft+ : a texture over the whole target (one triangle past its corners).
+		// SkyCraft+ : a texture over the whole target (one triangle past its corners). Only a fifth of it
+		// each way: one placed Skyrim block shows that much (the texture spreads over 5x5 of them,
+		// WorldExporter's GEO_TILE), so the item looks like the block it places.
 		constexpr char kFlatShader[] = R"(
 Texture2D tex : register(t0);
 SamplerState samp : register(s0);
@@ -161,7 +163,7 @@ struct VO { float4 pos : SV_Position; float2 uv : TEXCOORD0; };
 VO FlatVS(uint id : SV_VertexID) {
 	VO o;
 	float2 uv = float2((id << 1) & 2, id & 2);
-	o.uv = uv;
+	o.uv = uv * 0.2;
 	o.pos = float4(uv * float2(2, -2) + float2(-1, 1), 0, 1);
 	return o;
 }
