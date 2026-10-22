@@ -579,6 +579,10 @@ namespace skycraft
 		{
 			auto* voice = a_player ? a_player->GetActorRuntimeData().selectedPower : nullptr;
 			auto* shout = voice ? voice->As<RE::TESShout>() : nullptr;
+			static int logged = 0;  // SkyCraft+ : (an aimed shout that came late or not at all: what the key did)
+			if (shout && logged++ < 40) {
+				logger::info("{}: shout key {} (recovery {:.1f} s)", shout->GetName(), a_down ? "down" : "up", a_player->GetActorRuntimeData().voiceTimer);
+			}
 			if (a_down) {
 				aimed = {};
 				if (shout && a_player->GetActorRuntimeData().voiceTimer <= 0.0f) {
@@ -607,6 +611,7 @@ namespace skycraft
 			const int charged = WhirlwindCharged(aimed.releaseAt - aimed.pressAt);
 			aimed = {};
 			if (a_player->GetActorRuntimeData().voiceTimer > 0.0f) {
+				logger::info("{}: Skyrim shouted it itself (recovery {:.1f} s)", shout->GetName(), a_player->GetActorRuntimeData().voiceTimer);
 				return;  // (Skyrim shouted it)
 			}
 			// The words unlocked, or for a shout with none a player learns, as many as were held.
@@ -1901,7 +1906,7 @@ namespace skycraft
 				// SkyCraft+ : hand ownership. A hand Skyrim holds keeps its weapon or spell out and
 				// Skyrim's first-person arms showing.
 				const bool skyrimHand = rightHand || leftHand;
-				const bool fighting = Combat::PlayerEngaged() || skyrimHand;
+				const bool fighting = Combat::PlayerEngaged() || skyrimHand || MobFights::Fighting();  // SkyCraft+ : (a follower matches it)
 				// Always hidden while Minecraft drives (Minecraft draws the hands). Showing them again
 				// after a fight un-hid arms Skyrim had hidden itself meanwhile (putting weapons away),
 				// and they then floated in view until the model was rebuilt.

@@ -462,6 +462,9 @@ namespace skycraft
 		// follower saved while held).
 		void PerFrame();
 		void OnGameLoaded();
+		// SkyCraft+ : someone of the player's side fought a Minecraft mob a moment ago (the player's weapon stays out: a follower
+		// matches it, and put hers away mid-swing).
+		bool Fighting();
 	}
 
 	namespace Animals

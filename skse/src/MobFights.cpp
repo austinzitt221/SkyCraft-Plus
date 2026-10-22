@@ -15,6 +15,7 @@ namespace skycraft::MobFights
 		// Held still through an attack (its follow and travel packages ran it off mid-swing, the draw
 		// broken off for a run): until when (GetTickCount64).
 		std::unordered_map<RE::FormID, std::uint64_t> held;
+		std::uint64_t                                 foughtAt = 0;  // SkyCraft+ : the last swing at a Minecraft mob
 
 		void Hold(RE::Actor* a_actor, std::uint64_t a_ms)
 		{
@@ -47,6 +48,9 @@ namespace skycraft::MobFights
 			actor->DrawWeaponMagicHands(true);
 		}
 		if (a_flags == 1 || a_flags == 2) {
+			if (actor->IsPlayerTeammate()) {
+				foughtAt = GetTickCount64();
+			}
 			actor->SetHeading(std::atan2(at.x - pos.x, at.y - pos.y));  // (Skyrim's heading: 0 north, clockwise)
 			// A bow is drawn by its attackStart and only shot by attackRelease (without it the draw
 			// was all that played); aimed at the mob's middle (Skyrim's pitch: positive looks down).
@@ -113,6 +117,8 @@ namespace skycraft::MobFights
 			Free(held.begin()->first);
 		}
 	}
+
+	bool Fighting() { return foughtAt != 0 && GetTickCount64() - foughtAt < 5000; }
 
 	bool Ranged(RE::Actor* a_actor)
 	{
