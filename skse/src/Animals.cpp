@@ -716,12 +716,17 @@ namespace skycraft::Animals
 			const float block = float(proto::kUnitsPerBlock);
 			for (auto it = pets.begin(); it != pets.end();) {
 				auto* actor = RE::TESForm::LookupByID<RE::Actor>(it->first);
-				if (!actor || actor->IsDead()) {
-					if (actor) {
-						Unwalk(actor);
-						Pause(actor, kPauseSit, false);
-						logger::info("pets: {} died", actor->GetName());
-					}
+				if (!actor) {
+					// (One placed in the game, as a spawn egg's, is only there while its place is loaded: left
+					// behind through a door it's gone until the player comes back. Still theirs then.)
+					it->second.friends = false;
+					++it;
+					continue;
+				}
+				if (actor->IsDead()) {
+					Unwalk(actor);
+					Pause(actor, kPauseSit, false);
+					logger::info("pets: {} died", actor->GetName());
 					it = pets.erase(it);
 					continue;
 				}
@@ -762,6 +767,44 @@ namespace skycraft::Animals
 				++it;
 			}
 		}
+	}
+
+	namespace
+	{
+		// SkyCraft+ : a pet comes through a load door with the player: sent to the door's other side as
+		// the player goes (once they're through, one placed in the game, as a spawn egg's, is gone from
+		// memory with the place it was in, and couldn't be brought any more).
+		class DoorSink final : public RE::BSTEventSink<RE::TESActivateEvent>
+		{
+		public:
+			static DoorSink* Get()
+			{
+				static DoorSink sink;
+				return &sink;
+			}
+
+			RE::BSEventNotifyControl ProcessEvent(const RE::TESActivateEvent* a_event, RE::BSTEventSource<RE::TESActivateEvent>*) override
+			{
+				auto* door = a_event ? a_event->objectActivated.get() : nullptr;
+				auto* by = a_event ? a_event->actionRef.get() : nullptr;
+				auto* teleport = door && by && by->IsPlayerRef() ? door->extraList.GetByType<RE::ExtraTeleport>() : nullptr;
+				auto  other = teleport && teleport->teleportData ? teleport->teleportData->linkedDoor.get() : nullptr;
+				if (!other) {
+					return RE::BSEventNotifyControl::kContinue;
+				}
+				for (const auto& [id, pet] : pets) {
+					auto* actor = RE::TESForm::LookupByID<RE::Actor>(id);
+					if (!actor || actor->IsDead() || pet.sitting || leads.contains(id) || !actor->Get3D() ||
+						actor->GetPosition().GetDistance(by->GetPosition()) > 24.0f * float(proto::kUnitsPerBlock)) {
+						continue;
+					}
+					Unwalk(actor);
+					actor->MoveTo(other.get());
+					logger::info("pets: {} comes through the door with the player", actor->GetName());
+				}
+				return RE::BSEventNotifyControl::kContinue;
+			}
+		};
 	}
 
 	void OnTame(RE::PlayerCharacter* a_player, RE::FormID a_actor, std::uint32_t a_mode)
@@ -844,6 +887,13 @@ namespace skycraft::Animals
 	void PerFrame(RE::PlayerCharacter* a_player, std::uint32_t a_heldFood, bool a_driving, float a_delta)
 	{
 		TickLeads(a_player, a_delta);
+		static bool watchingDoors = false;  // SkyCraft+ : pets through load doors
+		if (!watchingDoors && !pets.empty()) {
+			if (auto* events = RE::ScriptEventSourceHolder::GetSingleton()) {
+				events->AddEventSink<RE::TESActivateEvent>(DoorSink::Get());
+				watchingDoors = true;
+			}
+		}
 		TickPets(a_player, a_delta);
 		LeavePetsBe(a_player, a_delta);
 		TickBabies(a_delta);
