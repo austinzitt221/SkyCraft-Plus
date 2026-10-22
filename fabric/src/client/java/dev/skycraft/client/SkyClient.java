@@ -43,6 +43,7 @@ public final class SkyClient {
 	private static boolean teleportPending;
 	private static LocalPlayer lastPlayer;
 	private static Vec3 holdPos;
+	private static long relinkedAt;  // SkyCraft+ : when the link last came back
 	private static int sentHands = -1; // SkyCraft+ : multiplayer (the guest's Skyrim hands, as last sent)
 	private static int sentSelf; // SkyCraft+ : every shout in Minecraft mode (the guest's, as last sent)
 	private static boolean underLand; // SkyCraft+ : the underground (kept while no land is known around)
@@ -105,6 +106,13 @@ public final class SkyClient {
 			if (linked) {
 				tookOver = true;
 				unlinkedHold = null;
+				// SkyCraft+ : held where it was till Skyrim's ground is back (cleared while Skyrim was gone: an alt-tab that froze
+				// Skyrim for minutes left the player falling under it).
+				LocalPlayer back = Minecraft.getInstance().player;
+				if (back != null && holdPos == null) {
+					holdPos = back.position();
+				}
+				relinkedAt = System.currentTimeMillis();
 				SkyCollision.startConsumer();
 				applyLinkedOptions();
 			} else {
@@ -327,6 +335,8 @@ public final class SkyClient {
 		if (!followSkyrimPlayer(minecraft)) {
 			holdUntilReady(minecraft);
 			followSkyrim(minecraft);
+		} else if (holdPos != null && System.currentTimeMillis() - relinkedAt < 10000) {
+			holdUntilReady(minecraft);  // SkyCraft+ : (just back from Skyrim going quiet)
 		}
 		publishTick(minecraft);
 	}
