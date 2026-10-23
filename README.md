@@ -77,6 +77,38 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
 - **Plant Skyrim crops on Minecraft farmland:** cabbages, leeks, potatoes, wheat and more grow
   through Minecraft's stages and are picked the Skyrim way.
 
+**Crossing between the games**
+- **Carry Skyrim items in Minecraft's inventory:** drag them in and they leave Skyrim's (no
+  doubles). Food, potions and ingredients are eaten or drunk from the hand with Minecraft's
+  animation, crops are planted from the hand, books are read from it, and weapons, armor and
+  arrows go back into Skyrim once in your hand or an armor slot (`skyrimItemsInMinecraft`).
+- **Crafting across the games:** Skyrim materials count in Minecraft's recipes (Skyrim iron makes
+  a Minecraft sword), and the **conversion table** (crafting table + iron ingot) turns materials
+  from one game into the other's (`crossCrafting`).
+- **Skyrim's workbenches use Minecraft's things:** the forge, smelter, tanning rack, cooking pot,
+  alchemy lab and the rest see your Minecraft materials, and **Skyrim's enchanter enchants your
+  Minecraft weapons and armor** (`skyrimWorkbenches`, `enchanterAllGear`). Skyrim weapons take
+  every Minecraft enchantment too.
+- **Arrows across the games:** Minecraft bows shoot Skyrim arrows and Skyrim bows Minecraft
+  arrows, each looking like itself, and they can be picked up again (`arrowsAcrossGames`).
+- **Every shout works in Minecraft mode:** Ice Form and Disarm, Dismay, Kyne's Peace, Marked for
+  Death, Become Ethereal, Slow Time, Aura Whisper (Minecraft mobs glow), Dragon Aspect, Storm
+  Call and more, on Minecraft's mobs and on you. Minecraft's beds move Skyrim's clock to the
+  morning (`bedsInSkyrim`).
+- **Silk touch mines Skyrim's ground and rock** as blocks in that very Skyrim texture, to build
+  with (`silkTouchSkyrimGeo`). The **restoration brush** (stick, cobblestone and dirt) puts back
+  what you dug out of Skyrim's world.
+- **Pets, Minecraft style:** bones tame Skyrim's dogs and wolves. They're as tough as a tamed
+  Minecraft wolf, fight what you hit, sit and stand when told, and come through load doors with
+  you (`skyrimFoodForAnimals`, `petsThroughDoors`).
+- In Skyrim mode, Activate works on Minecraft's villagers, item frames, chest minecarts and pets,
+  and on whichever of a Minecraft and a Skyrim thing is nearer.
+- **The SkyCraft+ settings screen** (pause menu, bottom left): every setting, with a tooltip,
+  changed while you play. Spawn rates for animals, monsters, villagers and cave monsters; patch
+  trees, flowers and grass each on their own, taken away from (or brought back to) explored
+  ground too; and Minecraft's structures turned off and on while playing, put away and brought
+  back as they were.
+
 **Skyrim combat works on Minecraft mobs**
 - Skyrim melee, spells (Flames, bolts, beams), shouts and arrows hit Minecraft mobs, and fire
   sets them alight.

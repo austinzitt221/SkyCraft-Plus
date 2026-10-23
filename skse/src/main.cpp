@@ -65,7 +65,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* a_skse)
 	SKSE::Init(a_skse, { .trampoline = true, .trampolineSize = 1024 });
 	SetupLog();
 	skycraft::CrashLog::Install();
-	logger::info("SkyCraft {} loading (runtime {})", "0.1.2-plus.6", a_skse->RuntimeVersion().string());
+	logger::info("SkyCraft {} loading (runtime {})", "0.1.2-plus.7", a_skse->RuntimeVersion().string());
 	logger::info("patch revision 60 (block collision with exact shapes, doors with their own collision and headroom under a block above a door, Minecraft's world drawn under Skyrim's menus, mob lock-on through True Directional Movement; merged onto SkyCraft+, the patch's version wins where both have a feature)");
 	skycraft::BlockCollision::PrepareFiles();
 	SKSE::GetMessagingInterface()->RegisterListener(OnMessage);
