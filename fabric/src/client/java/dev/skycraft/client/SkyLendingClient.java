@@ -20,8 +20,8 @@ import org.jspecify.annotations.Nullable;
 /**
  * The client's side of SkyLending: when this player's Skyrim says they went to a workbench
  * (SkyState::workbench), the Minecraft materials that suit it are lent (the server takes them, this
- * player's Skyrim gets the same Skyrim ones), and at the enchanter the weapon or armor in hand goes
- * in as a stand-in; when its menu closes, Skyrim gives back as many as it still has (what was used
+ * player's Skyrim gets the same Skyrim ones), and at the enchanter the weapons and armor go in as
+ * stand-ins (SkyCraft+ : every one in the inventory, each by its own name; setting enchanterAllGear); when its menu closes, Skyrim gives back as many as it still has (what was used
  * is gone) and the server gives those back as Minecraft's, the gear with what it was enchanted with.
  */
 public final class SkyLendingClient {
@@ -47,10 +47,21 @@ public final class SkyLendingClient {
 	private static int seenSeq = Integer.MIN_VALUE;
 	private static int lendingSeq;
 	private static final List<Entry> ENTRIES = new ArrayList<>();
-	private static String gearName = "";
-	private static int gearKind, gearLendId, gearReturnId;
-	private static boolean gearLent, gearAnswered;
-	private static SkyEnchanting.@Nullable Enchant enchant;
+	// SkyCraft+ : each lent piece of gear (in the order the server lent them): its stand-in's name, how it went, what it came back with.
+	private static final class Gear {
+		final String name;
+		final int kind;
+		int lendId, returnId;
+		boolean lent, answered;
+		SkyEnchanting.@Nullable Enchant enchant;
+
+		Gear(String name, int kind) {
+			this.name = name;
+			this.kind = kind;
+		}
+	}
+
+	private static final List<Gear> GEAR = new ArrayList<>();
 
 	public static void register() {
 		ClientPlayNetworking.registerGlobalReceiver(SkyLending.Lent.TYPE, (payload, context) -> Minecraft.getInstance().execute(() -> lent(payload)));
@@ -100,10 +111,12 @@ public final class SkyLendingClient {
 						e.takeId = SkyLink.pushStoreRequest(Proto.STORE_TAKE, e.sky.formId(), e.lent, 1.0F, -1.0F, 0, e.sky.localId(), e.sky.plugin());
 					}
 				}
-				if (gearLent && !gearAnswered && gearReturnId == 0) {
-					gearReturnId = SkyLink.pushStoreRequest(Proto.STORE_RETURN_GEAR, 0, 1, 1.0F, -1.0F, 0, 0, "");
+				for (Gear g : GEAR) {
+					if (g.lent && !g.answered && g.returnId == 0) {
+						g.returnId = SkyLink.pushStoreRequest(Proto.STORE_RETURN_GEAR, 0, 1, 1.0F, -1.0F, 0, 0, g.name);
+					}
 				}
-				boolean all = gearAnswered && ENTRIES.stream().allMatch(e -> e.answered);
+				boolean all = GEAR.stream().allMatch(g -> g.answered) && ENTRIES.stream().allMatch(e -> e.answered);
 				if (all || now - phaseAt > 6000L) {
 					sendReturn();
 				}
@@ -123,31 +136,33 @@ public final class SkyLendingClient {
 				}
 			}
 		}
-		int gearSlot = -1;
+		List<Integer> gearSlots = new ArrayList<>();
 		if (bench == Proto.BENCH_ENCHANT || bench == 4) {
-			ItemStack held = player.getMainHandItem();
-			if (SkyLending.gearKind(held) != 0 && SkyEnchanting.enchant(held) == null) {
-				gearSlot = inventory.getSelectedSlot();
+			// SkyCraft+ : every weapon and piece of armor in the inventory (the off hand's too), not yet enchanted Skyrim's way; off: the main hand's.
+			boolean all = dev.skycraft.SkySettings.flag("enchanterAllGear", true);
+			for (int i = 0; i < 41 && gearSlots.size() < 32; i++) {
+				if (i >= 36 && i < 40 || !all && i != inventory.getSelectedSlot()) {
+					continue;  // (not what's worn)
+				}
+				ItemStack stack = inventory.getItem(i);
+				if (SkyLending.gearKind(stack) != 0 && SkyEnchanting.enchant(stack) == null) {
+					gearSlots.add(i);
+				}
 			}
 		}
-		if (slots.isEmpty() && gearSlot < 0) {
+		if (slots.isEmpty() && gearSlots.isEmpty()) {
 			return;
 		}
 		lendingSeq = seq;
 		phase = Phase.ASKED;
 		phaseAt = System.currentTimeMillis();
-		ClientPlayNetworking.send(new SkyLending.Lend(seq, slots, gearSlot));
+		ClientPlayNetworking.send(new SkyLending.Lend(seq, slots, gearSlots));
 	}
 
 	/** The server took them: Skyrim gets the same Skyrim things (and the gear's stand-in). */
 	private static void lent(SkyLending.Lent payload) {
 		ENTRIES.clear();
-		gearName = payload.gearName();
-		gearKind = payload.gearKind();
-		gearLendId = gearReturnId = 0;
-		gearLent = false;
-		gearAnswered = gearKind == 0;
-		enchant = null;
+		GEAR.clear();
 		boolean stale = phase != Phase.ASKED || payload.seq() != lendingSeq;
 		lendingSeq = payload.seq();
 		for (SkyLending.Entry e : payload.entries()) {
@@ -159,12 +174,16 @@ public final class SkyLendingClient {
 			}
 			ENTRIES.add(entry);
 		}
-		if (gearKind != 0 && !stale) {
-			gearLendId = SkyLink.pushStoreRequest(Proto.STORE_LEND_GEAR, 0, 1, 1.0F, -1.0F, gearKind, 0, gearName);
+		for (SkyLending.Gear lent : payload.gear()) {
+			Gear g = new Gear(lent.name(), lent.kind());
+			if (!stale) {
+				g.lendId = SkyLink.pushStoreRequest(Proto.STORE_LEND_GEAR, 0, 1, 1.0F, -1.0F, g.kind, 0, g.name);
+			}
+			GEAR.add(g);
 		}
 		phase = Phase.LENT;
 		phaseAt = System.currentTimeMillis();
-		SkyCraft.LOG.info("SkyCraft: lent {} stack(s){} to Skyrim's workbench{}", ENTRIES.size(), gearKind != 0 ? " and " + gearName : "", stale ? " too late: back at once" : "");
+		SkyCraft.LOG.info("SkyCraft: lent {} stack(s){} to Skyrim's workbench{}", ENTRIES.size(), GEAR.isEmpty() ? "" : " and " + GEAR.size() + " piece(s) of gear", stale ? " too late: back at once" : "");
 		if (stale) {
 			startReturn();
 		}
@@ -177,8 +196,10 @@ public final class SkyLendingClient {
 				e.answered = true;
 			}
 		}
-		if (!gearLent) {
-			gearAnswered = true;
+		for (Gear g : GEAR) {
+			if (!g.lent) {
+				g.answered = true;  // (Skyrim never got it: back as it went)
+			}
 		}
 		phase = Phase.RETURNING;
 		phaseAt = System.currentTimeMillis();
@@ -189,9 +210,18 @@ public final class SkyLendingClient {
 		for (Entry e : ENTRIES) {
 			counts.add(e.back);
 		}
-		ClientPlayNetworking.send(new SkyLending.Return(lendingSeq, counts, enchant));
-		SkyCraft.LOG.info("SkyCraft: back from Skyrim's workbench: {}{}", counts, enchant != null ? ", enchanted with " + enchant.effects() : "");
+		List<SkyEnchanting.@Nullable Enchant> enchants = new ArrayList<>();
+		StringBuilder enchanted = new StringBuilder();
+		for (Gear g : GEAR) {
+			enchants.add(g.enchant);
+			if (g.enchant != null) {
+				enchanted.append(", ").append(g.name).append(" enchanted with ").append(g.enchant.effects());
+			}
+		}
+		ClientPlayNetworking.send(new SkyLending.Return(lendingSeq, counts, enchants));
+		SkyCraft.LOG.info("SkyCraft: back from Skyrim's workbench: {}{}", counts, enchanted);
 		ENTRIES.clear();
+		GEAR.clear();
 		phase = Phase.IDLE;
 	}
 
@@ -212,15 +242,17 @@ public final class SkyLendingClient {
 				return true;
 			}
 		}
-		if (id == gearLendId) {
-			gearLent = result.status() == Proto.STORE_OK;
-			return true;
-		}
-		if (id == gearReturnId) {
-			enchant = result.status() == Proto.STORE_OK && !result.name().isEmpty() ? new SkyEnchanting.Enchant(result.formId(), result.name(), result.charge(),
+		for (Gear g : GEAR) {
+			if (id == g.lendId) {
+				g.lent = result.status() == Proto.STORE_OK;
+				return true;
+			}
+			if (id == g.returnId) {
+				g.enchant = result.status() == Proto.STORE_OK && !result.name().isEmpty() ? new SkyEnchanting.Enchant(result.formId(), result.name(), result.charge(),
 				result.health(), result.stat()) : null;
-			gearAnswered = true;
-			return true;
+				g.answered = true;
+				return true;
+			}
 		}
 		return false;
 	}

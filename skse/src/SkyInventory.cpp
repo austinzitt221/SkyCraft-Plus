@@ -864,11 +864,14 @@ namespace skycraft::SkyInventory
 		// with whatever enchantment it got (the Minecraft one takes that on: SkyEnchanting).
 		struct LentGear
 		{
-			RE::TESBoundObject* base = nullptr;
-			std::string         name;
-			std::int32_t        enchantedBefore = 0;  // its enchanted copies when lent (a new one is ours)
+			RE::TESBoundObject*             base = nullptr;
+			std::string                     name;
+			std::vector<RE::ExtraDataList*> enchantedBefore;  // its base's enchanted copies when lent (a new one is ours)
 		};
-		std::optional<LentGear> lentGear;
+		// SkyCraft+ : every enchantable Minecraft thing lent at once, each by its own name; the enchanted copies already
+		// handed back for one of them (two of a base: each its own).
+		std::vector<LentGear>                 lentGear;
+		std::unordered_set<RE::ExtraDataList*> gearClaimed;
 
 		RE::TESBoundObject* GearBase(std::int32_t a_kind)
 		{
@@ -912,19 +915,19 @@ namespace skycraft::SkyInventory
 			return found;
 		}
 
-		std::int32_t EnchantedCopies(RE::PlayerCharacter* a_player, RE::TESBoundObject* a_base)
+		std::vector<RE::ExtraDataList*> EnchantedLists(RE::PlayerCharacter* a_player, RE::TESBoundObject* a_base)
 		{
-			auto         inventory = a_player->GetInventory([a_base](RE::TESBoundObject& a_candidate) { return &a_candidate == a_base; });
-			const auto   it = inventory.find(a_base);
-			std::int32_t n = 0;
+			auto                            inventory = a_player->GetInventory([a_base](RE::TESBoundObject& a_candidate) { return &a_candidate == a_base; });
+			const auto                      it = inventory.find(a_base);
+			std::vector<RE::ExtraDataList*> lists;
 			if (it != inventory.end() && it->second.second && it->second.second->extraLists) {
 				for (auto* list : *it->second.second->extraLists) {
 					if (list && list->GetByType<RE::ExtraEnchantment>()) {
-						n += std::max(1, list->GetCount());
+						lists.push_back(list);
 					}
 				}
 			}
-			return n;
+			return lists;
 		}
 
 		void LendGear(RE::PlayerCharacter* a_player, const proto::SkyStoreRequest& a_request)
@@ -941,7 +944,10 @@ namespace skycraft::SkyInventory
 				return;
 			}
 			ref->extraList.Add(new RE::ExtraTextDisplayData(name.c_str()));
-			lentGear = LentGear{ base, name, EnchantedCopies(a_player, base) };
+			if (lentGear.empty()) {
+				gearClaimed.clear();
+			}
+			lentGear.push_back(LentGear{ base, name, EnchantedLists(a_player, base) });
 			a_player->PickUpObject(ref.get(), 1, false, false);
 			Workbench::Given();
 			logger::info("workbench: {} lent to the enchanter as a {}", name, base->GetName());
@@ -953,28 +959,39 @@ namespace skycraft::SkyInventory
 
 		void ReturnGear(RE::PlayerCharacter* a_player, const proto::SkyStoreRequest& a_request)
 		{
-			if (!lentGear) {
+			// (Which one: by its name (plugin), else the first lent.)
+			const std::string wanted = std::string(a_request.plugin, strnlen(a_request.plugin, sizeof(a_request.plugin)));
+			auto              which = std::ranges::find_if(lentGear, [&](const LentGear& a_gear) { return !wanted.empty() && a_gear.name == wanted + " (Minecraft)"; });
+			if (which == lentGear.end() && !lentGear.empty()) {
+				which = lentGear.begin();
+			}
+			if (which == lentGear.end()) {
 				unsent.push_back(Refusal(a_request.id, proto::kStoreNone));
 				return;
 			}
-			const auto gear = *lentGear;
-			lentGear.reset();
+			const auto gear = *which;
+			lentGear.erase(which);
 			auto               inventory = a_player->GetInventory([&gear](RE::TESBoundObject& a_candidate) { return &a_candidate == gear.base; });
 			const auto         it = inventory.find(gear.base);
 			RE::ExtraDataList* enchanted = nullptr;
 			RE::ExtraDataList* plain = nullptr;
 			if (it != inventory.end() && it->second.second && it->second.second->extraLists) {
-				const bool newOne = EnchantedCopies(a_player, gear.base) > gear.enchantedBefore;
 				for (auto* list : *it->second.second->extraLists) {
-					if (!list) {
-						continue;
-					}
-					if (newOne && list->GetByType<RE::ExtraEnchantment>()) {
-						enchanted = list;  // (the newest is last)
-					} else if (auto* shown = list->GetByType<RE::ExtraTextDisplayData>(); shown && shown->displayName.c_str() && gear.name == shown->displayName.c_str()) {
-						plain = list;
+					if (auto* shown = list ? list->GetByType<RE::ExtraTextDisplayData>() : nullptr; shown && shown->displayName.c_str() && gear.name == shown->displayName.c_str()) {
+						(list->GetByType<RE::ExtraEnchantment>() && !gearClaimed.contains(list) ? enchanted : plain) = list;  // (enchanted keeping its name: that one)
 					}
 				}
+				// Its stand-in by its name gone: it was enchanted (renamed): the newest enchanted copy of its base that
+				// was neither there when it was lent nor handed back for another.
+				const bool named = plain || enchanted;
+				for (auto* list : *it->second.second->extraLists) {
+					if (!named && list && list->GetByType<RE::ExtraEnchantment>() && !gearClaimed.contains(list) && std::ranges::find(gear.enchantedBefore, list) == gear.enchantedBefore.end()) {
+						enchanted = list;  // (the newest is last)
+					}
+				}
+			}
+			if (enchanted) {
+				gearClaimed.insert(enchanted);
 			}
 			proto::SkyStoreResult result = Refusal(a_request.id, enchanted ? proto::kStoreOk : proto::kStoreNone);
 			if (enchanted) {
@@ -1120,8 +1137,16 @@ namespace skycraft::SkyInventory
 			const bool fromLeft = a_event.flags == proto::kSkyItemUnequipLeft;
 			if (auto* spell = form->As<RE::SpellItem>(); spell && !form->Is(RE::FormType::Scroll)) {
 				if (runtime.selectedSpells[fromLeft ? RE::Actor::SlotTypes::kLeftHand : RE::Actor::SlotTypes::kRightHand] == spell) {
+					// (SkyCraft+ : in the other hand too, it was just put there (an off-hand swap): Skyrim's deselect takes it out of both,
+					// so it goes back into that one.)
+					const bool other = runtime.selectedSpells[fromLeft ? RE::Actor::SlotTypes::kRightHand : RE::Actor::SlotTypes::kLeftHand] == spell;
 					a_player->DeselectSpell(spell);
 					logger::info("Skyrim items: {} taken out of the {} hand (its shortcut left the slot)", spell->GetName(), fromLeft ? "left" : "right");
+					if (other) {
+						equip->EquipSpell(a_player, spell, Slot(fromLeft ? RE::DEFAULT_OBJECTS::kRightHandEquip : RE::DEFAULT_OBJECTS::kLeftHandEquip));
+						Game::SpellGiven(!fromLeft);
+						logger::info("Skyrim items: {} kept in the {} hand", spell->GetName(), fromLeft ? "right" : "left");
+					}
 				}
 				return;
 			}
