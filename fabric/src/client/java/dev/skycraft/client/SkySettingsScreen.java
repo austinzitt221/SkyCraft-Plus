@@ -71,6 +71,8 @@ public final class SkySettingsScreen extends Screen {
 	private final Screen parent;
 	private final Map<String, List<Setting>> pages = new LinkedHashMap<>();
 	private final Map<String, String> pending = new LinkedHashMap<>();  // "section\0key" -> value (null section: "")
+	// SkyCraft+ : each row's tooltip, drawn by this screen (Minecraft's put a long one above its row, off the top of the screen).
+	private final List<Map.Entry<net.minecraft.client.gui.components.AbstractWidget, String>> tips = new ArrayList<>();
 	private String page = "";
 	private int scroll;
 	private int seenGeneration = Integer.MIN_VALUE;
@@ -141,13 +143,17 @@ public final class SkySettingsScreen extends Screen {
 		{ "Spawning", "spawnMonsters", "true", "Minecraft's monsters come at Skyrim's night, and in dungeons at any hour." },
 		{ "Spawning", "spawnVillagers", "true", "Villagers in Skyrim's cities and towns, already in a job." },
 		{ "Spawning", "animalCap", "8", "The most Minecraft animals around you at once." },
+		{ "Spawning", "animalSpawnRate", "100", "How fast animals come, in percent (100: a try every second; 50: half as fast; 200: twice). The cap is how many at most." },
 		{ "Spawning", "monsterCap", "6", "The most Minecraft monsters around you at night." },
+		{ "Spawning", "monsterSpawnRate", "100", "How fast monsters come at night and in dungeons, in percent (100: a try every second; 50: half as fast; 200: twice)." },
 		{ "Spawning", "dungeonMonsterCap", "5", "The most Minecraft monsters in a dungeon around you." },
 		{ "Spawning", "villagerCap", "6", "The most villagers in a city around you." },
+		{ "Spawning", "villagerSpawnRate", "100", "How fast villagers come in towns, in percent (100: a try every ten seconds; 50: half as fast; 200: twice)." },
 		{ "Spawning", "wanderingTraders", "true", "Wandering traders come by now and then, with their llamas." },
 		{ "Spawning", "wanderingTraderChance", "10", "The chance (percent) of a wandering trader every two minutes." },
 		{ "Spawning", "caveMonsters", "true", "Monsters in dark caves you've dug into (torches keep them away)." },
 		{ "Spawning", "caveMonsterCap", "6", "The most monsters in caves around you." },
+		{ "Spawning", "caveMonsterSpawnRate", "100", "How fast monsters come in caves you've dug, in percent (100: a try every second; 50: half as fast; 200: twice)." },
 		{ "World", "skyrimStructures", "true", "Minecraft's villages, temples, outposts and the rest in Skyrim's world. Off: they're put away as they are (loot taken stays taken) and come back as they were when on again." },
 		{ "World", "structuresOffMountains", "true", "Structures keep off steep mountainsides (fewer villages, none on a slope)." },
 		{ "World", "deepUnderground", "true", "Real Minecraft underground beneath Skyrim (caves, ores, mineshafts, strongholds). Taken up when the world next loads." },
@@ -156,6 +162,9 @@ public final class SkySettingsScreen extends Screen {
 		{ "World", "lootChests", "true", "Minecraft loot chests in Skyrim's dungeons, caves and camps." },
 		{ "World", "skyrimBlockTextureBlocks", "8", "How many blocks one Skyrim texture spreads over on the Skyrim blocks you place (more: zoomed out further). Blocks redrawn after take it up." },
 		{ "World", "skyrimPatches", "true", "Little patches of Minecraft grass, flowers and trees in Skyrim's countryside." },
+		{ "World", "patchTrees", "true", "Minecraft trees among the patches (on new ground; what's there stays)." },
+		{ "World", "patchFlowers", "true", "Minecraft flowers among the patches (on new ground; what's there stays)." },
+		{ "World", "patchGrass", "true", "Minecraft grass, ferns, bushes and leaf litter among the patches (on new ground; what's there stays)." },
 		{ "World", "destruction", "true", "Mining Skyrim's ground and rocks, and explosions, dig into Skyrim's world (holes already dug stay)." },
 		{ "World", "holdMobsWithoutGround", "true", "Mobs are held still where Skyrim's ground isn't known yet, so they don't fall out of the world." },
 		{ "World", "mobWanderFix", "true", "Mobs don't pile up on high spots when they wander." },
@@ -165,6 +174,7 @@ public final class SkySettingsScreen extends Screen {
 		{ "Items & combat", "skyrimItemsInMinecraft", "true", "Skyrim things dragged into your Minecraft inventory leave Skyrim's (no doubles, no weight there; weapons, arrows and armor go back once in your hand or an armor slot); drop them on the Skyrim panel to put them back. Off: shortcuts, as before." },
 		{ "Items & combat", "crossCrafting", "true", "Skyrim materials count in Minecraft's recipes (Skyrim iron makes a Minecraft sword)." },
 		{ "Items & combat", "skyrimWorkbenches", "true", "Skyrim's forge, cooking pot, enchanter... see your Minecraft materials (and the weapon in hand) while you use them." },
+		{ "Items & combat", "enchanterAllGear", "true", "At Skyrim's enchanter, every Minecraft weapon and piece of armor in your inventory can be enchanted (worn armor stays on). Off: only what's in your hand." },
 		{ "Items & combat", "arrowsAcrossGames", "true", "Minecraft bows shoot Skyrim arrows and Skyrim bows Minecraft arrows (the off hand's arrows win)." },
 		{ "Items & combat", "skyrimWeaponsBreakBlocks", "true", "Skyrim weapons break Minecraft blocks (pickaxes and wood axes as tools)." },
 		{ "Items & combat", "skyrimFightsMobs", "true", "Your followers fight Minecraft's monsters; anyone a mob hurts hits back." },
@@ -202,6 +212,7 @@ public final class SkySettingsScreen extends Screen {
 
 	@Override
 	protected void init() {
+		this.tips.clear();
 		if (this.pages.isEmpty() || SkyLink.settingsGeneration() != this.seenGeneration) {
 			this.reload();
 		}
@@ -251,13 +262,13 @@ public final class SkySettingsScreen extends Screen {
 		String tip = (setting.description().isEmpty() ? setting.key() : setting.description())
 			+ (setting.later() ? (setting.section() != null ? "\n(Taken up when Skyrim next starts.)" : "\n(Taken up when the world next loads.)") : "");
 		StringWidget label = row.addChild(new StringWidget(170, 20, Component.literal(setting.label() + (setting.later() ? " *" : "")), this.font));
-		label.setTooltip(Tooltip.create(Component.literal(tip)));
+		this.tips.add(Map.entry(label, tip));
 		String id = (setting.section() == null ? "" : setting.section()) + "\0" + setting.key();
 		if (setting.isFlag()) {
 			boolean now = this.pending.containsKey(id) ? new Setting(setting.section(), setting.key(), this.pending.get(id), "", false).flag() : setting.flag();
 			CycleButton<Boolean> toggle = row.addChild(CycleButton.onOffBuilder(now).displayOnlyValue().create(0, 0, 120, 20, Component.literal(setting.label()),
 				(button, value) -> this.change(setting, value ? (setting.section() != null ? "1" : "true") : (setting.section() != null ? "0" : "false"), button)));
-			toggle.setTooltip(Tooltip.create(Component.literal(tip)));
+			this.tips.add(Map.entry(toggle, tip));
 		} else {
 			EditBox box = row.addChild(new EditBox(this.font, 120, 20, Component.literal(setting.label())));
 			box.setMaxLength(170);
@@ -269,7 +280,19 @@ public final class SkySettingsScreen extends Screen {
 					this.pending.remove(id);
 				}
 			});
-			box.setTooltip(Tooltip.create(Component.literal(tip)));
+			this.tips.add(Map.entry(box, tip));
+		}
+	}
+
+	@Override
+	public void extractRenderState(net.minecraft.client.gui.GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+		super.extractRenderState(graphics, mouseX, mouseY, partialTick);
+		for (var tip : this.tips) {
+			if (tip.getKey().visible && tip.getKey().isMouseOver(mouseX, mouseY)) {
+				// (By the mouse, kept on the screen: Minecraft's default placing.)
+				graphics.setTooltipForNextFrame(this.font, this.font.split(Component.literal(tip.getValue()), Math.min(260, this.width / 2)), mouseX, mouseY);
+				break;
+			}
 		}
 	}
 
