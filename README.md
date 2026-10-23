@@ -91,10 +91,9 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   every Minecraft enchantment too.
 - **Arrows across the games:** Minecraft bows shoot Skyrim arrows and Skyrim bows Minecraft
   arrows, each looking like itself, and they can be picked up again (`arrowsAcrossGames`).
-- **Every shout works in Minecraft mode:** Ice Form and Disarm, Dismay, Kyne's Peace, Marked for
-  Death, Become Ethereal, Slow Time, Aura Whisper (Minecraft mobs glow), Dragon Aspect, Storm
-  Call and more, on Minecraft's mobs and on you. Minecraft's beds move Skyrim's clock to the
-  morning (`bedsInSkyrim`).
+- **Shouts fixed in Minecraft mode:** Slow Time, Become Ethereal, Animal Allegiance, Call Dragon
+  and Aura Whisper (Minecraft mobs glow). Minecraft's beds move Skyrim's clock to the morning
+  (`bedsInSkyrim`).
 - **Silk touch mines Skyrim's ground and rock** as blocks in that very Skyrim texture, to build
   with (`silkTouchSkyrimGeo`). The **restoration brush** (stick, cobblestone and dirt) puts back
   what you dug out of Skyrim's world.
