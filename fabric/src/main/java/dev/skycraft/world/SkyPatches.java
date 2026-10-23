@@ -224,8 +224,11 @@ public final class SkyPatches {
 							RETRY_AT.remove(key);
 						}
 						if (on != 0 && land) {
-							decide(level, world, ax, az, hy, on);
-							now |= on;
+							if (decide(level, world, ax, az, hy, on)) {
+								now |= on;
+							} else {
+								RETRY_AT.put(key, level.getGameTime() + 40);  // (no land in reach of the host's height there: tried again, not given up on)
+							}
 						}
 						done(key, now);
 						if (gone > 0 && logged++ < 40) {
