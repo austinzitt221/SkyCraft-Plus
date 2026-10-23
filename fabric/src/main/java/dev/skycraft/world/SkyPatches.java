@@ -160,7 +160,7 @@ public final class SkyPatches {
 	 * by, popped in round them).
 	 */
 	private static void tick(MinecraftServer server) {
-		if (!SkyWorld.valid() || !SkyCollision.active() || !SkyDig.destruction || SkyWorld.interior() || SkyWorld.settlement() || SkyWorld.town()) {
+		if (!SkyWorld.valid() || !SkyCollision.active() || !SkyDig.destruction || SkyWorld.interior()) {
 			return;
 		}
 		ServerPlayer host = null;
@@ -185,6 +185,9 @@ public final class SkyPatches {
 			}
 		}
 		int wanted = wanted();
+		// SkyCraft+ : in a town or settlement none are put on new ground; taken away (or given back where there were some) they are:
+		// stood in one, kinds turned off went nowhere till the player left it.
+		boolean inTown = SkyWorld.settlement() || SkyWorld.town();
 		long began = System.nanoTime();
 		int decided = 0;
 		int swept = 0;
@@ -239,7 +242,7 @@ public final class SkyPatches {
 						}
 						continue;
 					}
-					if (!sent(ax, hy, az)) {
+					if (inTown || !sent(ax, hy, az)) {
 						continue;
 					}
 					Integer tried = LANDLESS.get(key);
