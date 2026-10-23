@@ -153,6 +153,14 @@ namespace skycraft::Workbench
 		// Done: its menu came and went (MenuSink, mostly), or never came (walked away, a menu-less bench).
 		if ((menuSeen && !open) || (!menuSeen && sinceActivated > 8.0f)) {
 			logger::info("workbench: left (its menu {})", menuSeen ? "closed" : "never opened");
+			// SkyCraft+ : its menu never came, and the player is still at it: they'd stay stuck there (Skyrim keeps a player
+			// in furniture): out they come.
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			if (!menuSeen && player && player->AsActorState()->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal && !player->IsOnMount()) {
+				logger::warn("workbench: the player was still at it (state {}); let go", static_cast<int>(player->AsActorState()->GetSitSleepState()));
+				player->NotifyAnimationGraph("IdleForceDefaultState");
+				player->AsActorState()->actorState1.sitSleepState = RE::SIT_SLEEP_STATE::kNormal;
+			}
 			bench = 0;
 			return;
 		}

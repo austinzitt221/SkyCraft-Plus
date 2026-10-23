@@ -1562,6 +1562,23 @@ namespace skycraft
 				                                         "SkyCraft: Minecraft controls. Press " + key + " for Skyrim.";
 				RE::SendHUDMessage::ShowHUDMessage(note.c_str());
 			}
+			// SkyCraft+ : furniture never got into. Half way to sitting, sleeping or standing up for long (an enchanter whose
+			// menu never opened): Skyrim kept the player, stuck where they stood, till the game was quit. Let go of it.
+			{
+				using Sit = RE::SIT_SLEEP_STATE;
+				static float stuckFor = 0.0f;
+				const auto   sit = a_player->AsActorState()->GetSitSleepState();
+				const bool   between = sit == Sit::kWantToSit || sit == Sit::kWaitingForSitAnim || sit == Sit::kWantToStand || sit == Sit::kWantToSleep ||
+				                     sit == Sit::kWaitingForSleepAnim || sit == Sit::kWantToWake;
+				auto*        ui = RE::UI::GetSingleton();
+				stuckFor = between && !(ui && ui->GameIsPaused()) ? stuckFor + a_delta : 0.0f;
+				if (stuckFor > 8.0f) {
+					logger::warn("furniture: the player stuck half way into it (state {}) for 8 s; let go", static_cast<int>(sit));
+					a_player->NotifyAnimationGraph("IdleForceDefaultState");
+					a_player->AsActorState()->actorState1.sitSleepState = Sit::kNormal;
+					stuckFor = 0.0f;
+				}
+			}
 			static const char* takeover = nullptr;
 			const char*        takeoverNow = a_player->IsDead() ? nullptr : SkyrimTakeover(a_player);
 			if ((takeoverNow != nullptr) != (takeover != nullptr)) {
