@@ -69,6 +69,9 @@ public final class SkySpawner {
 	private static int wanderingTraderChance = 10;
 	private static int villagerCap = 6; // within VILLAGER_RANGE: a city's worth, a few streets apart
 	private static final int VILLAGER_RANGE = 64;
+	// SkyCraft+ : how often each tries, in percent of the usual (a try a second; villagers every ten): 50 half as often,
+	// 200 twice. The caps above are how many at most; these how fast they come up to them.
+	private static int animalRate = 100, monsterRate = 100, villagerRate = 100, caveMonsterRate = 100;
 	private static final List<ResourceKey<VillagerProfession>> JOBS = List.of(VillagerProfession.ARMORER, VillagerProfession.BUTCHER,
 		VillagerProfession.CARTOGRAPHER, VillagerProfession.CLERIC, VillagerProfession.FARMER, VillagerProfession.FISHERMAN,
 		VillagerProfession.FLETCHER, VillagerProfession.LEATHERWORKER, VillagerProfession.LIBRARIAN, VillagerProfession.MASON,
@@ -112,6 +115,10 @@ public final class SkySpawner {
 		villagerCap = parseInt(p.getProperty("villagerCap"), villagerCap);
 		wanderingTraders = Boolean.parseBoolean(p.getProperty("wanderingTraders", "true").trim());
 		wanderingTraderChance = parseInt(p.getProperty("wanderingTraderChance"), wanderingTraderChance);
+		animalRate = parseInt(p.getProperty("animalSpawnRate"), 100);  // SkyCraft+
+		monsterRate = parseInt(p.getProperty("monsterSpawnRate"), 100);
+		villagerRate = parseInt(p.getProperty("villagerSpawnRate"), 100);
+		caveMonsterRate = parseInt(p.getProperty("caveMonsterSpawnRate"), 100);
 		SkyCraft.LOG.info("SkyCraft: spawning animals {} (up to {}), monsters {} (up to {}, {} in dungeons), villagers in towns {} (up to {})", spawnAnimals, animalCap,
 			spawnMonsters, monsterCap, dungeonMonsterCap, spawnVillagers, villagerCap);
 	}
@@ -145,25 +152,31 @@ public final class SkySpawner {
 		}
 		RandomSource random = level.getRandom();
 		boolean outdoors = !SkyWorld.interior();
-		if (spawnAnimals && outdoors && count(level, host, MobCategory.CREATURE) < animalCap) {
+		for (int t = tries(random, animalRate); t > 0 && spawnAnimals && outdoors && count(level, host, MobCategory.CREATURE) < animalCap; t--) {
 			trySpawn(level, host, random, false);
 		}
 		if (wanderingTraders && outdoors && server.getTickCount() % 2400 == 0 && random.nextInt(100) < wanderingTraderChance) {
 			trySpawnTrader(level, host, random);
 		}
-		if (spawnVillagers && outdoors && SkyWorld.town() && server.getTickCount() % 200 == 0 && countVillagers(level, host) < villagerCap) {
+		for (int t = server.getTickCount() % 200 == 0 ? tries(random, villagerRate) : 0; t > 0 && spawnVillagers && outdoors && SkyWorld.town() && countVillagers(level, host) < villagerCap;
+			t--) {
 			trySpawnVillager(level, host, random);
 		}
 		boolean monsterTime = SkyWorld.dungeon() || (outdoors && SkyWorld.night());
 		boolean inDungeon = !outdoors || SkyWorld.dungeon();
 		int cap = inDungeon ? dungeonMonsterCap : monsterCap;
-		if (spawnMonsters && monsterTime && !SkyWorld.settlement() && count(level, host, MobCategory.MONSTER) < cap) {
+		for (int t = tries(random, monsterRate); t > 0 && spawnMonsters && monsterTime && !SkyWorld.settlement() && count(level, host, MobCategory.MONSTER) < cap; t--) {
 			trySpawn(level, host, random, true);
 		}
 		// SkyCraft+ : the underground. Its caves have monsters of their own, at any hour.
-		if (spawnMonsters && SkyUnderground.caveMonsterCap() > 0) {
+		for (int t = tries(random, caveMonsterRate); t > 0 && spawnMonsters && SkyUnderground.caveMonsterCap() > 0; t--) {
 			SkyCaves.tick(level, host, random, SkyUnderground.caveMonsterCap());
 		}
+	}
+
+	/** SkyCraft+ : how many tries this time for a rate in percent (100: one; 150: one, and half the time two; 0: none). */
+	private static int tries(RandomSource random, int percent) {
+		return percent / 100 + (random.nextInt(100) < percent % 100 ? 1 : 0);
 	}
 
 	/** Minecraft's clock and weather follow Skyrim's (its time doesn't run on its own here). */
