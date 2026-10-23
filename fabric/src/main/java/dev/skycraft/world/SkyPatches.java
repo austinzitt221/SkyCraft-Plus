@@ -69,6 +69,10 @@ public final class SkyPatches {
 	private static final int RADIUS = 10; // areas round the host (as far as Skyrim sends its ground: iGroundRegions, at most ten)
 	private static final int TRIES = 24; // columns looked at per area
 	private static final int PER_TICK = 8; // areas decided a tick at most
+	// SkyCraft+ : kinds turned off are taken away further out (Minecraft's blocks only: no Skyrim ground needed), more a tick.
+	private static final int SWEEP_RADIUS = 16, SWEEPS_PER_TICK = 32;
+	private static boolean sweepIncomplete;  // (the last sweep met a tree going into a place not loaded)
+	private static final java.util.Map<Long, Long> RETRY_AT = new java.util.HashMap<>();  // area -> the game time it's swept again
 	private static final long BUDGET = 3_000_000L; // nanoseconds a tick
 
 	private record Kind(Block sapling, TreeGrower grower, boolean twoByTwo, int weight) {
@@ -183,7 +187,8 @@ public final class SkyPatches {
 		int wanted = wanted();
 		long began = System.nanoTime();
 		int decided = 0;
-		for (int r = 0; r <= RADIUS; r++) {
+		int swept = 0;
+		for (int r = 0; r <= SWEEP_RADIUS; r++) {
 			for (int dx = -r; dx <= r; dx++) {
 				for (int dz = -r; dz <= r; dz++) {
 					if (Math.max(Math.abs(dx), Math.abs(dz)) != r) {
@@ -192,25 +197,46 @@ public final class SkyPatches {
 					int ax = hx + dx, az = hz + dz;
 					long key = key(world, ax, az);
 					Integer has = DONE.get(key);
-					if (has != null ? has == wanted : wanted == 0) {
+					if (has != null ? has == wanted : wanted == 0 || r > RADIUS) {
 						continue;  // (as wanted; or none wanted, not decided yet: decided when some are)
 					}
-					if (!sent(ax, hy, az) || !level.hasChunk((ax * CELL) >> 4, (az * CELL) >> 4)) {
+					if (!level.hasChunk((ax * CELL) >> 4, (az * CELL) >> 4)) {
 						continue;
 					}
 					if (has != null) {
-						// SkyCraft+ : the kinds changed since: the ones turned off go, the ones turned on come.
-						int gone = sweep(level, world, ax, az, hy, has & ~wanted);
-						if ((wanted & ~has) != 0) {
-							decide(level, world, ax, az, hy, wanted & ~has);
+						// SkyCraft+ : the kinds changed since: the ones turned off go (wherever Minecraft has the place, out past
+						// where Skyrim sends its ground), the ones turned on come (only where it has: they stand on it).
+						int off = has & ~wanted, on = wanted & ~has;
+						boolean land = r <= RADIUS && sent(ax, hy, az);
+						if (off == 0 && !land) {
+							continue;
 						}
-						done(key, wanted);
+						Long retry = RETRY_AT.get(key);
+						if (retry != null && level.getGameTime() < retry) {
+							continue;
+						}
+						sweepIncomplete = false;
+						int gone = sweep(level, world, ax, az, hy, off);
+						int now = sweepIncomplete ? has : has & wanted;  // (a tree into a place not loaded: tried again later)
+						if (sweepIncomplete) {
+							RETRY_AT.put(key, level.getGameTime() + 100);
+						} else {
+							RETRY_AT.remove(key);
+						}
+						if (on != 0 && land) {
+							decide(level, world, ax, az, hy, on);
+							now |= on;
+						}
+						done(key, now);
 						if (gone > 0 && logged++ < 40) {
-							SkyCraft.LOG.info("SkyCraft: Minecraft patches at {} {}: {} block(s) taken away (kinds {} -> {})", ax * CELL, az * CELL, gone, has, wanted);
+							SkyCraft.LOG.info("SkyCraft: Minecraft patches at {} {}: {} block(s) taken away (kinds {} -> {})", ax * CELL, az * CELL, gone, has, now);
 						}
-						if (++decided >= PER_TICK || System.nanoTime() - began > BUDGET) {
+						if (++swept >= SWEEPS_PER_TICK || System.nanoTime() - began > BUDGET) {
 							return;
 						}
+						continue;
+					}
+					if (!sent(ax, hy, az)) {
 						continue;
 					}
 					Integer tried = LANDLESS.get(key);
@@ -261,7 +287,7 @@ public final class SkyPatches {
 			return 0;
 		}
 		int gone = 0;
-		int lo = Math.max(level.getMinY(), hostY - 26), hi = Math.min(level.getMaxY() - 1, hostY + 18);
+		int lo = Math.max(level.getMinY(), hostY - 48), hi = Math.min(level.getMaxY() - 1, hostY + 32);  // (hills and valleys round the host too)
 		BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
 		for (int x = ax * CELL; x < ax * CELL + CELL; x++) {
 			for (int z = az * CELL; z < az * CELL + CELL; z++) {
@@ -300,6 +326,7 @@ public final class SkyPatches {
 		open.add(base.above());
 		seen.add(base.above());
 		List<BlockPos> tree = new ArrayList<>();
+		boolean partial = false;
 		while (!open.isEmpty() && tree.size() < 3000) {
 			BlockPos p = open.poll();
 			BlockState s = level.getBlockState(p);
@@ -316,12 +343,20 @@ public final class SkyPatches {
 					for (int dz = -1; dz <= 1; dz++) {
 						BlockPos q = p.offset(dx, dy, dz);
 						if (Math.abs(q.getX() - base.getX()) <= 12 && Math.abs(q.getZ() - base.getZ()) <= 12 && q.getY() > base.getY() - 6 && q.getY() < base.getY() + 40
-							&& level.isLoaded(q) && seen.add(q)) {
-							open.add(q);
+							&& seen.add(q)) {
+							if (level.isLoaded(q)) {
+								open.add(q);
+							} else {
+								partial = true;
+							}
 						}
 					}
 				}
 			}
+		}
+		if (partial) {
+			sweepIncomplete = true;
+			return 0;  // (part of it in a place not loaded: left whole till it is)
 		}
 		// From the top down (nothing left hanging to drop), then the blocks it grew from (a two by two's four), Skyrim's ground back.
 		tree.sort((a, b) -> Integer.compare(b.getY(), a.getY()));
