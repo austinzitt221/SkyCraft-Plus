@@ -48,13 +48,15 @@ import org.jspecify.annotations.Nullable;
  * straight on Skyrim's ground (VegetationBlockMixin). Each eight by eight blocks is decided once,
  * as soon as the host's Skyrim has sent its ground (some fifty blocks out: iGroundRegions), and kept with the world
  * (skycraft-patches-8.txt); not in towns and settlements, nor with Skyrim destruction off. Setting:
- * skyrimPatches in config/skycraft.properties.
+ * skyrimPatches in config/skycraft.properties (SkyCraft+ : and patchTrees, patchFlowers, patchGrass, each kind on its own;
+ * grass with the leaf litter).
  */
 public final class SkyPatches {
 	private SkyPatches() {
 	}
 
 	private static boolean enabled = true;
+	private static boolean trees = true, flowers = true, grass = true;  // SkyCraft+ : each kind on its own
 	private static final Set<Long> DONE = new HashSet<>();
 	private static final java.util.Map<Long, Integer> LANDLESS = new java.util.HashMap<>(); // areas with no land in reach: the host's height then
 	private static @Nullable Path file;
@@ -85,7 +87,12 @@ public final class SkyPatches {
 		Blocks.PINK_PETALS, Blocks.SUNFLOWER, Blocks.LILAC, Blocks.ROSE_BUSH, Blocks.PEONY };
 
 	public static void init() {
-		dev.skycraft.SkySettings.onChange(() -> enabled = dev.skycraft.SkySettings.flag("skyrimPatches", true));  // SkyCraft+ : the settings screen
+		dev.skycraft.SkySettings.onChange(() -> {  // SkyCraft+ : the settings screen
+			enabled = dev.skycraft.SkySettings.flag("skyrimPatches", true);
+			trees = dev.skycraft.SkySettings.flag("patchTrees", true);
+			flowers = dev.skycraft.SkySettings.flag("patchFlowers", true);
+			grass = dev.skycraft.SkySettings.flag("patchGrass", true);
+		});
 		ServerLifecycleEvents.SERVER_STARTED.register(SkyPatches::load);
 		ServerTickEvents.END_SERVER_TICK.register(SkyPatches::tick);
 	}
@@ -101,6 +108,9 @@ public final class SkyPatches {
 			}
 		}
 		enabled = Boolean.parseBoolean(p.getProperty("skyrimPatches", "true").trim());
+		trees = Boolean.parseBoolean(p.getProperty("patchTrees", "true").trim());  // SkyCraft+
+		flowers = Boolean.parseBoolean(p.getProperty("patchFlowers", "true").trim());
+		grass = Boolean.parseBoolean(p.getProperty("patchGrass", "true").trim());
 		DONE.clear();
 		logged = 0;
 		file = server.getWorldPath(LevelResource.ROOT).resolve("skycraft-patches-8.txt");
@@ -209,7 +219,7 @@ public final class SkyPatches {
 	/** Decides an area's patches; false if none of its land was in reach (nothing decided). */
 	private static boolean decide(ServerLevel level, int world, int ax, int az, int hostY) {
 		RandomSource random = RandomSource.create(level.getSeed() ^ ChunkPos.pack(ax, az) * 0x5DEECE66DL ^ world ^ 0x8L);
-		int trees = 0, grass = 0, flowers = 0, litter = 0;
+		int treesMade = 0, grassMade = 0, flowersMade = 0, litter = 0;
 		int wantGrass = 2 + random.nextInt(6), wantFlowers = random.nextBoolean() ? 1 + random.nextInt(3) : 0;
 		int treeRoll = random.nextInt(100);
 		boolean anyLand = false;
@@ -225,18 +235,18 @@ public final class SkyPatches {
 			int ground = material[0];
 			int logs = logsNear(x, z, h);
 			boolean forest = logs != Proto.DIG_NONE;
-			if (trees == 0 && treeRoll < (forest ? 25 : 3) && (ground == Proto.DIG_GRASS || ground == Proto.DIG_SNOW) && clearForTree(x, z, h)) {
+			if (treesMade == 0 && treeRoll < (forest ? 25 : 3) && (ground == Proto.DIG_GRASS || ground == Proto.DIG_SNOW) && clearForTree(x, z, h)) {
 				Kind kind = ground == Proto.DIG_SNOW || logs == Proto.DIG_SPRUCE_LOG ? pick(BY_SPRUCE, random)
 					: !forest ? pick(IN_THE_OPEN, random) : logs == Proto.DIG_BIRCH_LOG ? pick(BY_BIRCH, random) : pick(BY_OAK, random);
-				if (tree(level, world, x, z, h, kind, random)) {
-					trees++;
+				if (trees && tree(level, world, x, z, h, kind, random)) {
+					treesMade++;
 					continue;
 				}
 			}
 			if (forest && litter < 3 && (ground == Proto.DIG_GRASS || ground == Proto.DIG_DIRT) && random.nextBoolean()) {
 				BlockState leaves = Blocks.LEAF_LITTER.defaultBlockState().trySetValue(SegmentableBlock.AMOUNT, 1 + random.nextInt(4))
 					.trySetValue(BlockStateProperties.HORIZONTAL_FACING, Direction.Plane.HORIZONTAL.getRandomDirection(random));
-				if (rough <= 0.2 && plant(level, x, z, h, leaves, true)) {
+				if (rough <= 0.2 && grass && plant(level, x, z, h, leaves, true)) {
 					litter++;
 				}
 				continue;
@@ -244,22 +254,22 @@ public final class SkyPatches {
 			if (ground != Proto.DIG_GRASS) {
 				continue;
 			}
-			if (flowers < wantFlowers && random.nextInt(3) == 0) {
-				if (plant(level, x, z, h, flower(random), false)) {
-					flowers++;
+			if (flowersMade < wantFlowers && random.nextInt(3) == 0) {
+				if (flowers && plant(level, x, z, h, flower(random), false)) {
+					flowersMade++;
 				}
-			} else if (grass < wantGrass) {
+			} else if (grassMade < wantGrass) {
 				// Plain grass, short and tall, a third as thick as the rest (it was everywhere).
 				BlockState plant = grassy(random, forest, logs);
 				if ((plant.is(Blocks.SHORT_GRASS) || plant.is(Blocks.TALL_GRASS)) && random.nextInt(3) != 0) {
-					grass++;
-				} else if (plant(level, x, z, h, plant, false)) {
-					grass++;
+					grassMade++;
+				} else if (grass && plant(level, x, z, h, plant, false)) {
+					grassMade++;
 				}
 			}
 		}
-		if (trees + grass + flowers + litter > 0 && logged++ < 40) {
-			SkyCraft.LOG.info("SkyCraft: Minecraft patches at {} {}: {} tree(s), {} grass, {} flower(s), {} leaf litter", ax * CELL, az * CELL, trees, grass, flowers, litter);
+		if (treesMade + grassMade + flowersMade + litter > 0 && logged++ < 40) {
+			SkyCraft.LOG.info("SkyCraft: Minecraft patches at {} {}: {} tree(s), {} grass, {} flower(s), {} leaf litter", ax * CELL, az * CELL, treesMade, grassMade, flowersMade, litter);
 		}
 		return anyLand;
 	}
