@@ -731,6 +731,11 @@ namespace skycraft
 			if (a_player->AsActorState()->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal) {
 				return "furniture";
 			}
+			// SkyCraft+ : from the moment a workbench is activated: a weapon in hand is put away first (a second), and Minecraft
+			// driving the player meanwhile kept Skyrim from walking them in: the sitting never started.
+			if (Workbench::Kind() != 0) {
+				return "workbench";
+			}
 			if (a_player->IsOnMount()) {
 				return "riding";
 			}
