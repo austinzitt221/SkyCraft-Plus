@@ -2030,7 +2030,10 @@ namespace skycraft
 							cameraCheckPending = true;  // measured in Present, after this frame rendered
 						}
 					}
-					if (fighting && weapons == RE::WEAPON_STATE::kSheathed) {
+					// (SkyCraft+ : not while getting into furniture: Skyrim puts the weapon away first, and drawn again each frame the
+					// sitting never started (an enchanter with a Skyrim sword in hand).)
+					const bool settling = a_player->AsActorState()->GetSitSleepState() != RE::SIT_SLEEP_STATE::kNormal || Workbench::Kind() != 0;
+					if (fighting && !settling && weapons == RE::WEAPON_STATE::kSheathed) {
 						a_player->DrawWeaponMagicHands(true);
 					} else if (!fighting && weapons == RE::WEAPON_STATE::kDrawn) {
 						a_player->DrawWeaponMagicHands(false);
