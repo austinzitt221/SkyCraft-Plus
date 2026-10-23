@@ -1020,10 +1020,44 @@ namespace skycraft::SkyInventory
 			} else {
 				logger::info("workbench: {} came back as it went", gear.name);
 			}
+			// SkyCraft+ : not found by its name: any plain stand-in of its base that no other lent one is (none left behind),
+			// and what the base's copies are called, for the log.
+			if (!enchanted && !plain && it != inventory.end() && it->second.second && it->second.second->extraLists) {
+				std::string names;
+				for (auto* list : *it->second.second->extraLists) {
+					auto*            shown = list ? list->GetByType<RE::ExtraTextDisplayData>() : nullptr;
+					const std::string name = shown && shown->displayName.c_str() ? shown->displayName.c_str() : "";
+					names += (names.empty() ? "" : ", ") + (name.empty() ? std::string("(no name)") : name);
+					const bool another = std::ranges::any_of(lentGear, [&](const LentGear& a_other) { return a_other.name == name; });
+					if (!plain && !another && name.ends_with(" (Minecraft)") && !list->GetByType<RE::ExtraEnchantment>()) {
+						plain = list;
+					}
+				}
+				logger::warn("workbench: {} not found by its name; its kind's copies: {}{}", gear.name, names, plain ? " (a stand-in of its kind taken instead)" : "");
+			}
 			if (auto* list = enchanted ? enchanted : plain) {
 				a_player->RemoveItem(gear.base, 1, RE::ITEM_REMOVE_REASON::kRemove, list, nullptr);
 			} else {
 				logger::warn("workbench: {}'s stand-in wasn't found (sold? dropped?)", gear.name);
+			}
+			// SkyCraft+ : the last one back: any plain stand-in still about (left behind before) goes too.
+			if (lentGear.empty()) {
+				std::vector<std::pair<RE::TESBoundObject*, RE::ExtraDataList*>> leftover;
+				for (auto& [object, data] : a_player->GetInventory()) {
+					if (!data.second || !data.second->extraLists) {
+						continue;
+					}
+					for (auto* list : *data.second->extraLists) {
+						auto* shown = list ? list->GetByType<RE::ExtraTextDisplayData>() : nullptr;
+						if (shown && shown->displayName.c_str() && std::string_view(shown->displayName.c_str()).ends_with(" (Minecraft)") && !list->GetByType<RE::ExtraEnchantment>()) {
+							leftover.emplace_back(object, list);
+						}
+					}
+				}
+				for (auto& [object, list] : leftover) {
+					logger::info("workbench: a stand-in left behind before taken away ({})", list->GetByType<RE::ExtraTextDisplayData>()->displayName.c_str());
+					a_player->RemoveItem(object, 1, RE::ITEM_REMOVE_REASON::kRemove, list, nullptr);
+				}
 			}
 			unsent.push_back(result);
 		}

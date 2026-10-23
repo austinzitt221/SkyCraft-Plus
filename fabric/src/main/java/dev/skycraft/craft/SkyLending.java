@@ -223,12 +223,12 @@ public final class SkyLending {
 			if (kind == 0 || SkyEnchanting.enchant(held) != null) {
 				continue;
 			}
-			// Each by a name of its own in Skyrim (two of a kind: "#2"), so the one enchanted is known.
+			// Each by a name of its own in Skyrim (two of a kind: "2"), so the one enchanted is known.
 			String name = held.getHoverName().getString();
 			name = name.length() > 44 ? name.substring(0, 44) : name;
 			String unique = name;
 			for (int n = 2; !names.add(unique); n++) {
-				unique = name + " #" + n;
+				unique = name + " " + n;
 			}
 			gear.add(held.copy());
 			lentGear.add(new Gear(unique, kind));
