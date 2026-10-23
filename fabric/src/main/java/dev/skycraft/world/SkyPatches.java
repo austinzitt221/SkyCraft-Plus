@@ -49,7 +49,9 @@ import org.jspecify.annotations.Nullable;
  * as soon as the host's Skyrim has sent its ground (some fifty blocks out: iGroundRegions), and kept with the world
  * (skycraft-patches-8.txt); not in towns and settlements, nor with Skyrim destruction off. Setting:
  * skyrimPatches in config/skycraft.properties (SkyCraft+ : and patchTrees, patchFlowers, patchGrass, each kind on its own;
- * grass with the leaf litter).
+ * grass with the leaf litter). SkyCraft+ : each area keeps which kinds it has; a kind turned off goes from the areas
+ * that have it as they come in reach (sweep: found by what only patches are, a plant on Skyrim's ground with nothing
+ * under it, a tree grown from a block cut into it), and one turned back on comes back to them.
  */
 public final class SkyPatches {
 	private SkyPatches() {
@@ -57,7 +59,8 @@ public final class SkyPatches {
 
 	private static boolean enabled = true;
 	private static boolean trees = true, flowers = true, grass = true;  // SkyCraft+ : each kind on its own
-	private static final Set<Long> DONE = new HashSet<>();
+	private static final java.util.Map<Long, Integer> DONE = new java.util.HashMap<>();  // SkyCraft+ : area -> the kinds it has (K_TREES, K_FLOWERS, K_GRASS)
+	private static final int K_TREES = 1, K_FLOWERS = 2, K_GRASS = 4;
 	private static final java.util.Map<Long, Integer> LANDLESS = new java.util.HashMap<>(); // areas with no land in reach: the host's height then
 	private static @Nullable Path file;
 	private static int logged;
@@ -118,27 +121,30 @@ public final class SkyPatches {
 			try {
 				for (String line : Files.readAllLines(file)) {
 					if (!line.isBlank()) {
-						DONE.add(Long.parseLong(line.trim()));
+						// ("area kinds"; the last line for an area wins. Before SkyCraft+ : "area", with everything.)
+						String[] parts = line.trim().split(" ");
+						DONE.put(Long.parseLong(parts[0]), parts.length > 1 ? Integer.parseInt(parts[1]) : K_TREES | K_FLOWERS | K_GRASS);
 					}
 				}
 			} catch (IOException | NumberFormatException e) {
 				SkyCraft.LOG.warn("SkyCraft: couldn't read {}: {}", file, e.toString());
 			}
 		}
-		SkyCraft.LOG.info("SkyCraft: Minecraft patches in Skyrim's ground {} ({} areas done)", enabled ? "on" : "off", DONE.size());
+		SkyCraft.LOG.info("SkyCraft: Minecraft patches in Skyrim's ground {} (trees {}, flowers {}, grass {}; {} areas done)", enabled ? "on" : "off", trees, flowers, grass,
+			DONE.size());
 	}
 
 	private static long key(int world, int ax, int az) {
 		return ChunkPos.pack(ax, az) ^ (world * 0x9E3779B97F4A7C15L);
 	}
 
-	private static void done(long key) {
-		DONE.add(key);
+	private static void done(long key, int kinds) {
+		DONE.put(key, kinds);
 		if (file == null) {
 			return;
 		}
 		try {
-			Files.writeString(file, key + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+			Files.writeString(file, key + " " + kinds + "\n", StandardOpenOption.CREATE, StandardOpenOption.APPEND);
 		} catch (IOException e) {
 			SkyCraft.LOG.warn("SkyCraft: couldn't save {}: {}", file, e.toString());
 		}
@@ -150,7 +156,7 @@ public final class SkyPatches {
 	 * by, popped in round them).
 	 */
 	private static void tick(MinecraftServer server) {
-		if (!enabled || !SkyWorld.valid() || !SkyCollision.active() || !SkyDig.destruction || SkyWorld.interior() || SkyWorld.settlement() || SkyWorld.town()) {
+		if (!SkyWorld.valid() || !SkyCollision.active() || !SkyDig.destruction || SkyWorld.interior() || SkyWorld.settlement() || SkyWorld.town()) {
 			return;
 		}
 		ServerPlayer host = null;
@@ -174,6 +180,7 @@ public final class SkyPatches {
 				hy = Mth.floor(ground);
 			}
 		}
+		int wanted = wanted();
 		long began = System.nanoTime();
 		int decided = 0;
 		for (int r = 0; r <= RADIUS; r++) {
@@ -184,7 +191,26 @@ public final class SkyPatches {
 					}
 					int ax = hx + dx, az = hz + dz;
 					long key = key(world, ax, az);
-					if (DONE.contains(key) || !sent(ax, hy, az) || !level.hasChunk((ax * CELL) >> 4, (az * CELL) >> 4)) {
+					Integer has = DONE.get(key);
+					if (has != null ? has == wanted : wanted == 0) {
+						continue;  // (as wanted; or none wanted, not decided yet: decided when some are)
+					}
+					if (!sent(ax, hy, az) || !level.hasChunk((ax * CELL) >> 4, (az * CELL) >> 4)) {
+						continue;
+					}
+					if (has != null) {
+						// SkyCraft+ : the kinds changed since: the ones turned off go, the ones turned on come.
+						int gone = sweep(level, world, ax, az, hy, has & ~wanted);
+						if ((wanted & ~has) != 0) {
+							decide(level, world, ax, az, hy, wanted & ~has);
+						}
+						done(key, wanted);
+						if (gone > 0 && logged++ < 40) {
+							SkyCraft.LOG.info("SkyCraft: Minecraft patches at {} {}: {} block(s) taken away (kinds {} -> {})", ax * CELL, az * CELL, gone, has, wanted);
+						}
+						if (++decided >= PER_TICK || System.nanoTime() - began > BUDGET) {
+							return;
+						}
 						continue;
 					}
 					Integer tried = LANDLESS.get(key);
@@ -193,8 +219,8 @@ public final class SkyPatches {
 					}
 					// (No land in reach of the host's height, flying over it say: tried again when there is,
 					// not left bare for good.)
-					if (decide(level, world, ax, az, hy)) {
-						done(key);
+					if (decide(level, world, ax, az, hy, wanted)) {
+						done(key, wanted);
 						LANDLESS.remove(key);
 					} else {
 						if (LANDLESS.size() > 20000) {
@@ -216,8 +242,112 @@ public final class SkyPatches {
 		return SkyCollision.isKnown(x, y, z) && SkyCollision.isKnown(x, y - CELL, z) && SkyCollision.isKnown(x, y + CELL, z);
 	}
 
+	/** SkyCraft+ : the kinds of patches wanted now (none with skyrimPatches off). */
+	private static int wanted() {
+		return enabled ? (trees ? K_TREES : 0) | (flowers ? K_FLOWERS : 0) | (grass ? K_GRASS : 0) : 0;
+	}
+
+	private static final Set<Block> GRASSES = Set.of(Blocks.SHORT_GRASS, Blocks.TALL_GRASS, Blocks.BUSH, Blocks.FERN, Blocks.LARGE_FERN, Blocks.LEAF_LITTER);
+	private static final Set<Block> TREE_GROUND = Set.of(Blocks.GRASS_BLOCK, Blocks.DIRT, Blocks.ROOTED_DIRT, Blocks.PODZOL, Blocks.COARSE_DIRT, Blocks.MUD,
+		Blocks.MOSS_BLOCK);
+
+	/**
+	 * SkyCraft+ : an area's patches of these kinds taken away (Skyrim's ground back under its trees). Found by what only
+	 * patches are, in the heights they're put at: a flower or grass on Skyrim's ground with nothing under it; a tree from
+	 * a block cut into Skyrim's ground, its logs and its own (not placed) leaves. Returns the blocks taken.
+	 */
+	private static int sweep(ServerLevel level, int world, int ax, int az, int hostY, int kinds) {
+		if (kinds == 0) {
+			return 0;
+		}
+		int gone = 0;
+		int lo = Math.max(level.getMinY(), hostY - 26), hi = Math.min(level.getMaxY() - 1, hostY + 18);
+		BlockPos.MutableBlockPos at = new BlockPos.MutableBlockPos();
+		for (int x = ax * CELL; x < ax * CELL + CELL; x++) {
+			for (int z = az * CELL; z < az * CELL + CELL; z++) {
+				for (int y = lo; y <= hi; y++) {
+					at.set(x, y, z);
+					BlockState state = level.getBlockState(at);
+					if (state.isAir() || !level.getBlockState(at.below()).isAir()) {
+						continue;  // (a patch stands on Skyrim's ground: nothing of Minecraft's under it)
+					}
+					Block block = state.getBlock();
+					boolean flower = java.util.Arrays.asList(FLOWERS).contains(block), plant = GRASSES.contains(block);
+					if ((kinds & K_FLOWERS) != 0 && flower || (kinds & K_GRASS) != 0 && plant) {
+						if (block instanceof DoublePlantBlock && level.getBlockState(at.above()).is(block)) {
+							level.removeBlock(at.above(), false);
+							gone++;
+						}
+						level.removeBlock(at, false);
+						gone++;
+					} else if ((kinds & K_TREES) != 0 && TREE_GROUND.contains(block)) {
+						BlockState over = level.getBlockState(at.above());
+						if (over.is(net.minecraft.tags.BlockTags.LOGS) || over.is(net.minecraft.tags.BlockTags.SAPLINGS) || over.is(Blocks.AZALEA) || over.is(Blocks.FLOWERING_AZALEA)
+							|| over.is(Blocks.MANGROVE_PROPAGULE)) {
+							gone += felled(level, world, at.immutable());
+						}
+					}
+				}
+			}
+		}
+		return gone;
+	}
+
+	/** SkyCraft+ : a patch tree taken away, from the block it grew from: its wood, its own leaves, what hangs on it; Skyrim's ground back. */
+	private static int felled(ServerLevel level, int world, BlockPos base) {
+		java.util.ArrayDeque<BlockPos> open = new java.util.ArrayDeque<>();
+		Set<BlockPos> seen = new HashSet<>();
+		open.add(base.above());
+		seen.add(base.above());
+		List<BlockPos> tree = new ArrayList<>();
+		while (!open.isEmpty() && tree.size() < 3000) {
+			BlockPos p = open.poll();
+			BlockState s = level.getBlockState(p);
+			boolean part = s.is(net.minecraft.tags.BlockTags.LOGS) || s.is(net.minecraft.tags.BlockTags.SAPLINGS) || s.is(Blocks.VINE) || s.is(Blocks.MANGROVE_ROOTS)
+				|| s.is(Blocks.MUDDY_MANGROVE_ROOTS) || s.is(Blocks.MANGROVE_PROPAGULE) || s.is(Blocks.PALE_HANGING_MOSS) || s.is(Blocks.BEE_NEST) || s.is(Blocks.COCOA)
+				|| s.is(Blocks.AZALEA) || s.is(Blocks.FLOWERING_AZALEA) || s.is(Blocks.MOSS_CARPET)
+				|| s.is(net.minecraft.tags.BlockTags.LEAVES) && !s.getValueOrElse(BlockStateProperties.PERSISTENT, true);  // (its own: grown, not placed)
+			if (!part) {
+				continue;
+			}
+			tree.add(p);
+			for (int dx = -1; dx <= 1; dx++) {
+				for (int dy = -1; dy <= 1; dy++) {
+					for (int dz = -1; dz <= 1; dz++) {
+						BlockPos q = p.offset(dx, dy, dz);
+						if (Math.abs(q.getX() - base.getX()) <= 12 && Math.abs(q.getZ() - base.getZ()) <= 12 && q.getY() > base.getY() - 6 && q.getY() < base.getY() + 40
+							&& level.isLoaded(q) && seen.add(q)) {
+							open.add(q);
+						}
+					}
+				}
+			}
+		}
+		// From the top down (nothing left hanging to drop), then the blocks it grew from (a two by two's four), Skyrim's ground back.
+		tree.sort((a, b) -> Integer.compare(b.getY(), a.getY()));
+		int gone = 0;
+		Set<BlockPos> grounds = new HashSet<>();
+		grounds.add(base);
+		for (BlockPos p : tree) {
+			BlockPos under = p.below();
+			if (p.getY() == base.getY() + 1 && TREE_GROUND.contains(level.getBlockState(under).getBlock()) && level.getBlockState(under.below()).isAir()) {
+				grounds.add(under);
+			}
+			level.setBlock(p, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
+			gone++;
+		}
+		for (BlockPos g : grounds) {
+			level.setBlock(g, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
+			SkyDig.unmarkDug(level, world, g);
+			SkyDig.unmarkDug(level, world, g.above());
+			gone++;
+		}
+		return gone;
+	}
+
 	/** Decides an area's patches; false if none of its land was in reach (nothing decided). */
-	private static boolean decide(ServerLevel level, int world, int ax, int az, int hostY) {
+	private static boolean decide(ServerLevel level, int world, int ax, int az, int hostY, int kinds) {
+		boolean trees = (kinds & K_TREES) != 0, flowers = (kinds & K_FLOWERS) != 0, grass = (kinds & K_GRASS) != 0;
 		RandomSource random = RandomSource.create(level.getSeed() ^ ChunkPos.pack(ax, az) * 0x5DEECE66DL ^ world ^ 0x8L);
 		int treesMade = 0, grassMade = 0, flowersMade = 0, litter = 0;
 		int wantGrass = 2 + random.nextInt(6), wantFlowers = random.nextBoolean() ? 1 + random.nextInt(3) : 0;
