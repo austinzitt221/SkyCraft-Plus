@@ -87,16 +87,18 @@ first, install the zip the same way, and start a **new Minecraft world** to get 
   from one game into the other's (`crossCrafting`).
 - **Skyrim's workbenches use Minecraft's things:** the forge, smelter, tanning rack, cooking pot,
   alchemy lab and the rest see your Minecraft materials, and **Skyrim's enchanter enchants your
-  Minecraft weapons and armor** (`skyrimWorkbenches`, `enchanterAllGear`). Skyrim weapons take
-  every Minecraft enchantment too.
+  Minecraft weapons and armor** (`skyrimWorkbenches`, `enchanterAllGear`).
+- **Minecraft enchantments on Skyrim weapons:** Skyrim weapons and tools take Minecraft's
+  enchantments (silk touch on a Skyrim pickaxe, for one).
 - **Arrows across the games:** Minecraft bows shoot Skyrim arrows and Skyrim bows Minecraft
   arrows, each looking like itself, and they can be picked up again (`arrowsAcrossGames`).
 - **Shouts fixed in Minecraft mode:** Slow Time, Become Ethereal, Animal Allegiance, Call Dragon
   and Aura Whisper (Minecraft mobs glow). Minecraft's beds move Skyrim's clock to the morning
   (`bedsInSkyrim`).
 - **Silk touch mines Skyrim's ground and rock** as blocks in that very Skyrim texture, to build
-  with (`silkTouchSkyrimGeo`). The **restoration brush** (stick, cobblestone and dirt) puts back
-  what you dug out of Skyrim's world.
+  with (`silkTouchSkyrimGeo`).
+- **The restoration brush** (craft it from a stick, cobblestone and dirt): use it on a hole you
+  dug in Skyrim's ground, rocks or cave walls and Skyrim's own land comes back there.
 - **Pets, Minecraft style:** bones tame Skyrim's dogs and wolves. They're as tough as a tamed
   Minecraft wolf, fight what you hit, sit and stand when told, and come through load doors with
   you (`skyrimFoodForAnimals`, `petsThroughDoors`).
