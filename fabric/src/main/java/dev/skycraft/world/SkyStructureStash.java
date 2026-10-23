@@ -43,8 +43,11 @@ public final class SkyStructureStash {
 	private SkyStructureStash() {
 	}
 
-	/** Its ground (the pad round it, the dirt under its raised parts) is part of it. */
-	private static final int AROUND = 4, BELOW = 8, ABOVE = 2;
+	/** Its ground (the pad round it, the dirt under its raised parts) is part of it. (SkyCraft+ : out as far as the pad's specks go,
+	 * SkyStructures.SPECKS_TO, and one more: at 4, the specks out at 5 and 6 were left behind.) */
+	private static final int AROUND = 7, BELOW = 8, ABOVE = 2;
+	/** What AROUND was when a stash without its corner (skycraft_origin) was made. */
+	private static final int OLD_AROUND = 4;
 
 	private static final Deque<String> QUEUE = new ArrayDeque<>();
 	private static boolean target = true;  // what the queue works towards: true all out, false all away
@@ -145,6 +148,7 @@ public final class SkyStructureStash {
 		SkyDig.Cells dug = SkyDig.undigBox(level, area);
 		tag.putIntArray("skycraft_dug_worlds", dug.worlds());
 		tag.putLongArray("skycraft_dug_cells", dug.positions());
+		tag.putIntArray("skycraft_origin", new int[] { min.getX(), min.getY(), min.getZ() });  // SkyCraft+ : (where it goes back)
 		Files.createDirectories(folder(server));
 		Path temp = file(server, name).resolveSibling(file(server, name).getFileName() + ".tmp");
 		NbtIo.writeCompressed(tag, temp);
@@ -179,7 +183,10 @@ public final class SkyStructureStash {
 		StructureTemplate template = new StructureTemplate();
 		template.load(level.registryAccess().lookupOrThrow(Registries.BLOCK), tag);
 		SkyDig.redig(level, new SkyDig.Cells(tag.getIntArray("skycraft_dug_worlds").orElse(new int[0]), tag.getLongArray("skycraft_dug_cells").orElse(new long[0])));
-		BlockPos min = new BlockPos(area.minX(), area.minY(), area.minZ());
+		// (Its corner as saved; a stash from before that: where it was then, OLD_AROUND out.)
+		int[] origin = tag.getIntArray("skycraft_origin").orElse(new int[0]);
+		int shift = AROUND - OLD_AROUND;
+		BlockPos min = origin.length == 3 ? new BlockPos(origin[0], origin[1], origin[2]) : new BlockPos(area.minX() + shift, area.minY(), area.minZ() + shift);
 		template.placeInWorld(level, min, min, new StructurePlaceSettings(), level.getRandom(), Block.UPDATE_CLIENTS);
 		Files.deleteIfExists(path);
 		SkyCraft.LOG.info("SkyCraft: brought back {} as it was put away", name);
